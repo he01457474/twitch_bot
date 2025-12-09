@@ -222,7 +222,7 @@
             text-shadow: 0 0 10px rgba(255,255,255,0.1);
         }
 
-        /* 表格樣式 (修正版) */
+        /* 表格樣式 */
         .custom-table {
             width: 100%;
             border-collapse: separate;
@@ -238,10 +238,9 @@
         }
         .custom-table tr {
             background: rgba(30, 30, 35, 0.95);
-            transition: background 0.2s, box-shadow 0.2s; /* 移除 transform，解決跳動 */
+            transition: background 0.2s, box-shadow 0.2s;
         }
         .custom-table tr:hover {
-            /* 移除 scale 放大，改用內陰影做高亮，不佔空間 */
             background: rgba(45, 45, 50, 1);
             box-shadow: inset 4px 0 0 var(--accent-primary); 
         }
@@ -384,7 +383,7 @@
 
     <div class="hero-section">
         <div class="container">
-            <h1 class="hero-title">Twitch Bot指令說明</h1>
+            <h1 class="hero-title">Bot 指令全書</h1>
             <p class="lead text-muted mb-4">V3.5.1 Stable ‧ Auto Moderation System</p>
             
             <div class="search-container">
@@ -401,6 +400,8 @@
                 <i class="fa-solid fa-users"></i>
                 <h2>觀眾常用指令</h2>
             </div>
+            <p class="text-muted mb-4 small"><i class="fa-solid fa-arrow-down me-2"></i>往下滑還有 <b>娛樂互動</b> 與 <b>管理員</b> 指令喔！</p>
+            
             <div class="row g-4">
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
@@ -437,10 +438,10 @@
 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <div class="card-icon"><i class="fa-solid fa-clock-rotate-left"></i></div>
-                        <h5 class="card-title">歷史榮譽榜</h5>
-                        <p class="card-desc">查詢過去指定月份的前五名簽到冠軍 (格式 YYYY-MM)。</p>
-                        <div><span class="cmd-badge" onclick="copyText('!月排名 2025-11')">!月排名 YYYY-MM</span></div>
+                        <div class="card-icon"><i class="fa-solid fa-circle-question"></i></div>
+                        <h5 class="card-title">指令幫助</h5>
+                        <p class="card-desc">忘記指令了嗎？在聊天室輸入這個，Bot 會列出常用清單給你。</p>
+                        <div><span class="cmd-badge" onclick="copyText('!幫助')">!幫助</span></div>
                     </div>
                 </div>
 
@@ -461,7 +462,19 @@
                         <div class="card-icon"><i class="fa-solid fa-cake-candles"></i></div>
                         <h5 class="card-title">帳號生日</h5>
                         <p class="card-desc">查詢你的 Twitch 帳號是在哪一天創立的。</p>
-                        <div><span class="cmd-badge" onclick="copyText('!創建多久')">!創建多久</span></div>
+                        <div>
+                            <span class="cmd-badge" onclick="copyText('!創建多久')">!創建多久</span>
+                            <span class="cmd-badge" onclick="copyText('!創建多久 @ID')">!創建多久 @ID</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6 col-lg-4 searchable-item">
+                    <div class="glass-card">
+                        <div class="card-icon"><i class="fa-solid fa-clock-rotate-left"></i></div>
+                        <h5 class="card-title">歷史榮譽榜</h5>
+                        <p class="card-desc">查詢過去指定月份的前五名簽到冠軍 (格式 YYYY-MM)。</p>
+                        <div><span class="cmd-badge" onclick="copyText('!月排名 2025-11')">!月排名 YYYY-MM</span></div>
                     </div>
                 </div>
             </div>
@@ -486,7 +499,7 @@
                         <h5 class="card-title text-info"><i class="fa-solid fa-comment-slash me-2"></i>自 Ban 冷靜一下</h5>
                         <p class="card-desc">覺得自己廢話太多？你可以把「自己」禁言一段時間 (冷卻 10秒)。</p>
                         <div>
-                            <span class="cmd-badge" onclick="copyText('!B人 60')">!B人 秒數</span>
+                            <span class="cmd-badge" onclick="copyText('!B人 60')">!B人 60</span>
                             <span class="cmd-badge" onclick="copyText('!B人 隨機')">!B人 隨機</span>
                         </div>
                         <small class="text-warning d-block mt-2">
