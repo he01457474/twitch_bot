@@ -3,6 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <meta property="og:title" content="Twitch Bot 指令全書">
+    <meta property="og:description" content="查詢所有聊天室指令、簽到系統與娛樂功能。V3.5.1 Stable">
+    <meta property="og:image" content="https://cdn-icons-png.flaticon.com/512/4712/4712109.png">
+    <meta name="theme-color" content="#a855f7">
+
     <title>Twitch Bot 指令手冊</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -31,9 +37,12 @@
             position: relative;
         }
 
-        .text-muted, .text-secondary {
-            color: #b0b0b9 !important;
-        }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #000; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
+
+        .text-muted, .text-secondary { color: #b0b0b9 !important; }
 
         /* 導覽列 */
         .navbar {
@@ -51,7 +60,7 @@
 
         /* 英雄區塊 */
         .hero-section {
-            padding: 80px 0;
+            padding: 60px 0 40px 0;
             text-align: center;
         }
         .hero-title {
@@ -61,6 +70,37 @@
             letter-spacing: -1px;
             color: #fff;
             text-shadow: 0 0 20px rgba(168, 85, 247, 0.5); 
+        }
+
+        /* 搜尋框 */
+        .search-container {
+            max-width: 500px;
+            margin: 0 auto 30px auto;
+            position: relative;
+        }
+        .search-input {
+            width: 100%;
+            padding: 15px 25px 15px 50px;
+            border-radius: 50px;
+            border: 2px solid var(--card-border);
+            background: rgba(30, 30, 35, 0.95);
+            color: #fff;
+            font-size: 1.1rem;
+            transition: all 0.3s;
+        }
+        .search-input:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            background: rgba(40, 40, 45, 1);
+            box-shadow: 0 0 20px rgba(168, 85, 247, 0.2);
+        }
+        .search-icon {
+            position: absolute;
+            left: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            font-size: 1.2rem;
         }
 
         /* 卡片設計 */
@@ -137,9 +177,7 @@
             color: #fff;
             box-shadow: 0 0 15px rgba(168, 85, 247, 0.4);
         }
-        .cmd-badge:active {
-            transform: scale(0.95);
-        }
+        .cmd-badge:active { transform: scale(0.95); }
         
         /* 複製提示 */
         .copy-tooltip {
@@ -184,7 +222,7 @@
             text-shadow: 0 0 10px rgba(255,255,255,0.1);
         }
 
-        /* 表格樣式 */
+        /* 表格樣式 (修正版) */
         .custom-table {
             width: 100%;
             border-collapse: separate;
@@ -200,12 +238,12 @@
         }
         .custom-table tr {
             background: rgba(30, 30, 35, 0.95);
-            transition: transform 0.2s;
+            transition: background 0.2s, box-shadow 0.2s; /* 移除 transform，解決跳動 */
         }
         .custom-table tr:hover {
-            transform: scale(1.01);
+            /* 移除 scale 放大，改用內陰影做高亮，不佔空間 */
             background: rgba(45, 45, 50, 1);
-            border-left: 3px solid var(--accent-primary);
+            box-shadow: inset 4px 0 0 var(--accent-primary); 
         }
         .custom-table td {
             padding: 18px 20px;
@@ -227,15 +265,85 @@
             border-bottom-right-radius: 10px;
         }
 
+        /* 權限徽章 */
         .badge-role {
             font-size: 0.75rem;
             padding: 4px 8px;
             border-radius: 4px;
-            font-weight: 600;
+            font-weight: 700;
             text-transform: uppercase;
+            display: inline-block;
+            margin-right: 5px;
+            letter-spacing: 0.5px;
         }
-        .bg-mod { background: rgba(16, 185, 129, 0.2); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.4); }
-        .bg-admin { background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.4); }
+        .bg-mod { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); }
+        .bg-op { background: rgba(234, 179, 8, 0.15); color: #fde047; border: 1px solid rgba(234, 179, 8, 0.4); }
+        .bg-admin { background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.4); }
+
+        /* 特殊人員名單區塊 */
+        .vip-list-container {
+            background: rgba(234, 179, 8, 0.05);
+            border: 1px solid rgba(234, 179, 8, 0.2);
+            border-radius: 12px;
+            padding: 25px;
+            margin-top: 30px;
+            position: relative;
+            overflow: hidden;
+        }
+        .vip-title {
+            color: #fde047;
+            font-weight: 700;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+        }
+        .vip-tag {
+            background: #27272a;
+            color: #fde047;
+            border: 1px solid rgba(234, 179, 8, 0.3);
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            display: inline-flex;
+            align-items: center;
+            margin: 6px;
+            transition: all 0.2s;
+            font-family: 'JetBrains Mono', sans-serif;
+        }
+        .vip-tag:hover {
+            transform: translateY(-2px);
+            background: rgba(234, 179, 8, 0.15);
+            box-shadow: 0 4px 15px rgba(234, 179, 8, 0.2);
+            border-color: #fde047;
+            color: #fff;
+        }
+        .vip-tag i { margin-right: 8px; color: #fde047; }
+
+        #backToTop {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: var(--accent-primary);
+            color: white;
+            width: 50px; height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            cursor: pointer;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s;
+            box-shadow: 0 5px 15px rgba(168, 85, 247, 0.4);
+            z-index: 900;
+            border: none;
+        }
+        #backToTop:hover {
+            transform: translateY(-5px);
+            background: var(--accent-secondary);
+        }
+        #backToTop.show { opacity: 1; visibility: visible; }
 
         footer {
             margin-top: 80px;
@@ -252,6 +360,10 @@
         <i class="fa-solid fa-check-circle me-2"></i>指令已複製
     </div>
 
+    <button id="backToTop" onclick="scrollToTop()">
+        <i class="fa-solid fa-arrow-up"></i>
+    </button>
+
     <nav class="navbar navbar-expand-lg navbar-dark sticky-top">
         <div class="container">
             <a class="navbar-brand" href="#">
@@ -264,7 +376,7 @@
                 <ul class="navbar-nav ms-auto">
                     <li class="nav-item"><a class="nav-link" href="#viewer">觀眾指令</a></li>
                     <li class="nav-item"><a class="nav-link" href="#fun">娛樂互動</a></li>
-                    <li class="nav-item"><a class="nav-link" href="#mod">管理員專區</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#management">管理與後台</a></li>
                 </ul>
             </div>
         </div>
@@ -272,20 +384,25 @@
 
     <div class="hero-section">
         <div class="container">
-            <h1 class="hero-title">Bot 指令全書</h1>
-            <p class="lead text-muted">V3.4.0 Clean Edition ‧ Auto Moderation System</p>
+            <h1 class="hero-title">Twitch Bot指令說明</h1>
+            <p class="lead text-muted mb-4">V3.5.1 Stable ‧ Auto Moderation System</p>
+            
+            <div class="search-container">
+                <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                <input type="text" id="searchInput" class="search-input" placeholder="輸入關鍵字搜尋指令..." onkeyup="searchCommands()">
+            </div>
         </div>
     </div>
 
     <div class="container">
 
-        <div id="viewer">
+        <div id="viewer" class="cmd-section">
             <div class="section-header">
                 <i class="fa-solid fa-users"></i>
                 <h2>觀眾常用指令</h2>
             </div>
             <div class="row g-4">
-                <div class="col-md-6 col-lg-4">
+                <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
                         <div class="card-icon"><i class="fa-solid fa-calendar-check"></i></div>
                         <h5 class="card-title">每日簽到</h5>
@@ -294,7 +411,7 @@
                     </div>
                 </div>
                 
-                <div class="col-md-6 col-lg-4">
+                <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
                         <div class="card-icon"><i class="fa-solid fa-address-card"></i></div>
                         <h5 class="card-title">個人查詢</h5>
@@ -306,7 +423,7 @@
                     </div>
                 </div>
 
-                <div class="col-md-6 col-lg-4">
+                <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
                         <div class="card-icon"><i class="fa-solid fa-trophy"></i></div>
                         <h5 class="card-title">排行榜</h5>
@@ -318,7 +435,7 @@
                     </div>
                 </div>
 
-                <div class="col-md-6 col-lg-4">
+                <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
                         <div class="card-icon"><i class="fa-solid fa-clock-rotate-left"></i></div>
                         <h5 class="card-title">歷史榮譽榜</h5>
@@ -327,7 +444,7 @@
                     </div>
                 </div>
 
-                <div class="col-md-6 col-lg-4">
+                <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
                         <div class="card-icon"><i class="fa-solid fa-heart"></i></div>
                         <h5 class="card-title">追隨時間</h5>
@@ -339,7 +456,7 @@
                     </div>
                 </div>
 
-                <div class="col-md-6 col-lg-4">
+                <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
                         <div class="card-icon"><i class="fa-solid fa-cake-candles"></i></div>
                         <h5 class="card-title">帳號生日</h5>
@@ -350,13 +467,13 @@
             </div>
         </div>
 
-        <div id="fun">
+        <div id="fun" class="cmd-section">
             <div class="section-header">
                 <i class="fa-solid fa-gamepad"></i>
                 <h2>娛樂互動</h2>
             </div>
             <div class="row g-4">
-                <div class="col-md-6">
+                <div class="col-md-6 searchable-item">
                     <div class="glass-card">
                         <h5 class="card-title text-danger"><i class="fa-solid fa-heart-pulse me-2"></i>愛情配對機</h5>
                         <p class="card-desc">隨機計算兩人契合度，並給出毒舌或甜蜜評語。</p>
@@ -364,7 +481,7 @@
                         <small class="text-secondary d-block mt-2">別名：!契合度, !ship</small>
                     </div>
                 </div>
-                <div class="col-md-6">
+                <div class="col-md-6 searchable-item">
                     <div class="glass-card">
                         <h5 class="card-title text-info"><i class="fa-solid fa-comment-slash me-2"></i>自 Ban 冷靜一下</h5>
                         <p class="card-desc">覺得自己廢話太多？你可以把「自己」禁言一段時間 (冷卻 10秒)。</p>
@@ -372,16 +489,23 @@
                             <span class="cmd-badge" onclick="copyText('!B人 60')">!B人 秒數</span>
                             <span class="cmd-badge" onclick="copyText('!B人 隨機')">!B人 隨機</span>
                         </div>
-                        <small class="text-warning d-block mt-2"><i class="fa-solid fa-triangle-exclamation"></i> 一般觀眾只能 Ban 自己，不能 Ban 別人！</small>
+                        <small class="text-warning d-block mt-2">
+                            <i class="fa-solid fa-triangle-exclamation"></i> 一般觀眾只能 Ban 自己，不能 Ban 別人！
+                            <br>
+                            <span class="text-secondary" style="font-size: 0.85em; display: block; margin-top: 4px;">
+                                • 未填秒數：預設 600秒<br>
+                                • 填「隨機」：隨機 60 ~ 600秒
+                            </span>
+                        </small>
                     </div>
                 </div>
             </div>
         </div>
 
-        <div id="mod">
+        <div id="management" class="cmd-section">
             <div class="section-header">
                 <i class="fa-solid fa-shield-halved"></i>
-                <h2>管理員專區 (MOD / Admin)</h2>
+                <h2>管理與後台專區</h2>
             </div>
             
             <div class="table-responsive">
@@ -390,56 +514,84 @@
                         <tr>
                             <th width="20%">指令</th>
                             <th width="25%">參數</th>
-                            <th>權限 / 功能說明</th>
+                            <th>類別 / 權限 / 說明</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        <tr>
+                    <tbody id="adminTableBody">
+                        <tr class="searchable-row">
                             <td><span class="cmd-badge" onclick="copyText('!B人 @ID 秒數')">!B人</span></td>
                             <td><code>@ID</code> <code>秒數</code></td>
                             <td>
-                                <strong>強制禁言指定觀眾。</strong><br>
-                                <span class="badge-role bg-mod">MOD</span> 無視冷卻時間，上限 1 天。<br>
-                                <small class="text-secondary">*若對象是管理員，會觸發反彈效果 (自Ban)。</small>
+                                <span class="badge-role bg-mod">MOD</span>
+                                <strong>強制禁言</strong><br>
+                                MOD 可無視冷卻時間，上限 1 天。<br>
+                                <small class="text-secondary">*若對象是管理員，會觸發反彈 (自Ban)。</small>
                             </td>
                         </tr>
-                        <tr>
+                        <tr class="searchable-row">
                             <td><span class="cmd-badge" onclick="copyText('!解B @ID')">!解B</span></td>
                             <td><code>@ID</code> <code>(強制)</code></td>
                             <td>
-                                <strong>智慧解除禁言。</strong><br>
-                                - <span class="text-white">空參數</span>：自動掃描並解除所有 VIP 禁言。<br>
+                                <span class="badge-role bg-mod">MOD</span>
+                                <strong>智慧解除</strong><br>
                                 - <span class="text-white">!解B @ID</span>：快速解除 VIP。<br>
                                 - <span class="text-white">!解B @ID 強制</span>：強制解除一般觀眾。
                             </td>
                         </tr>
-                        <tr>
+                        <tr class="searchable-row">
+                            <td><span class="cmd-badge" onclick="copyText('!狀態')">!狀態</span></td>
+                            <td>無</td>
+                            <td>
+                                <span class="badge-role bg-op">特殊權限</span> <span class="badge-role bg-mod">MOD</span>
+                                <strong>系統狀態</strong><br>
+                                顯示開機時間、版本號、連線頻道數等後台資訊。<br>
+                            </td>
+                        </tr>
+                        <tr class="searchable-row">
                             <td><span class="cmd-badge" onclick="copyText('!重啟')">!重啟</span></td>
                             <td>無</td>
-                            <td><span class="badge-role bg-admin">Admin</span> 強制重啟 Bot 程序 (更新代碼或異常時使用)。</td>
+                            <td>
+                                <span class="badge-role bg-op">特殊權限</span> <span class="badge-role bg-mod">MOD</span>
+                                <strong>強制重啟</strong><br>
+                                重啟 Bot 程序 (更新代碼或異常修復時使用)。
+                            </td>
                         </tr>
-                        <tr>
+                        <tr class="searchable-row">
                             <td><span class="cmd-badge" onclick="copyText('!備份')">!備份</span></td>
                             <td>無</td>
-                            <td><span class="badge-role bg-admin">Admin</span> 手動備份資料庫至 backups 資料夾。</td>
+                            <td>
+                                <span class="badge-role bg-op">特殊權限</span> <span class="badge-role bg-mod">MOD</span>
+                                <strong>資料備份</strong><br>
+                                手動備份資料庫至 backups 資料夾。
+                            </td>
                         </tr>
-                        <tr>
+                        <tr class="searchable-row">
                             <td><span class="cmd-badge" onclick="copyText('!測試')">!測試</span></td>
                             <td>無</td>
-                            <td><span class="badge-role bg-admin">Admin</span> 檢查 API 連線與 Token 有效性。</td>
-                        </tr>
-                        <tr>
-                            <td><span class="cmd-badge" onclick="copyText('!手動月重置')">!手動月重置</span></td>
-                            <td>無</td>
-                            <td><span class="badge-role bg-admin">Admin</span> 強制執行月榜結算並歸零數據。</td>
+                            <td>
+                                <span class="badge-role bg-op">特殊權限</span> <span class="badge-role bg-mod">MOD</span>
+                                <strong>連線測試</strong><br>
+                                檢查 API 連線與 Token 有效性。
+                            </td>
                         </tr>
                     </tbody>
                 </table>
             </div>
+
+            <div class="vip-list-container">
+                <h5 class="vip-title"><i class="fa-solid fa-crown"></i>特殊權限人員 (Allowed Users)</h5>
+                <p class="text-muted small mb-3">以下人員擁有操作系統指令 (重啟/備份/狀態/測試) 的權限：</p>
+                
+                <div id="vip-list">
+                    <span class="vip-tag"><i class="fa-solid fa-user-astronaut"></i>每台都被當空氣的飝猫珤珤(fly_cat0420)</span>
+                    <span class="vip-tag"><i class="fa-solid fa-user-secret"></i>玆歐巴(tp012943)</span>
+                </div>
+            </div>
+
         </div>
 
         <footer>
-            <p class="mb-1">Bot Version: 3.4.0 (Stable)</p>
+            <p class="mb-1">Bot Version: 3.5.1 (Stable)</p>
             <small>Designed for Twitch Community</small>
         </footer>
 
@@ -455,6 +607,44 @@
             }, function(err) {
                 console.error('複製失敗: ', err);
             });
+        }
+
+        function searchCommands() {
+            var input = document.getElementById('searchInput');
+            var filter = input.value.toLowerCase();
+            
+            var items = document.getElementsByClassName('searchable-item');
+            for (var i = 0; i < items.length; i++) {
+                var text = items[i].textContent || items[i].innerText;
+                if (text.toLowerCase().indexOf(filter) > -1) {
+                    items[i].parentElement.style.display = ""; 
+                } else {
+                    items[i].parentElement.style.display = "none";
+                }
+            }
+
+            var rows = document.getElementsByClassName('searchable-row');
+            for (var i = 0; i < rows.length; i++) {
+                var text = rows[i].textContent || rows[i].innerText;
+                if (text.toLowerCase().indexOf(filter) > -1) {
+                    rows[i].style.display = "";
+                } else {
+                    rows[i].style.display = "none";
+                }
+            }
+        }
+
+        var backToTopBtn = document.getElementById("backToTop");
+        window.onscroll = function() {
+            if (document.body.scrollTop > 300 || document.documentElement.scrollTop > 300) {
+                backToTopBtn.classList.add("show");
+            } else {
+                backToTopBtn.classList.remove("show");
+            }
+        };
+
+        function scrollToTop() {
+            window.scrollTo({top: 0, behavior: 'smooth'});
         }
     </script>
 </body>
