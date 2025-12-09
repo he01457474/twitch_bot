@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Twitch Bot 指令手冊</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-color: #050505;
+            --card-bg: rgba(20, 20, 25, 0.9); 
+            --card-border: rgba(255, 255, 255, 0.15);
+            --accent-primary: #a855f7;
+            --accent-secondary: #ec4899;
+            --text-main: #ffffff;
+            --text-muted: #e4e4e7; 
+            --glass-blur: 20px;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: 'Noto Sans TC', sans-serif;
+            background-image: 
+                radial-gradient(circle at 15% 50%, rgba(168, 85, 247, 0.05), transparent 25%),
+                radial-gradient(circle at 85% 30%, rgba(236, 72, 153, 0.05), transparent 25%);
+            min-height: 100vh;
+            position: relative;
+        }
+
+        .text-muted, .text-secondary {
+            color: #b0b0b9 !important;
+        }
+
+        /* 導覽列 */
+        .navbar {
+            background: rgba(5, 5, 5, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--card-border);
+        }
+        .navbar-brand {
+            font-weight: 700;
+            background: linear-gradient(45deg, var(--accent-primary), var(--accent-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: 1px;
+        }
+
+        /* 英雄區塊 */
+        .hero-section {
+            padding: 80px 0;
+            text-align: center;
+        }
+        .hero-title {
+            font-weight: 800;
+            font-size: 3.5rem;
+            margin-bottom: 15px;
+            letter-spacing: -1px;
+            color: #fff;
+            text-shadow: 0 0 20px rgba(168, 85, 247, 0.5); 
+        }
+
+        /* 卡片設計 */
+        .glass-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(var(--glass-blur));
+            -webkit-backdrop-filter: blur(var(--glass-blur));
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 25px;
+            height: 100%;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+        
+        .glass-card:hover {
+            transform: translateY(-5px);
+            border-color: rgba(168, 85, 247, 0.8);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+            background: rgba(30, 30, 35, 0.95);
+        }
+
+        .card-icon {
+            font-size: 2rem;
+            margin-bottom: 15px;
+            background: rgba(255, 255, 255, 0.08);
+            width: 60px; height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 12px;
+            color: var(--accent-primary);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .card-title {
+            color: #fff;
+            font-weight: 700;
+            margin-bottom: 12px;
+            font-size: 1.3rem;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+        }
+        
+        .card-desc {
+            color: var(--text-muted);
+            font-size: 1rem;
+            margin-bottom: 20px;
+            min-height: 48px;
+            font-weight: 400;
+            line-height: 1.6;
+        }
+
+        /* 指令徽章 */
+        .cmd-badge {
+            font-family: 'JetBrains Mono', monospace;
+            background: #27272a;
+            color: #e9d5ff;
+            border: 1px solid #52525b;
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-size: 0.95em;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-block;
+            margin-bottom: 6px;
+            user-select: all;
+            font-weight: 500;
+        }
+        .cmd-badge:hover {
+            background: var(--accent-primary);
+            border-color: var(--accent-primary);
+            color: #fff;
+            box-shadow: 0 0 15px rgba(168, 85, 247, 0.4);
+        }
+        .cmd-badge:active {
+            transform: scale(0.95);
+        }
+        
+        /* 複製提示 */
+        .copy-tooltip {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%) translateY(20px);
+            background: #fff;
+            color: #000;
+            padding: 10px 24px;
+            border-radius: 50px;
+            font-weight: 700;
+            font-size: 1rem;
+            opacity: 0;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            pointer-events: none;
+            z-index: 1000;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.5);
+        }
+        .copy-tooltip.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        /* 分區標題 */
+        .section-header {
+            display: flex;
+            align-items: center;
+            margin: 60px 0 30px 0;
+            padding-bottom: 15px;
+            border-bottom: 1px solid var(--card-border);
+        }
+        .section-header i {
+            color: var(--accent-secondary);
+            font-size: 1.5rem;
+            margin-right: 15px;
+        }
+        .section-header h2 {
+            font-weight: 700;
+            margin: 0;
+            color: #fff;
+            text-shadow: 0 0 10px rgba(255,255,255,0.1);
+        }
+
+        /* 表格樣式 */
+        .custom-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0 8px;
+        }
+        .custom-table th {
+            color: #a1a1aa;
+            font-weight: 600;
+            padding: 12px 20px;
+            text-transform: uppercase;
+            font-size: 0.85rem;
+            letter-spacing: 1px;
+        }
+        .custom-table tr {
+            background: rgba(30, 30, 35, 0.95);
+            transition: transform 0.2s;
+        }
+        .custom-table tr:hover {
+            transform: scale(1.01);
+            background: rgba(45, 45, 50, 1);
+            border-left: 3px solid var(--accent-primary);
+        }
+        .custom-table td {
+            padding: 18px 20px;
+            vertical-align: middle;
+            color: #e4e4e7;
+            border-top: 1px solid var(--card-border);
+            border-bottom: 1px solid var(--card-border);
+        }
+        .custom-table td:first-child {
+            border-left: 1px solid var(--card-border);
+            border-top-left-radius: 10px;
+            border-bottom-left-radius: 10px;
+            color: #fff;
+            font-weight: 500;
+        }
+        .custom-table td:last-child {
+            border-right: 1px solid var(--card-border);
+            border-top-right-radius: 10px;
+            border-bottom-right-radius: 10px;
+        }
+
+        .badge-role {
+            font-size: 0.75rem;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .bg-mod { background: rgba(16, 185, 129, 0.2); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.4); }
+        .bg-admin { background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.4); }
+
+        footer {
+            margin-top: 80px;
+            padding: 40px 0;
+            border-top: 1px solid var(--card-border);
+            text-align: center;
+            color: #71717a;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="copyToast" class="copy-tooltip">
+        <i class="fa-solid fa-check-circle me-2"></i>指令已複製
+    </div>
+
+    <nav class="navbar navbar-expand-lg navbar-dark sticky-top">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="fa-solid fa-robot me-2"></i>BOT MANUAL
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item"><a class="nav-link" href="#viewer">觀眾指令</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#fun">娛樂互動</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#mod">管理員專區</a></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="hero-section">
+        <div class="container">
+            <h1 class="hero-title">Bot 指令全書</h1>
+            <p class="lead text-muted">V3.4.0 Clean Edition ‧ Auto Moderation System</p>
+        </div>
+    </div>
+
+    <div class="container">
+
+        <div id="viewer">
+            <div class="section-header">
+                <i class="fa-solid fa-users"></i>
+                <h2>觀眾常用指令</h2>
+            </div>
+            <div class="row g-4">
+                <div class="col-md-6 col-lg-4">
+                    <div class="glass-card">
+                        <div class="card-icon"><i class="fa-solid fa-calendar-check"></i></div>
+                        <h5 class="card-title">每日簽到</h5>
+                        <p class="card-desc">在直播中簽到，累積觀看次數與積分。跨日(00:00)會自動重置狀態。</p>
+                        <div><span class="cmd-badge" onclick="copyText('!簽到')">!簽到</span></div>
+                    </div>
+                </div>
+                
+                <div class="col-md-6 col-lg-4">
+                    <div class="glass-card">
+                        <div class="card-icon"><i class="fa-solid fa-address-card"></i></div>
+                        <h5 class="card-title">個人查詢</h5>
+                        <p class="card-desc">查詢你的簽到次數、本月統計、以及最後一次簽到的時間。</p>
+                        <div>
+                            <span class="cmd-badge" onclick="copyText('!查詢')">!查詢</span>
+                            <span class="cmd-badge" onclick="copyText('!查詢 @ID')">!查詢 @ID</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6 col-lg-4">
+                    <div class="glass-card">
+                        <div class="card-icon"><i class="fa-solid fa-trophy"></i></div>
+                        <h5 class="card-title">排行榜</h5>
+                        <p class="card-desc">查看本月前五名英雄榜，或查詢自己在頻道中的即時排名。</p>
+                        <div>
+                            <span class="cmd-badge" onclick="copyText('!本月排名')">!本月排名</span>
+                            <span class="cmd-badge" onclick="copyText('!我的排名')">!我的排名</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6 col-lg-4">
+                    <div class="glass-card">
+                        <div class="card-icon"><i class="fa-solid fa-clock-rotate-left"></i></div>
+                        <h5 class="card-title">歷史榮譽榜</h5>
+                        <p class="card-desc">查詢過去指定月份的前五名簽到冠軍 (格式 YYYY-MM)。</p>
+                        <div><span class="cmd-badge" onclick="copyText('!月排名 2025-11')">!月排名 YYYY-MM</span></div>
+                    </div>
+                </div>
+
+                <div class="col-md-6 col-lg-4">
+                    <div class="glass-card">
+                        <div class="card-icon"><i class="fa-solid fa-heart"></i></div>
+                        <h5 class="card-title">追隨時間</h5>
+                        <p class="card-desc">查詢你已經追隨台主多久了 (芯寶功能)。</p>
+                        <div>
+                            <span class="cmd-badge" onclick="copyText('!芯寶')">!芯寶</span>
+                            <span class="cmd-badge" onclick="copyText('!芯寶 @ID')">!芯寶 @ID</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6 col-lg-4">
+                    <div class="glass-card">
+                        <div class="card-icon"><i class="fa-solid fa-cake-candles"></i></div>
+                        <h5 class="card-title">帳號生日</h5>
+                        <p class="card-desc">查詢你的 Twitch 帳號是在哪一天創立的。</p>
+                        <div><span class="cmd-badge" onclick="copyText('!創建多久')">!創建多久</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="fun">
+            <div class="section-header">
+                <i class="fa-solid fa-gamepad"></i>
+                <h2>娛樂互動</h2>
+            </div>
+            <div class="row g-4">
+                <div class="col-md-6">
+                    <div class="glass-card">
+                        <h5 class="card-title text-danger"><i class="fa-solid fa-heart-pulse me-2"></i>愛情配對機</h5>
+                        <p class="card-desc">隨機計算兩人契合度，並給出毒舌或甜蜜評語。</p>
+                        <div><span class="cmd-badge" onclick="copyText('!配對 @機器人')">!配對 @對象</span></div>
+                        <small class="text-secondary d-block mt-2">別名：!契合度, !ship</small>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="glass-card">
+                        <h5 class="card-title text-info"><i class="fa-solid fa-comment-slash me-2"></i>自 Ban 冷靜一下</h5>
+                        <p class="card-desc">覺得自己廢話太多？你可以把「自己」禁言一段時間 (冷卻 10秒)。</p>
+                        <div>
+                            <span class="cmd-badge" onclick="copyText('!B人 60')">!B人 秒數</span>
+                            <span class="cmd-badge" onclick="copyText('!B人 隨機')">!B人 隨機</span>
+                        </div>
+                        <small class="text-warning d-block mt-2"><i class="fa-solid fa-triangle-exclamation"></i> 一般觀眾只能 Ban 自己，不能 Ban 別人！</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="mod">
+            <div class="section-header">
+                <i class="fa-solid fa-shield-halved"></i>
+                <h2>管理員專區 (MOD / Admin)</h2>
+            </div>
+            
+            <div class="table-responsive">
+                <table class="custom-table">
+                    <thead>
+                        <tr>
+                            <th width="20%">指令</th>
+                            <th width="25%">參數</th>
+                            <th>權限 / 功能說明</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><span class="cmd-badge" onclick="copyText('!B人 @ID 秒數')">!B人</span></td>
+                            <td><code>@ID</code> <code>秒數</code></td>
+                            <td>
+                                <strong>強制禁言指定觀眾。</strong><br>
+                                <span class="badge-role bg-mod">MOD</span> 無視冷卻時間，上限 1 天。<br>
+                                <small class="text-secondary">*若對象是管理員，會觸發反彈效果 (自Ban)。</small>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><span class="cmd-badge" onclick="copyText('!解B @ID')">!解B</span></td>
+                            <td><code>@ID</code> <code>(強制)</code></td>
+                            <td>
+                                <strong>智慧解除禁言。</strong><br>
+                                - <span class="text-white">空參數</span>：自動掃描並解除所有 VIP 禁言。<br>
+                                - <span class="text-white">!解B @ID</span>：快速解除 VIP。<br>
+                                - <span class="text-white">!解B @ID 強制</span>：強制解除一般觀眾。
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><span class="cmd-badge" onclick="copyText('!重啟')">!重啟</span></td>
+                            <td>無</td>
+                            <td><span class="badge-role bg-admin">Admin</span> 強制重啟 Bot 程序 (更新代碼或異常時使用)。</td>
+                        </tr>
+                        <tr>
+                            <td><span class="cmd-badge" onclick="copyText('!備份')">!備份</span></td>
+                            <td>無</td>
+                            <td><span class="badge-role bg-admin">Admin</span> 手動備份資料庫至 backups 資料夾。</td>
+                        </tr>
+                        <tr>
+                            <td><span class="cmd-badge" onclick="copyText('!測試')">!測試</span></td>
+                            <td>無</td>
+                            <td><span class="badge-role bg-admin">Admin</span> 檢查 API 連線與 Token 有效性。</td>
+                        </tr>
+                        <tr>
+                            <td><span class="cmd-badge" onclick="copyText('!手動月重置')">!手動月重置</span></td>
+                            <td>無</td>
+                            <td><span class="badge-role bg-admin">Admin</span> 強制執行月榜結算並歸零數據。</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <footer>
+            <p class="mb-1">Bot Version: 3.4.0 (Stable)</p>
+            <small>Designed for Twitch Community</small>
+        </footer>
+
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function copyText(text) {
+            navigator.clipboard.writeText(text).then(function() {
+                var toast = document.getElementById("copyToast");
+                toast.classList.add("show");
+                setTimeout(function(){ toast.classList.remove("show"); }, 2000);
+            }, function(err) {
+                console.error('複製失敗: ', err);
+            });
+        }
+    </script>
+</body>
+</html>
