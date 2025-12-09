@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
     <meta property="og:title" content="Twitch Bot 指令全書">
-    <meta property="og:description" content="查詢所有聊天室指令、簽到系統與娛樂功能。V3.5.1 Stable">
+    <meta property="og:description" content="查詢所有聊天室指令、簽到系統與娛樂功能。V3.8.0 Stable">
     <meta property="og:image" content="https://cdn-icons-png.flaticon.com/512/4712/4712109.png">
     <meta name="theme-color" content="#a855f7">
 
@@ -275,6 +275,7 @@
             margin-right: 5px;
             letter-spacing: 0.5px;
         }
+        .bg-vip { background: rgba(147, 51, 234, 0.15); color: #d8b4fe; border: 1px solid rgba(147, 51, 234, 0.4); }
         .bg-mod { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); }
         .bg-op { background: rgba(234, 179, 8, 0.15); color: #fde047; border: 1px solid rgba(234, 179, 8, 0.4); }
         .bg-admin { background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.4); }
@@ -383,8 +384,8 @@
 
     <div class="hero-section">
         <div class="container">
-            <h1 class="hero-title">Bot 指令全書</h1>
-            <p class="lead text-muted mb-4">V3.5.1 Stable ‧ Auto Moderation System</p>
+            <h1 class="hero-title">Bot 指令說明</h1>
+            <p class="lead text-muted mb-4">V3.8.0 Stable ‧ Auto Moderation System</p>
             
             <div class="search-container">
                 <i class="fa-solid fa-magnifying-glass search-icon"></i>
@@ -400,8 +401,6 @@
                 <i class="fa-solid fa-users"></i>
                 <h2>觀眾常用指令</h2>
             </div>
-            <p class="text-muted mb-4 small"><i class="fa-solid fa-arrow-down me-2"></i>往下滑還有 <b>娛樂互動</b> 與 <b>管理員</b> 指令喔！</p>
-            
             <div class="row g-4">
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
@@ -416,7 +415,10 @@
                     <div class="glass-card">
                         <div class="card-icon"><i class="fa-solid fa-address-card"></i></div>
                         <h5 class="card-title">個人查詢</h5>
-                        <p class="card-desc">查詢你的簽到次數、本月統計、以及最後一次簽到的時間。</p>
+                        <p class="card-desc">
+                            查詢完整的簽到履歷，包含：本月簽到次數、歷史總次數、頻道開台數以及最後簽到日期。<br>
+                            <span class="text-secondary small mt-1 d-block"><i class="fa-solid fa-check me-1"></i>支援查詢他人</span>
+                        </p>
                         <div>
                             <span class="cmd-badge" onclick="copyText('!查詢')">!查詢</span>
                             <span class="cmd-badge" onclick="copyText('!查詢 @ID')">!查詢 @ID</span>
@@ -438,10 +440,10 @@
 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <div class="card-icon"><i class="fa-solid fa-circle-question"></i></div>
-                        <h5 class="card-title">指令幫助</h5>
-                        <p class="card-desc">忘記指令了嗎？在聊天室輸入這個，Bot 會列出常用清單給你。</p>
-                        <div><span class="cmd-badge" onclick="copyText('!幫助')">!幫助</span></div>
+                        <div class="card-icon"><i class="fa-solid fa-clock-rotate-left"></i></div>
+                        <h5 class="card-title">歷史榮譽榜</h5>
+                        <p class="card-desc">查詢過去指定月份的前五名簽到冠軍 (格式 YYYY-MM)。</p>
+                        <div><span class="cmd-badge" onclick="copyText('!月排名 2025-11')">!月排名 YYYY-MM</span></div>
                     </div>
                 </div>
 
@@ -449,7 +451,10 @@
                     <div class="glass-card">
                         <div class="card-icon"><i class="fa-solid fa-heart"></i></div>
                         <h5 class="card-title">追隨時間</h5>
-                        <p class="card-desc">查詢你已經追隨台主多久了 (芯寶功能)。</p>
+                        <p class="card-desc">
+                            查詢追隨台主的詳細時間，包含確切日期與累計天數。看看誰是老觀眾！<br>
+                            <span class="text-secondary small mt-1 d-block"><i class="fa-solid fa-check me-1"></i>支援查詢他人</span>
+                        </p>
                         <div>
                             <span class="cmd-badge" onclick="copyText('!芯寶')">!芯寶</span>
                             <span class="cmd-badge" onclick="copyText('!芯寶 @ID')">!芯寶 @ID</span>
@@ -461,20 +466,14 @@
                     <div class="glass-card">
                         <div class="card-icon"><i class="fa-solid fa-cake-candles"></i></div>
                         <h5 class="card-title">帳號生日</h5>
-                        <p class="card-desc">查詢你的 Twitch 帳號是在哪一天創立的。</p>
+                        <p class="card-desc">
+                            查詢 Twitch 帳號的註冊生日，以及帳號使用了多久（年/月/日）。<br>
+                            <span class="text-secondary small mt-1 d-block"><i class="fa-solid fa-check me-1"></i>支援查詢他人</span>
+                        </p>
                         <div>
                             <span class="cmd-badge" onclick="copyText('!創建多久')">!創建多久</span>
                             <span class="cmd-badge" onclick="copyText('!創建多久 @ID')">!創建多久 @ID</span>
                         </div>
-                    </div>
-                </div>
-
-                <div class="col-md-6 col-lg-4 searchable-item">
-                    <div class="glass-card">
-                        <div class="card-icon"><i class="fa-solid fa-clock-rotate-left"></i></div>
-                        <h5 class="card-title">歷史榮譽榜</h5>
-                        <p class="card-desc">查詢過去指定月份的前五名簽到冠軍 (格式 YYYY-MM)。</p>
-                        <div><span class="cmd-badge" onclick="copyText('!月排名 2025-11')">!月排名 YYYY-MM</span></div>
                     </div>
                 </div>
             </div>
@@ -535,10 +534,13 @@
                             <td><span class="cmd-badge" onclick="copyText('!B人 @ID 秒數')">!B人</span></td>
                             <td><code>@ID</code> <code>秒數</code></td>
                             <td>
-                                <span class="badge-role bg-mod">MOD</span>
-                                <strong>強制禁言</strong><br>
-                                MOD 可無視冷卻時間，上限 1 天。<br>
-                                <small class="text-secondary">*若對象是管理員，會觸發反彈 (自Ban)。</small>
+                                <span class="badge-role bg-mod">MOD</span> <span class="badge-role bg-vip">VIP</span>
+                                <strong>強制禁言 / 自 Ban</strong><br>
+                                <div class="mt-1 small text-secondary">
+                                    • <span class="text-white">MOD</span>：強制 Ban 人 (無視 CD / 上限 1天)<br>
+                                    • <span class="text-white">VIP</span>：僅能自 Ban (CD 3秒 / 上限 1小時)<br>
+                                    • <span class="text-white">一般</span>：僅能自 Ban (CD 10秒 / 上限 10分鐘)
+                                </div>
                             </td>
                         </tr>
                         <tr class="searchable-row">
@@ -547,8 +549,11 @@
                             <td>
                                 <span class="badge-role bg-mod">MOD</span>
                                 <strong>智慧解除</strong><br>
-                                - <span class="text-white">!解B @ID</span>：快速解除 VIP。<br>
-                                - <span class="text-white">!解B @ID 強制</span>：強制解除一般觀眾。
+                                <ul style="margin: 5px 0 0 -20px; font-size: 0.9em; color: #d4d4d8;">
+                                    <li>空參數：救援所有 VIP</li>
+                                    <li>@ID：救援指定 VIP</li>
+                                    <li>@ID 強制：解除一般人</li>
+                                </ul>
                             </td>
                         </tr>
                         <tr class="searchable-row">
@@ -604,7 +609,7 @@
         </div>
 
         <footer>
-            <p class="mb-1">Bot Version: 3.5.1 (Stable)</p>
+            <p class="mb-1">Bot Version: 3.8.0 (Stable)</p>
             <small>Designed for Twitch Community</small>
         </footer>
 
