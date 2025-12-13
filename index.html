@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
     <meta property="og:title" content="Twitch Bot 指令全書">
-    <meta property="og:description" content="查詢所有聊天室指令、簽到系統與娛樂功能。V3.8.0 Stable">
+    <meta property="og:description" content="查詢所有聊天室指令、簽到系統與娛樂功能。V3.7.0 Stable">
     <meta property="og:image" content="https://cdn-icons-png.flaticon.com/512/4712/4712109.png">
     <meta name="theme-color" content="#a855f7">
 
@@ -26,13 +26,15 @@
             --glass-blur: 20px;
         }
 
+        html { scroll-behavior: smooth; }
+
         body {
             background-color: var(--bg-color);
             color: var(--text-main);
             font-family: 'Noto Sans TC', sans-serif;
             background-image: 
-                radial-gradient(circle at 15% 50%, rgba(168, 85, 247, 0.05), transparent 25%),
-                radial-gradient(circle at 85% 30%, rgba(236, 72, 153, 0.05), transparent 25%);
+                radial-gradient(circle at 15% 50%, rgba(168, 85, 247, 0.08), transparent 25%),
+                radial-gradient(circle at 85% 30%, rgba(236, 72, 153, 0.08), transparent 25%);
             min-height: 100vh;
             position: relative;
         }
@@ -42,12 +44,12 @@
         ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #555; }
 
-        .text-muted, .text-secondary { color: #b0b0b9 !important; }
+        .text-muted, .text-secondary { color: #a1a1aa !important; }
 
         /* 導覽列 */
         .navbar {
-            background: rgba(5, 5, 5, 0.95);
-            backdrop-filter: blur(10px);
+            background: rgba(5, 5, 5, 0.85);
+            backdrop-filter: blur(15px);
             border-bottom: 1px solid var(--card-border);
         }
         .navbar-brand {
@@ -60,7 +62,7 @@
 
         /* 英雄區塊 */
         .hero-section {
-            padding: 60px 0 40px 0;
+            padding: 80px 0 50px 0;
             text-align: center;
         }
         .hero-title {
@@ -69,7 +71,7 @@
             margin-bottom: 15px;
             letter-spacing: -1px;
             color: #fff;
-            text-shadow: 0 0 20px rgba(168, 85, 247, 0.5); 
+            text-shadow: 0 0 30px rgba(168, 85, 247, 0.6); 
         }
 
         /* 搜尋框 */
@@ -83,7 +85,7 @@
             padding: 15px 25px 15px 50px;
             border-radius: 50px;
             border: 2px solid var(--card-border);
-            background: rgba(30, 30, 35, 0.95);
+            background: rgba(30, 30, 35, 0.8);
             color: #fff;
             font-size: 1.1rem;
             transition: all 0.3s;
@@ -92,7 +94,7 @@
             outline: none;
             border-color: var(--accent-primary);
             background: rgba(40, 40, 45, 1);
-            box-shadow: 0 0 20px rgba(168, 85, 247, 0.2);
+            box-shadow: 0 0 25px rgba(168, 85, 247, 0.3);
         }
         .search-icon {
             position: absolute;
@@ -120,15 +122,15 @@
         
         .glass-card:hover {
             transform: translateY(-5px);
-            border-color: rgba(168, 85, 247, 0.8);
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
-            background: rgba(30, 30, 35, 0.95);
+            border-color: rgba(168, 85, 247, 0.6);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            background: rgba(35, 35, 40, 0.95);
         }
 
         .card-icon {
             font-size: 2rem;
             margin-bottom: 15px;
-            background: rgba(255, 255, 255, 0.08);
+            background: rgba(255, 255, 255, 0.05);
             width: 60px; height: 60px;
             display: flex;
             align-items: center;
@@ -143,12 +145,11 @@
             font-weight: 700;
             margin-bottom: 12px;
             font-size: 1.3rem;
-            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
         }
         
         .card-desc {
             color: var(--text-muted);
-            font-size: 1rem;
+            font-size: 0.95rem;
             margin-bottom: 20px;
             min-height: 48px;
             font-weight: 400;
@@ -161,9 +162,9 @@
             background: #27272a;
             color: #e9d5ff;
             border: 1px solid #52525b;
-            padding: 8px 14px;
+            padding: 6px 12px;
             border-radius: 6px;
-            font-size: 0.95em;
+            font-size: 0.9em;
             cursor: pointer;
             transition: all 0.2s;
             display: inline-block;
@@ -237,12 +238,12 @@
             letter-spacing: 1px;
         }
         .custom-table tr {
-            background: rgba(30, 30, 35, 0.95);
-            transition: background 0.2s, box-shadow 0.2s;
+            background: rgba(30, 30, 35, 0.8);
+            transition: background 0.2s, transform 0.2s;
         }
         .custom-table tr:hover {
-            background: rgba(45, 45, 50, 1);
-            box-shadow: inset 4px 0 0 var(--accent-primary); 
+            background: rgba(45, 45, 50, 0.9);
+            transform: scale(1.01);
         }
         .custom-table td {
             padding: 18px 20px;
@@ -385,7 +386,7 @@
     <div class="hero-section">
         <div class="container">
             <h1 class="hero-title">Bot 指令說明</h1>
-            <p class="lead text-muted mb-4">V3.8.0 Stable ‧ Auto Moderation System</p>
+            <p class="lead text-muted mb-4">V3.7.0 Stable ‧ Auto Moderation System</p>
             
             <div class="search-container">
                 <i class="fa-solid fa-magnifying-glass search-icon"></i>
@@ -406,7 +407,7 @@
                     <div class="glass-card">
                         <div class="card-icon"><i class="fa-solid fa-calendar-check"></i></div>
                         <h5 class="card-title">每日簽到</h5>
-                        <p class="card-desc">在直播中簽到，累積觀看次數與積分。跨日(00:00)會自動重置狀態。</p>
+                        <p class="card-desc">在直播中簽到，累積觀看次數。以「開台場次」為基準，若一天開兩場可簽兩次。</p>
                         <div><span class="cmd-badge" onclick="copyText('!簽到')">!簽到</span></div>
                     </div>
                 </div>
@@ -417,7 +418,7 @@
                         <h5 class="card-title">個人查詢</h5>
                         <p class="card-desc">
                             查詢完整的簽到履歷，包含：本月簽到次數、歷史總次數、頻道開台數以及最後簽到日期。<br>
-                            <span class="text-secondary small mt-1 d-block"><i class="fa-solid fa-check me-1"></i>支援查詢他人</span>
+                            <span class="text-warning small mt-1 d-block"><i class="fa-solid fa-lock me-1"></i>查詢他人需 VIP+ 權限</span>
                         </p>
                         <div>
                             <span class="cmd-badge" onclick="copyText('!查詢')">!查詢</span>
@@ -476,6 +477,19 @@
                         </div>
                     </div>
                 </div>
+
+                <div class="col-md-6 col-lg-4 searchable-item">
+                    <div class="glass-card">
+                        <div class="card-icon"><i class="fa-solid fa-circle-question"></i></div>
+                        <h5 class="card-title">指令幫助</h5>
+                        <p class="card-desc">
+                            忘記指令怎麼用了嗎？呼叫此指令可以列出目前可用的所有公開指令列表。<br>
+                        </p>
+                        <div>
+                            <span class="cmd-badge" onclick="copyText('!幫助')">!幫助</span>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -496,17 +510,18 @@
                 <div class="col-md-6 searchable-item">
                     <div class="glass-card">
                         <h5 class="card-title text-info"><i class="fa-solid fa-comment-slash me-2"></i>自 Ban 冷靜一下</h5>
-                        <p class="card-desc">覺得自己廢話太多？你可以把「自己」禁言一段時間 (冷卻 10秒)。</p>
+                        <p class="card-desc">覺得自己廢話太多？你可以把「自己」禁言一段時間。</p>
                         <div>
                             <span class="cmd-badge" onclick="copyText('!B人 60')">!B人 60</span>
                             <span class="cmd-badge" onclick="copyText('!B人 隨機')">!B人 隨機</span>
                         </div>
                         <small class="text-warning d-block mt-2">
-                            <i class="fa-solid fa-triangle-exclamation"></i> 一般觀眾只能 Ban 自己，不能 Ban 別人！
+                            <i class="fa-solid fa-triangle-exclamation"></i> 僅限自 Ban (一般觀眾)
                             <br>
                             <span class="text-secondary" style="font-size: 0.85em; display: block; margin-top: 4px;">
-                                • 未填秒數：預設 600秒<br>
-                                • 填「隨機」：隨機 60 ~ 600秒
+                                • 一般用戶：上限 600秒 (10分鐘)<br>
+                                • VIP 用戶：上限 3600秒 (1小時)<br>
+                                • 預設秒數：600秒
                             </span>
                         </small>
                     </div>
@@ -537,9 +552,9 @@
                                 <span class="badge-role bg-mod">MOD</span> <span class="badge-role bg-vip">VIP</span>
                                 <strong>強制禁言 / 自 Ban</strong><br>
                                 <div class="mt-1 small text-secondary">
-                                    • <span class="text-white">MOD</span>：強制 Ban 人 (無視 CD / 上限 1天)<br>
-                                    • <span class="text-white">VIP</span>：僅能自 Ban (CD 3秒 / 上限 1小時)<br>
-                                    • <span class="text-white">一般</span>：僅能自 Ban (CD 10秒 / 上限 10分鐘)
+                                    • <span class="text-white">Admin/MOD</span>：強制 Ban 人 (上限 1天)<br>
+                                    • <span class="text-white">VIP</span>：僅能自 Ban (上限 1小時)<br>
+                                    • <span class="text-white">一般</span>：僅能自 Ban (上限 10分鐘)
                                 </div>
                             </td>
                         </tr>
@@ -550,9 +565,9 @@
                                 <span class="badge-role bg-mod">MOD</span>
                                 <strong>智慧解除</strong><br>
                                 <ul style="margin: 5px 0 0 -20px; font-size: 0.9em; color: #d4d4d8;">
-                                    <li>空參數：救援所有 VIP</li>
-                                    <li>@ID：救援指定 VIP</li>
-                                    <li>@ID 強制：解除一般人</li>
+                                    <li>空參數：批量救援誤殺的 VIP</li>
+                                    <li>@ID：救援指定 VIP (需系統已知)</li>
+                                    <li>@ID 強制：解除一般人 / 強制解 Ban</li>
                                 </ul>
                             </td>
                         </tr>
@@ -562,7 +577,7 @@
                             <td>
                                 <span class="badge-role bg-op">特殊權限</span> <span class="badge-role bg-mod">MOD</span>
                                 <strong>系統狀態</strong><br>
-                                顯示開機時間、版本號、連線頻道數等後台資訊。<br>
+                                顯示開機時間、版本號、連線頻道數、即時延遲等後台資訊。<br>
                             </td>
                         </tr>
                         <tr class="searchable-row">
@@ -571,7 +586,7 @@
                             <td>
                                 <span class="badge-role bg-op">特殊權限</span> <span class="badge-role bg-mod">MOD</span>
                                 <strong>強制重啟</strong><br>
-                                重啟 Bot 程序 (更新代碼或異常修復時使用)。
+                                重啟 Bot 程序 (連線異常修復時使用)。
                             </td>
                         </tr>
                         <tr class="searchable-row">
@@ -580,7 +595,7 @@
                             <td>
                                 <span class="badge-role bg-op">特殊權限</span> <span class="badge-role bg-mod">MOD</span>
                                 <strong>資料備份</strong><br>
-                                手動備份資料庫至 backups 資料夾。
+                                手動觸發資料庫備份並執行清理。
                             </td>
                         </tr>
                         <tr class="searchable-row">
@@ -609,7 +624,7 @@
         </div>
 
         <footer>
-            <p class="mb-1">Bot Version: 3.8.0 (Stable)</p>
+            <p class="mb-1">Bot Version: 3.7.0 (Stable)</p>
             <small>Designed for Twitch Community</small>
         </footer>
 
