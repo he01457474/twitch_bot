@@ -10,7 +10,7 @@
     <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/4712/4712109.png">
     <meta name="theme-color" content="#a855f7">
 
-    <title>Fly Cat Bot 指令手冊</title>
+    <title>Fly Cat Bot 指令手冊 v3.9.11</title>
     
     <link rel="preconnect" href="https://cdn.jsdelivr.net">
     <link rel="preconnect" href="https://cdnjs.cloudflare.com">
@@ -62,7 +62,7 @@
             pointer-events: none;
         }
 
-        /* Navbar (靜態化優化) */
+        /* Navbar */
         .navbar {
             background: rgba(5, 5, 5, 0.95);
             border-bottom: 1px solid rgba(168, 85, 247, 0.2);
@@ -73,7 +73,7 @@
         .nav-link { 
             position: relative; color: #ffffff !important; font-weight: 800; font-size: 0.95rem; 
             padding: 10px 24px; border-radius: 50px; 
-            background: rgba(168, 85, 247, 0.15); /* 靜態 */
+            background: rgba(168, 85, 247, 0.15);
             border: 1px solid rgba(168, 85, 247, 0.4);
             box-shadow: 0 0 5px rgba(168, 85, 247, 0.1);
             text-shadow: 0 1px 2px rgba(0,0,0,0.8);
@@ -92,9 +92,10 @@
         .navbar-brand { display: flex; align-items: center; gap: 12px; }
         .navbar-brand i { font-size: 1.8rem; color: var(--twitch-purple); }
         
-        /* --- 左上大標題動畫 --- */
+        /* 共用動畫：流光特效 */
         @keyframes text-shine-bold { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
         
+        /* 左上 LOGO 文字 (保留流光) */
         .brand-text {
             font-weight: 900; font-size: 1.6rem; letter-spacing: 1px;
             background: linear-gradient(90deg, #ffffff 0%, #e9d5ff 25%, #a855f7 50%, #e9d5ff 75%, #ffffff 100%);
@@ -102,20 +103,74 @@
             animation: text-shine-bold 4s linear infinite; 
         }
 
-        /* 內容與標題 */
+        /* --- [優化] H1 主標題與 Lead Text 層次區隔 --- */
+        .hero-section { padding: 100px 0 40px 0; text-align: center; }
+        
+        /* H1 標題：Bot 指令手冊 (維持最亮，呼吸光暈) */
+        @keyframes title-pulse {
+            0% { text-shadow: 0 0 18px rgba(168, 85, 247, 0.8), 0 0 40px rgba(168, 85, 247, 0.4); }
+            100% { text-shadow: 0 0 35px rgba(168, 85, 247, 1), 0 0 70px rgba(168, 85, 247, 0.6); }
+        }
+
+        .hero-title { 
+            font-weight: 900; font-size: 4.5rem; margin-bottom: 25px; 
+            color: #ffffff; /* 純白最高對比 */
+            text-shadow: 0 0 25px rgba(168, 85, 247, 0.8);
+            animation: title-pulse 3s infinite alternate ease-in-out;
+        }
+
+        /* Lead Text (副標題)：降級為柔和淡灰 */
+        .hero-desc-box .lead {
+            color: #a1aab0; /* 柔和的淡灰色 */
+            font-weight: 400; /* 變細 */
+        }
+        /* --- [優化結束] --- */
+
+
+        /* --- 版本號動畫 --- */
+        @keyframes pulse-green-glow {
+            0% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.4); transform: scale(1); }
+            70% { box-shadow: 0 0 0 6px rgba(74, 222, 128, 0); transform: scale(1); }
+            100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); transform: scale(1); }
+        }
+        @keyframes border-breathe {
+            0% { border-color: rgba(168, 85, 247, 0.2); box-shadow: 0 0 0 rgba(0,0,0,0); }
+            100% { border-color: rgba(168, 85, 247, 0.6); box-shadow: 0 0 15px rgba(168, 85, 247, 0.2); }
+        }
+
+        .version-badge {
+            display: inline-flex; align-items: center; gap: 12px; 
+            background: rgba(255,255,255,0.03); 
+            border: 1px solid rgba(168,85,247,0.2); 
+            padding: 10px 24px; border-radius: 50px; 
+            color: #e2e8f0; font-family: 'JetBrains Mono'; font-size: 0.95rem;
+            animation: border-breathe 2s infinite alternate ease-in-out;
+        }
+        .version-dot {
+            width: 8px; height: 8px; background: #4ade80; border-radius: 50%; 
+            animation: pulse-green-glow 2s infinite;
+        }
+
+        /* 內容樣式 */
         .cmd-section { content-visibility: auto; contain-intrinsic-size: 800px; }
+        
+        /* H2 標題：觀眾常用指令 (降級漸變色，略微低調) */
         .section-header {
             display: flex; align-items: center; gap: 15px; margin: 80px 0 30px 0;
             padding-bottom: 20px; border-bottom: 2px solid #27272a;
         }
         .section-icon { font-size: 2.2rem; color: #a855f7; margin-right: 5px; }
-        .gradient-text { font-weight: 900; font-size: 2.4rem; color: #fff; margin: 0; }
+        .gradient-text { 
+            font-weight: 900; font-size: 2.4rem; margin: 0;
+            background: linear-gradient(135deg, #e2e8f0 30%, #a78bfa 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
         .en-sub-title {
             font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; color: #a78bfa;
             font-weight: 500; letter-spacing: 1px; text-transform: uppercase; margin-left: 15px; opacity: 0.8;
         }
 
-        /* --- 系統核心權限名字動畫 --- */
+        /* 系統權限名字動畫 */
         @keyframes text-flow { 0% { background-position: 0% center; } 100% { background-position: 200% center; } }
         
         .effect-wrapper-gold {
@@ -195,9 +250,6 @@
         .note-info { border-color: #38bdf8; color: #38bdf8; }
         .note-danger { border-color: #f87171; color: #f87171; }
 
-        .hero-section { padding: 100px 0 40px 0; text-align: center; }
-        .hero-title { font-weight: 900; font-size: 4.5rem; margin-bottom: 25px; background: linear-gradient(135deg, #fff 0%, #d8b4fe 50%, #fff 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-        
         .search-container { max-width: 450px; margin: 0 auto 20px auto; position: relative; }
         .search-input { width: 100%; padding: 14px 20px 14px 55px; border-radius: 12px; border: 2px solid #3f3f46; background: #121212; color: #fff; font-size: 1.1rem; }
         .search-input:focus { outline: none; border-color: #a855f7; }
@@ -237,20 +289,19 @@
             filter: drop-shadow(0 0 2px rgba(234, 179, 8, 0.2));
         }
 
-        /* --- [新增] 指令 Hover 互動特效 --- */
+        /* 指令 Hover 互動特效 */
         .cmd-badge { 
             background: rgba(168, 85, 247, 0.15); color: #e9d5ff; 
             border: 1px solid rgba(168, 85, 247, 0.4); padding: 8px 14px; 
             border-radius: 6px; font-family: 'JetBrains Mono'; font-weight: 600; 
             cursor: pointer; display: inline-block; 
-            transition: all 0.2s ease; /* 平滑過渡 */
+            transition: all 0.2s ease; 
         }
         .cmd-badge:hover {
-            background: rgba(168, 85, 247, 0.5); /* 變亮 */
-            border-color: #ffffff; /* 邊框亮白 */
-            color: #ffffff;
-            transform: translateY(-2px); /* 微微浮起 */
-            box-shadow: 0 4px 12px rgba(168, 85, 247, 0.3); /* 光暈 */
+            background: rgba(168, 85, 247, 0.5); 
+            border-color: #ffffff; color: #ffffff;
+            transform: translateY(-2px); 
+            box-shadow: 0 4px 12px rgba(168, 85, 247, 0.3); 
         }
 
     </style>
@@ -311,7 +362,7 @@
             <h1 class="hero-title">Bot 指令手冊</h1>
             
             <div class="hero-desc-box">
-                <p class="lead">整合結婚後宮、簽到系統與自動化管理的智慧助手</p>
+                <p class="lead">整合古風後宮、簽到系統與自動化管理的智慧助手</p>
             </div>
             
             <div class="search-container">
@@ -320,8 +371,8 @@
             </div>
 
             <div class="version-container" style="text-align: center; margin-bottom: 60px;">
-                <div style="display: inline-flex; align-items: center; gap: 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(168,85,247,0.2); padding: 10px 24px; border-radius: 50px; color: #e2e8f0; font-family: 'JetBrains Mono'; font-size: 0.95rem;">
-                    <span style="width: 8px; height: 8px; background: #4ade80; border-radius: 50%; box-shadow: 0 0 5px #4ade80;"></span>
+                <div class="version-badge">
+                    <span class="version-dot"></span>
                     <span>v3.9.11 穩定版</span>
                 </div>
             </div>
@@ -404,7 +455,7 @@
                     <div class="glass-card">
                         <h5 class="card-title" style="color:#22d3ee !important">
                             <i class="fa-solid fa-cake-candles me-2"></i>帳號生日
-                        </h5>
+                        </h4>
                         <p class="card-desc">查詢 Twitch 帳號的註冊日，以及帳號註冊了多久 (中文格式)。</p>
                         <div class="feature-note note-allow"><i class="fa-solid fa-check"></i>支援查詢他人</div>
                         <div><span class="cmd-badge" onclick="copyText('!創建多久')">!創建多久</span></div>
@@ -432,9 +483,9 @@
                 </div>
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#ec4899 !important"><i class="fa-solid fa-ring me-2"></i>結婚後宮系統
+                        <h5 class="card-title" style="color:#ec4899 !important"><i class="fa-solid fa-ring me-2"></i>古風後宮系統
                         </h5>
-                        <p class="card-desc">建立你的後宮！防 NTR 機制、求婚30秒自動倒數，並擁有正宮、皇貴妃等古風稱謂。</p>
+                        <p class="card-desc">建立你的後宮！防 NTR 機制、30秒自動倒數，並擁有正宮、皇貴妃等古風稱謂。</p>
                         <div class="feature-note note-vip"><i class="fa-solid fa-clock"></i>求婚時限 30 秒</div>
                         <div>
                             <span class="cmd-badge" onclick="copyText('!求婚 @對象')">!求婚 @對象</span>
