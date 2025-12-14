@@ -5,11 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
     <meta property="og:title" content="Twitch Bot 指令全書">
-    <meta property="og:description" content="查詢所有聊天室指令、簽到系統與娛樂功能。V3.8.3">
+    <meta property="og:description" content="查詢所有聊天室指令、簽到系統與娛樂功能。V3.9.11">
     <meta property="og:image" content="https://cdn-icons-png.flaticon.com/512/4712/4712109.png">
+    <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/4712/4712109.png">
     <meta name="theme-color" content="#a855f7">
 
-    <title>Fly Cat Bot 指令手冊</title>
+    <title>Fly Cat Bot 指令手冊 v3.9.11</title>
+    
+    <link rel="preconnect" href="https://cdn.jsdelivr.net">
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -34,556 +41,224 @@
             min-height: 100vh;
             position: relative;
             overflow-x: hidden;
+            text-rendering: optimizeSpeed;
         }
 
-        /* =========================================
-           1. Digital Void 輕量背景
-           ========================================= */
-        .lite-background {
-            position: fixed;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            z-index: -1;
-            background-color: #050505;
+        /* --- 背景特效 (靜態省電版) --- */
+        .bg-container {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1;
+            overflow: hidden; background-color: #050505;
             background-image: 
-                radial-gradient(circle at 50% 0%, rgba(168, 85, 247, 0.15) 0%, transparent 60%),
-                radial-gradient(circle at 85% 90%, rgba(56, 189, 248, 0.08) 0%, transparent 50%);
+                radial-gradient(circle at 15% 15%, rgba(168, 85, 247, 0.12) 0%, transparent 45%),
+                radial-gradient(circle at 85% 85%, rgba(79, 70, 229, 0.12) 0%, transparent 45%);
         }
-        .lite-grid {
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background-image: 
-                linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-            background-size: 60px 60px;
-            mask-image: linear-gradient(to bottom, black 40%, transparent 100%);
-            -webkit-mask-image: linear-gradient(to bottom, black 40%, transparent 100%);
-        }
-        .square {
-            position: absolute;
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            animation: floatUp linear infinite;
-            bottom: -50px;
-        }
-        .sq-1 { left: 10%; width: 40px; height: 40px; animation-duration: 15s; animation-delay: 0s; }
-        .sq-2 { left: 30%; width: 20px; height: 20px; animation-duration: 20s; animation-delay: 2s; }
-        .sq-3 { left: 70%; width: 60px; height: 60px; animation-duration: 25s; animation-delay: 5s; }
-        .sq-4 { left: 90%; width: 30px; height: 30px; animation-duration: 18s; animation-delay: 8s; }
-        .sq-5 { left: 50%; width: 50px; height: 50px; animation-duration: 30s; animation-delay: 10s; }
-
-        @keyframes floatUp {
-            0% { transform: translateY(0) rotate(0deg); opacity: 0; }
-            20% { opacity: 1; }
-            80% { opacity: 1; }
-            100% { transform: translateY(-110vh) rotate(360deg); opacity: 0; }
+        .bg-grid {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;
+            background-image: linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+                              linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+            mask-image: linear-gradient(to bottom, black 30%, transparent 100%);
+            -webkit-mask-image: linear-gradient(to bottom, black 30%, transparent 100%);
+            pointer-events: none;
         }
 
-        /* =========================================
-           2. 動畫特效庫
-           ========================================= */
-        @keyframes text-shine-bold {
-            0% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
-        }
-        @keyframes float-icon {
-            0%, 100% { transform: translateY(0px); }
-            50% { transform: translateY(-5px); } 
-        }
-        @keyframes glow-strong {
-            0%, 100% { text-shadow: 0 0 10px rgba(168, 85, 247, 0.4), 0 0 20px rgba(168, 85, 247, 0.2); }
-            50% { text-shadow: 0 0 20px rgba(168, 85, 247, 0.8), 0 0 30px rgba(168, 85, 247, 0.4); }
-        }
-        @keyframes card-scan {
-            0% { left: -100%; }
-            20% { left: 200%; }
-            100% { left: 200%; }
-        }
-        @keyframes pulse-green {
-            0% { opacity: 0.6; transform: scale(0.95); box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7); }
-            50% { opacity: 1; transform: scale(1); box-shadow: 0 0 0 5px rgba(74, 222, 128, 0); }
-            100% { opacity: 0.6; transform: scale(0.95); box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); }
-        }
-
-        /* [新增] 名字專屬流光動畫 */
-        @keyframes shine-move {
-            0% { background-position: 0% center; }
-            100% { background-position: 200% center; }
-        }
-
-        .name-animate-gold {
-            background: linear-gradient(to right, #fefce8 0%, #facc15 40%, #ffffff 50%, #facc15 60%, #a16207 100%);
-            background-size: 200% auto;
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            animation: shine-move 3s linear infinite;
-            font-weight: 900;
-            text-shadow: 0 0 10px rgba(250, 204, 21, 0.3);
-        }
-
-        .name-animate-neon {
-            background: linear-gradient(to right, #ffcfcf 0%, #f87171 40%, #ffffff 50%, #818cf8 60%, #4f46e5 100%);
-            background-size: 200% auto;
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            animation: shine-move 3s linear infinite reverse; /* 反向流動 */
-            font-weight: 900;
-            text-shadow: 0 0 10px rgba(129, 140, 248, 0.3);
-        }
-
-        ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: #09090b; }
-        ::-webkit-scrollbar-thumb { background: #52525b; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #71717a; }
-
-        /* 導覽列 */
+        /* Navbar (靜態化優化) */
         .navbar {
-            background: rgba(5, 5, 5, 0.9);
-            border-bottom: 1px solid #3f3f46;
+            background: rgba(5, 5, 5, 0.95);
+            border-bottom: 1px solid rgba(168, 85, 247, 0.2);
             padding: 1rem 0;
-            backdrop-filter: blur(5px);
+            backdrop-filter: blur(10px); 
         }
-        .navbar-brand {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            text-decoration: none;
-            cursor: pointer;
+        
+        .nav-link { 
+            position: relative; color: #ffffff !important; font-weight: 800; font-size: 0.95rem; 
+            padding: 10px 24px; border-radius: 50px; 
+            background: rgba(168, 85, 247, 0.15); /* 靜態 */
+            border: 1px solid rgba(168, 85, 247, 0.4);
+            box-shadow: 0 0 5px rgba(168, 85, 247, 0.1);
+            text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+            transition: all 0.3s ease; display: flex; align-items: center; gap: 10px; overflow: hidden;
         }
-        .navbar-brand i {
-            font-size: 1.8rem;
-            color: var(--twitch-purple);
-            animation: float-icon 3s ease-in-out infinite;
-            filter: drop-shadow(0 0 5px rgba(168, 85, 247, 0.5));
+        .nav-link i { color: #fff; transition: 0.3s; }
+        
+        .nav-link:hover { 
+            background: rgba(168, 85, 247, 0.6);
+            border-color: #f3e8ff; 
+            box-shadow: 0 0 15px rgba(168, 85, 247, 0.4);
+            transform: translateY(-2px);
         }
+        .nav-link:hover i { transform: rotate(-10deg) scale(1.1); }
+        
+        .navbar-brand { display: flex; align-items: center; gap: 12px; }
+        .navbar-brand i { font-size: 1.8rem; color: var(--twitch-purple); }
+        
+        /* --- 左上大標題動畫 --- */
+        @keyframes text-shine-bold { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+        
         .brand-text {
-            font-weight: 900;
-            font-size: 1.6rem;
-            letter-spacing: 1px;
+            font-weight: 900; font-size: 1.6rem; letter-spacing: 1px;
             background: linear-gradient(90deg, #ffffff 0%, #e9d5ff 25%, #a855f7 50%, #e9d5ff 75%, #ffffff 100%);
-            background-size: 200% auto;
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+            background-size: 200% auto; -webkit-background-clip: text; -webkit-text-fill-color: transparent;
             animation: text-shine-bold 4s linear infinite; 
         }
 
-        .navbar-nav { gap: 8px; }
-        .nav-item { position: relative; margin: 0; }
-        .nav-link { 
-            position: relative;
-            color: #cbd5e1 !important;
-            font-weight: 700; 
-            font-size: 0.95rem; 
-            padding: 10px 20px; 
-            border-radius: 50px;
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            transition: all 0.2s ease;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            overflow: hidden;
+        /* 內容與標題 */
+        .cmd-section { content-visibility: auto; contain-intrinsic-size: 800px; }
+        .section-header {
+            display: flex; align-items: center; gap: 15px; margin: 80px 0 30px 0;
+            padding-bottom: 20px; border-bottom: 2px solid #27272a;
         }
-        .nav-link:hover { 
-            color: #fff !important; 
-            background: rgba(168, 85, 247, 0.15);
-            border-color: rgba(168, 85, 247, 0.5);
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3), 0 0 15px rgba(168, 85, 247, 0.3);
-        }
-        .nav-link i { transition: 0.2s; color: #a855f7; }
-        .nav-link:hover i { color: #fff; transform: scale(1.1) rotate(-5deg); }
-
-        /* 英雄區塊 */
-        .hero-section { padding: 100px 0 40px 0; text-align: center; }
-        .hero-title {
-            font-weight: 900;
-            font-size: 4.5rem;
-            margin-bottom: 25px;
-            letter-spacing: -2px;
-            background: linear-gradient(135deg, #ffffff 0%, #d8b4fe 25%, #c084fc 50%, #d8b4fe 75%, #ffffff 100%);
-            background-size: 300% auto;
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            animation: text-shine-bold 5s linear infinite, glow-strong 3s ease-in-out infinite;
-        }
-        .hero-desc-box {
-            display: inline-block;
-            background: rgba(20, 20, 30, 0.8); 
-            border: 1px solid rgba(168, 85, 247, 0.3); 
-            padding: 12px 30px;
-            border-radius: 50px;
-            margin-bottom: 40px;
-        }
-        .lead {
-            margin: 0;
-            color: #e0f2fe !important; 
-            font-weight: 500;
-            font-size: 1.2rem;
-            letter-spacing: 0.5px;
+        .section-icon { font-size: 2.2rem; color: #a855f7; margin-right: 5px; }
+        .gradient-text { font-weight: 900; font-size: 2.4rem; color: #fff; margin: 0; }
+        .en-sub-title {
+            font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; color: #a78bfa;
+            font-weight: 500; letter-spacing: 1px; text-transform: uppercase; margin-left: 15px; opacity: 0.8;
         }
 
-        /* 搜尋框 */
-        .search-container { max-width: 600px; margin: 0 auto 20px auto; position: relative; }
-        .search-input {
-            width: 100%;
-            padding: 18px 25px 18px 60px;
-            border-radius: 14px;
-            border: 2px solid #3f3f46;
-            background: #121212; 
-            color: #ffffff;
-            font-size: 1.2rem;
-            font-weight: 500;
-            transition: all 0.3s ease;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+        /* --- 系統核心權限名字動畫 --- */
+        @keyframes text-flow { 0% { background-position: 0% center; } 100% { background-position: 200% center; } }
+        
+        .effect-wrapper-gold {
+            display: inline-block; 
+            background: linear-gradient(90deg, #fff 0%, #ffd700 25%, #fff 50%, #ffd700 75%, #fff 100%);
+            background-size: 200% auto; 
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            animation: text-flow 3s linear infinite; 
+            font-weight: 900; filter: drop-shadow(0 0 5px rgba(234, 179, 8, 0.4));
         }
-        .search-input:focus {
-            outline: none;
-            border-color: var(--twitch-purple);
-            background: #000;
-            box-shadow: 0 0 15px rgba(168, 85, 247, 0.25);
-        }
-        .search-icon { position: absolute; left: 22px; top: 50%; transform: translateY(-50%); color: #a1a1aa; font-size: 1.3rem; }
-        .search-input:focus + .search-icon { color: #fff; }
-
-        /* Version Tag */
-        .version-container { text-align: center; margin-bottom: 60px; }
-        .version-tag {
-            position: relative;
-            display: inline-flex;
-            align-items: center;
-            gap: 12px;
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(168, 85, 247, 0.2);
-            padding: 10px 24px;
-            border-radius: 50px;
-            color: #e2e8f0;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.95rem;
-            font-weight: 500;
-            letter-spacing: 0.5px;
-            transition: all 0.3s ease;
-            cursor: default;
-            user-select: none;
-        }
-        .version-tag:hover {
-            background: rgba(168, 85, 247, 0.1);
-            border-color: rgba(168, 85, 247, 0.6);
-            transform: translateY(-2px);
-        }
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            background-color: #4ade80;
-            border-radius: 50%;
-            box-shadow: 0 0 5px #4ade80;
-            animation: pulse-green 2s infinite;
-        }
-
-        /* 卡片設計 */
-        .glass-card {
-            background-color: #0e0e10 !important;
-            border: 1px solid var(--card-border);
-            border-radius: 18px;
-            padding: 30px;
-            height: 100%;
-            transition: all 0.2s ease;
-            position: relative;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-        }
-        .glass-card:hover {
-            transform: translateY(-4px);
-            border-color: var(--twitch-purple);
-            background-color: #18181b !important;
-            box-shadow: 0 10px 20px rgba(0,0,0,0.5);
-        }
-        .card-title {
-            font-weight: 900;
-            margin-bottom: 15px;
-            font-size: 1.5rem;
-            background: none; 
-            -webkit-text-fill-color: initial;
-            color: #fff;
-        }
-        .card-desc {
-            color: var(--text-silver) !important; 
-            font-size: 1.05rem; 
-            font-weight: 500;
-            margin-bottom: auto; 
-            padding-bottom: 25px;
-            line-height: 1.7;
-            letter-spacing: 0.3px;
-        }
-
-        /* 指令按鈕 */
-        .cmd-badge {
-            font-family: 'JetBrains Mono', monospace;
-            background: rgba(168, 85, 247, 0.1); 
-            color: #e9d5ff !important;
-            border: 1px solid rgba(168, 85, 247, 0.3);
-            padding: 10px 16px;
-            border-radius: 8px;
-            font-size: 1rem;
-            cursor: pointer;
-            transition: all 0.2s;
-            display: inline-block;
-            margin-bottom: 8px;
-            font-weight: 600;
-            letter-spacing: 0.5px;
-        }
-        .cmd-badge:hover {
-            background: var(--twitch-purple);
-            color: #fff !important;
-            border-color: var(--twitch-purple);
-            transform: translateY(-2px);
+        .effect-wrapper-aurora {
+            display: inline-block; 
+            background: linear-gradient(90deg, #c4b5fd 0%, #818cf8 25%, #22d3ee 50%, #818cf8 75%, #c4b5fd 100%);
+            background-size: 200% auto; 
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            animation: text-flow 4s linear infinite; 
+            font-weight: 900; filter: drop-shadow(0 0 5px rgba(129, 140, 248, 0.4));
         }
         
-        /* Feature Note */
-        .feature-note {
-            display: flex;
-            align-items: center;
-            padding: 10px 14px;
-            border-radius: 8px;
-            font-size: 0.95rem;
-            font-weight: 700;
-            margin-top: auto;
-            margin-bottom: 15px;
-            border-left: 4px solid;
-            background: #18181b;
-        }
+        .admin-section-container { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid rgba(168, 85, 247, 0.3); padding-bottom: 10px; }
+        .admin-dot { width: 8px; height: 8px; background: #a855f7; border-radius: 50%; }
+        .admin-label { font-family: 'JetBrains Mono', monospace; font-weight: 700; color: #e9d5ff; font-size: 1rem; letter-spacing: 1px; }
+        .admin-label-en { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: #94a3b8; font-weight: 400; }
+        .admin-id-unified { font-family: 'JetBrains Mono', monospace; font-size: 0.85em; margin-left: 8px; font-weight: 700; letter-spacing: 0.5px; }
+
+        /* 卡片與權限表格 */
+        .logic-card { border-radius: 4px; padding: 12px; margin-bottom: 8px; border-left: 3px solid; }
+        .logic-blue { background: rgba(14, 165, 233, 0.05); border-color: #0ea5e9; }
+        .logic-red { background: rgba(244, 63, 94, 0.05); border-color: #f43f5e; }
+        .logic-head { font-weight: 700; font-size: 0.95rem; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+        .logic-head-blue { color: #38bdf8; }
+        .logic-head-red { color: #fb7185; }
+        .logic-content { font-family: 'Noto Sans TC'; font-size: 0.9rem; color: #e2e8f0; line-height: 1.6; font-weight: 500; }
+        .logic-bold { color: #fff; font-weight: 700; }
+
+        .perm-box { border-radius: 6px; padding: 10px; margin-bottom: 8px; border: 1px solid; }
+        .perm-mod { background: rgba(6, 78, 59, 0.4); border-color: #059669; }
+        .perm-head-mod { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+        .perm-tag-mod { background: #059669; color: #fff; padding: 2px 6px; border-radius: 3px; font-size: 0.75rem; font-weight: 800; }
+        .perm-icon-mod { color: #34d399; font-size: 1rem; }
+        .perm-info-mod { display: flex; justify-content: space-between; font-size: 0.85rem; color: #d1fae5; font-weight: 500; }
+        
+        .perm-vip { background: rgba(131, 24, 67, 0.3); border-color: #be185d; }
+        .perm-head-vip { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+        .perm-tag-vip { background: #be185d; color: #fff; padding: 2px 6px; border-radius: 3px; font-size: 0.75rem; font-weight: 800; }
+        .perm-icon-vip { color: #fb7185; font-size: 0.9rem; }
+        .perm-info-vip { display: flex; justify-content: space-between; font-size: 0.85rem; color: #fbcfe8; font-weight: 500; }
+
+        .perm-viewer { background: rgba(31, 41, 55, 0.3); border-color: #4b5563; }
+        .perm-head-viewer { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+        .perm-tag-viewer { background: #4b5563; color: #e5e7eb; padding: 2px 6px; border-radius: 3px; font-size: 0.75rem; font-weight: 800; }
+        .perm-icon-viewer { color: #9ca3af; font-size: 0.9rem; }
+        .perm-info-viewer { display: flex; justify-content: space-between; font-size: 0.85rem; color: #d1d5db; font-weight: 500; }
+        .perm-val { font-weight: 800; color: #fff; margin-left: 2px; }
+
+        .admin-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 30px; }
+        .admin-card { display: flex; align-items: center; padding: 15px; border-radius: 12px; border: 1px solid; background: rgba(0, 0, 0, 0.3); }
+        .card-owner { border-color: rgba(234, 179, 8, 0.4); background: linear-gradient(135deg, rgba(234, 179, 8, 0.1), rgba(0, 0, 0, 0.3)); }
+        .card-root { border-color: rgba(99, 102, 241, 0.4); background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(0, 0, 0, 0.3)); }
+        .admin-icon-box { width: 45px; height: 45px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; margin-right: 15px; }
+        .card-owner .admin-icon-box { background: rgba(234, 179, 8, 0.2); color: #facc15; }
+        .card-root .admin-icon-box { background: rgba(99, 102, 241, 0.2); color: #818cf8; }
+        
+        .admin-role { font-family: 'Noto Sans TC', sans-serif; font-size: 0.85rem; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 6px; display: block; opacity: 1; }
+        .card-owner .admin-role { color: #fde047; }
+        .card-root .admin-role { color: #a5b4fc; }
+        
+        .copy-tooltip { position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%) translateY(20px); background: #fff; color: #000; padding: 12px 30px; border-radius: 50px; font-weight: 800; opacity: 0; transition: all 0.3s; pointer-events: none; z-index: 1000; }
+        .copy-tooltip.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+        #backToTop { position: fixed; bottom: 30px; right: 30px; background: #a855f7; color: white; width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; opacity: 0; visibility: hidden; transition: all 0.3s; }
+        #backToTop.show { opacity: 1; visibility: visible; }
+        footer { margin-top: 120px; padding: 60px 0; border-top: 1px solid #3f3f46; text-align: center; color: #a1a1aa; font-weight: 500; }
+        
+        .feature-note { display: flex; align-items: center; padding: 10px 14px; border-radius: 8px; font-size: 0.95rem; font-weight: 700; margin-top: auto; margin-bottom: 15px; border-left: 4px solid; background: #18181b; }
         .note-vip { border-color: #f59e0b; color: #fbbf24; }
         .note-allow { border-color: #10b981; color: #34d399; }
         .note-info { border-color: #38bdf8; color: #38bdf8; }
-        .feature-note i { margin-right: 10px; font-size: 1.1rem; }
+        .note-danger { border-color: #f87171; color: #f87171; }
 
-        /* 分區標題 */
-        .section-header {
-            display: flex;
-            align-items: center;
-            margin: 90px 0 40px 0;
-            padding-bottom: 20px;
-            border-bottom: 2px solid #27272a;
-        }
-        .section-header i {
-            color: var(--twitch-purple);
-            font-size: 2.2rem;
-            margin-right: 20px;
-        }
-        .gradient-text {
-            font-weight: 900;
-            font-size: 2.4rem;
-            background: linear-gradient(135deg, #fff 30%, #c084fc 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            color: #fff;
-        }
-
-        /* Table */
-        .table-container {
-            background: #09090b;
-            border-radius: 16px;
-            border: 1px solid #3f3f46;
-            overflow: hidden;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
-        }
-        .custom-table { width: 100%; border-collapse: collapse; }
-        .custom-table th {
-            background: #1c1c1f;
-            color: #fff;
-            font-weight: 800;
-            padding: 22px 25px;
-            text-transform: uppercase;
-            font-size: 1rem;
-            border-bottom: 2px solid #52525b;
-            letter-spacing: 1px;
-        }
-        .custom-table td {
-            padding: 22px 25px;
-            vertical-align: top;
-            color: #ffffff !important;
-            border-bottom: 1px solid #27272a;
-            background: transparent;
-            font-size: 1.05rem;
-            font-weight: 500;
-        }
-        .custom-table tr:hover td { background: #121212; }
+        .hero-section { padding: 100px 0 40px 0; text-align: center; }
+        .hero-title { font-weight: 900; font-size: 4.5rem; margin-bottom: 25px; background: linear-gradient(135deg, #fff 0%, #d8b4fe 50%, #fff 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        
+        .search-container { max-width: 450px; margin: 0 auto 20px auto; position: relative; }
+        .search-input { width: 100%; padding: 14px 20px 14px 55px; border-radius: 12px; border: 2px solid #3f3f46; background: #121212; color: #fff; font-size: 1.1rem; }
+        .search-input:focus { outline: none; border-color: #a855f7; }
+        .search-icon { position: absolute; left: 20px; top: 50%; transform: translateY(-50%); color: #a1a1aa; font-size: 1.2rem; }
+        
+        .glass-card { background: #0e0e10; border: 1px solid #2d2d30; border-radius: 18px; padding: 30px; height: 100%; will-change: transform; }
+        .card-title { font-weight: 900; margin-bottom: 15px; font-size: 1.5rem; color: #fff; }
+        .card-desc { color: var(--text-silver); font-size: 1.05rem; font-weight: 500; padding-bottom: 25px; line-height: 1.7; }
+        
+        .table-container { background: #09090b; border-radius: 16px; border: 1px solid #3f3f46; overflow: hidden; }
+        .custom-table th { background: #1c1c1f; color: #fff; padding: 20px; }
+        .custom-table td { padding: 20px; border-bottom: 1px solid #27272a; color: #fff; }
         
         .param-item { display: block; margin-bottom: 8px; font-size: 1rem; color: #e4e4e7; }
-        .param-key {
-            color: #fbbf24;
-            font-family: 'JetBrains Mono', monospace;
-            background: rgba(251, 191, 36, 0.15);
-            border: 1px solid rgba(251, 191, 36, 0.4);
-            padding: 3px 10px;
-            border-radius: 6px;
-            margin-right: 10px;
-            font-weight: bold;
-        }
-
-        /* 權限徽章樣式 */
-        .role-badge {
-            font-size: 0.8rem;
-            padding: 4px 10px;
-            border-radius: 4px;
-            font-weight: 800;
-            display: inline-block;
-            border: 1px solid;
-            color: #fff;
-            letter-spacing: 0.5px;
-            min-width: 80px;
-            text-align: center;
-        }
-        .bg-admin { background: #991b1b; border-color: #ef4444; }
-        .bg-mod { background: #065f46; border-color: #10b981; }
-        .bg-vip { background: #be185d; border-color: #ec4899; }
-        .bg-viewer { background: #374151; border-color: #6b7280; color: #e5e7eb; }
-
-        /* 核心權限識別證 (Security Cards) */
-        .admin-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-            margin-bottom: 30px;
-        }
-        .admin-card {
-            position: relative;
-            display: flex;
-            align-items: center;
-            padding: 12px 20px;
-            border-radius: 12px;
-            border: 1px solid;
-            background: rgba(0, 0, 0, 0.4);
-            backdrop-filter: blur(10px);
-            overflow: hidden;
-            transition: all 0.3s ease;
-        }
-        .admin-card:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
-        }
-        /* 掃描光效 */
-        .admin-card::after {
-            content: '';
-            position: absolute;
-            top: 0; left: -100%;
-            width: 50%; height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
-            transform: skewX(-20deg);
-            animation: card-scan 3s infinite;
-        }
-        .admin-icon-box {
-            width: 45px; height: 45px;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.4rem;
-            margin-right: 15px;
-            box-shadow: 0 0 15px rgba(0,0,0,0.3);
-            z-index: 2;
-        }
-        .admin-info {
-            display: flex;
-            flex-direction: column;
-            z-index: 2;
-        }
-        .admin-role {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.7rem;
-            font-weight: 800;
-            letter-spacing: 1px;
-            text-transform: uppercase;
-            opacity: 0.8;
-            margin-bottom: 2px;
-        }
-        .admin-name {
-            font-size: 1.05rem;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
-        }
-        /* 卡片個別配色 */
-        .card-owner {
-            border-color: rgba(234, 179, 8, 0.4);
-            background: linear-gradient(135deg, rgba(234, 179, 8, 0.1), rgba(0, 0, 0, 0.6));
-        }
-        .card-owner:hover { box-shadow: 0 0 20px rgba(234, 179, 8, 0.2); border-color: rgba(234, 179, 8, 0.8); }
-        .card-owner .admin-icon-box { background: rgba(234, 179, 8, 0.2); color: #facc15; border: 1px solid rgba(234, 179, 8, 0.5); }
-        .card-owner .admin-role { color: #facc15; }
-
-        .card-root {
-            border-color: rgba(239, 68, 68, 0.4);
-            background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(0, 0, 0, 0.6));
-        }
-        .card-root:hover { box-shadow: 0 0 20px rgba(239, 68, 68, 0.2); border-color: rgba(239, 68, 68, 0.8); }
-        .card-root .admin-icon-box { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.5); }
-        .card-root .admin-role { color: #f87171; }
+        .param-key { color: #fbbf24; font-family: 'JetBrains Mono', monospace; background: rgba(251, 191, 36, 0.15); border: 1px solid rgba(251, 191, 36, 0.4); padding: 3px 10px; border-radius: 6px; margin-right: 10px; font-weight: bold; }
 
         @media (max-width: 768px) { .admin-grid { grid-template-columns: 1fr; } }
 
-        /* Toast */
-        .copy-tooltip {
-            position: fixed;
-            bottom: 40px;
-            left: 50%;
-            transform: translateX(-50%) translateY(20px);
-            background: #fff;
-            color: #000;
-            padding: 12px 30px;
-            border-radius: 50px;
-            font-weight: 800;
-            opacity: 0;
-            transition: all 0.3s;
-            pointer-events: none;
-            z-index: 1000;
-            box-shadow: 0 0 10px rgba(0,0,0,0.3);
-        }
-        .copy-tooltip.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+        /* Role Badges */
+        .role-badge { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 6px; font-size: 0.85rem; font-weight: 700; letter-spacing: 0.5px; border: 1px solid; }
+        .role-mod { background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.4); color: #6ee7b7; }
+        .role-admin { background: rgba(244, 63, 94, 0.1); border-color: rgba(244, 63, 94, 0.4); color: #fda4af; }
 
-        #backToTop {
-            position: fixed;
-            bottom: 30px;
-            right: 30px;
-            background: var(--twitch-purple);
-            color: white;
-            width: 55px; height: 55px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.4rem;
-            cursor: pointer;
-            opacity: 0;
-            visibility: hidden;
-            transition: all 0.3s;
-            box-shadow: 0 5px 10px rgba(0,0,0,0.3);
-            z-index: 900;
-            border: 2px solid #fff;
-        }
-        #backToTop.show { opacity: 1; visibility: visible; }
-        #backToTop:hover { background: #9333ea; transform: scale(1.1); }
+        /* Command Type Tags */
+        .cmd-type-tag { display: inline-block; margin-top: 8px; padding: 4px 10px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; font-family: 'JetBrains Mono'; letter-spacing: 0.5px; border: 1px solid; }
+        .type-ban { background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.3); color: #fca5a5; }
+        .type-unban { background: rgba(52, 211, 153, 0.1); border-color: rgba(52, 211, 153, 0.3); color: #6ee7b7; }
+        .type-sys { background: rgba(139, 92, 246, 0.1); border-color: rgba(139, 92, 246, 0.3); color: #c4b5fd; }
 
-        footer {
-            margin-top: 120px;
-            padding: 60px 0;
-            border-top: 1px solid #3f3f46;
-            text-align: center;
-            color: #a1a1aa;
-            font-weight: 500;
+        /* !B人特權 - 靜態顯示 */
+        .perm-special-highlight {
+            margin-top: 8px; padding: 6px 10px; border-radius: 4px;
+            background: linear-gradient(90deg, rgba(234, 179, 8, 0.15) 0%, rgba(0,0,0,0) 100%);
+            border-left: 3px solid #eab308; 
+            color: #fde047; font-size: 0.8rem; font-weight: 700;
+            display: flex; align-items: center; gap: 8px;
+            filter: drop-shadow(0 0 2px rgba(234, 179, 8, 0.2));
         }
+
+        /* --- [新增] 指令 Hover 互動特效 --- */
+        .cmd-badge { 
+            background: rgba(168, 85, 247, 0.15); color: #e9d5ff; 
+            border: 1px solid rgba(168, 85, 247, 0.4); padding: 8px 14px; 
+            border-radius: 6px; font-family: 'JetBrains Mono'; font-weight: 600; 
+            cursor: pointer; display: inline-block; 
+            transition: all 0.2s ease; /* 平滑過渡 */
+        }
+        .cmd-badge:hover {
+            background: rgba(168, 85, 247, 0.5); /* 變亮 */
+            border-color: #ffffff; /* 邊框亮白 */
+            color: #ffffff;
+            transform: translateY(-2px); /* 微微浮起 */
+            box-shadow: 0 4px 12px rgba(168, 85, 247, 0.3); /* 光暈 */
+        }
+
     </style>
 </head>
 <body>
 
-    <div class="lite-background">
-        <div class="lite-grid"></div>
-        <div class="square sq-1"></div>
-        <div class="square sq-2"></div>
-        <div class="square sq-3"></div>
-        <div class="square sq-4"></div>
-        <div class="square sq-5"></div>
+    <div class="bg-container">
+        <div class="bg-grid"></div>
     </div>
 
     <div id="copyToast" class="copy-tooltip">
@@ -607,17 +282,23 @@
                 <ul class="navbar-nav ms-auto">
                     <li class="nav-item">
                         <a class="nav-link" href="#viewer">
-                            <i class="fa-solid fa-users"></i> 觀眾指令
+                            <i class="fa-solid fa-users"></i>
+                            <span>觀眾指令</span>
+                            <span class="nav-badge">VIEWER</span>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="#fun">
-                            <i class="fa-solid fa-gamepad"></i> 娛樂互動
+                            <i class="fa-solid fa-gamepad"></i>
+                            <span>娛樂互動</span>
+                            <span class="nav-badge">FUN</span>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="#management">
-                            <i class="fa-solid fa-shield-halved"></i> 管理後台
+                            <i class="fa-solid fa-shield-halved"></i>
+                            <span>管理後台</span>
+                            <span class="nav-badge">ADMIN</span>
                         </a>
                     </li>
                 </ul>
@@ -630,18 +311,18 @@
             <h1 class="hero-title">Bot 指令手冊</h1>
             
             <div class="hero-desc-box">
-                <p class="lead">整合簽到、娛樂與自動化管理的智慧助手</p>
+                <p class="lead">整合古風後宮、簽到系統與自動化管理的智慧助手</p>
             </div>
             
             <div class="search-container">
                 <i class="fa-solid fa-magnifying-glass search-icon"></i>
-                <input type="text" id="searchInput" class="search-input" placeholder="搜尋指令 (例如: 簽到, 排名...)" onkeyup="searchCommands()">
+                <input type="text" id="searchInput" class="search-input" placeholder="搜尋指令 (例如: 求婚, 簽到, 排名...)" oninput="searchCommands()">
             </div>
 
-            <div class="version-container">
-                <div class="version-tag">
-                    <span class="status-dot"></span>
-                    <span>v3.8.3 穩定版</span>
+            <div class="version-container" style="text-align: center; margin-bottom: 60px;">
+                <div style="display: inline-flex; align-items: center; gap: 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(168,85,247,0.2); padding: 10px 24px; border-radius: 50px; color: #e2e8f0; font-family: 'JetBrains Mono'; font-size: 0.95rem;">
+                    <span style="width: 8px; height: 8px; background: #4ade80; border-radius: 50%; box-shadow: 0 0 5px #4ade80;"></span>
+                    <span>v3.9.11 穩定版</span>
                 </div>
             </div>
         </div>
@@ -651,8 +332,11 @@
 
         <div id="viewer" class="cmd-section">
             <div class="section-header">
-                <i class="fa-solid fa-users"></i>
-                <h2 class="gradient-text">觀眾常用指令</h2>
+                <i class="fa-solid fa-users section-icon"></i>
+                <div>
+                    <h2 class="gradient-text">觀眾常用指令</h2>
+                    <span class="en-sub-title">VIEWER COMMANDS</span>
+                </div>
             </div>
             <div class="row g-4">
                 <div class="col-md-6 col-lg-4 searchable-item">
@@ -660,9 +344,7 @@
                         <h5 class="card-title" style="color:#34d399 !important">
                             <i class="fa-solid fa-calendar-check me-2"></i>每日簽到
                         </h5>
-                        <p class="card-desc">
-                            累積觀看次數與積分，是鐵粉的證明！
-                        </p>
+                        <p class="card-desc">累積觀看次數與積分，是鐵粉的證明！<br><span class="text-white-50 small">每日限一次，需開台狀態。</span></p>
                         <div class="mt-3"><span class="cmd-badge" onclick="copyText('!簽到')">!簽到</span></div>
                     </div>
                 </div>
@@ -672,12 +354,8 @@
                         <h5 class="card-title" style="color:#a78bfa !important">
                             <i class="fa-solid fa-address-card me-2"></i>個人查詢
                         </h5>
-                        <p class="card-desc">
-                            查詢完整的簽到履歷，包含：本月簽到次數、歷史總次數、頻道開台數以及最後簽到日期。
-                        </p>
-                        <div class="feature-note note-vip">
-                            <i class="fa-solid fa-lock"></i>查詢他人需 VIP+ 權限
-                        </div>
+                        <p class="card-desc">查詢完整的簽到履歷，包含：本月次數、歷史總次數、開台數以及最後簽到日。</p>
+                        <div class="feature-note note-vip"><i class="fa-solid fa-lock"></i>查詢他人需 VIP+ 權限</div>
                         <div>
                             <span class="cmd-badge" onclick="copyText('!查詢')">!查詢</span>
                             <span class="cmd-badge" onclick="copyText('!查詢 @ID')">!查詢 @ID</span>
@@ -713,12 +391,8 @@
                         <h5 class="card-title" style="color:#f472b6 !important">
                             <i class="fa-solid fa-heart me-2"></i>追隨時間
                         </h5>
-                        <p class="card-desc">
-                            查詢你追隨台主的詳細時間。
-                        </p>
-                        <div class="feature-note note-allow">
-                            <i class="fa-solid fa-check"></i>支援查詢他人
-                        </div>
+                        <p class="card-desc">精確計算追隨時長 (年/月/週/天)，並自動對應中文名稱。</p>
+                        <div class="feature-note note-allow"><i class="fa-solid fa-check"></i>支援查詢他人</div>
                         <div>
                             <span class="cmd-badge" onclick="copyText('!芯寶')">!芯寶</span>
                             <span class="cmd-badge" onclick="copyText('!芯寶 @ID')">!芯寶 @ID</span>
@@ -731,15 +405,9 @@
                         <h5 class="card-title" style="color:#22d3ee !important">
                             <i class="fa-solid fa-cake-candles me-2"></i>帳號生日
                         </h5>
-                        <p class="card-desc">
-                            查詢 Twitch 帳號的註冊日，以及帳號註冊了多久。
-                        </p>
-                        <div class="feature-note note-allow">
-                            <i class="fa-solid fa-check"></i>支援查詢他人
-                        </div>
-                        <div>
-                            <span class="cmd-badge" onclick="copyText('!創建多久')">!創建多久</span>
-                        </div>
+                        <p class="card-desc">查詢 Twitch 帳號的註冊日，以及帳號註冊了多久 (中文格式)。</p>
+                        <div class="feature-note note-allow"><i class="fa-solid fa-check"></i>支援查詢他人</div>
+                        <div><span class="cmd-badge" onclick="copyText('!創建多久')">!創建多久</span></div>
                     </div>
                 </div>
             </div>
@@ -747,44 +415,54 @@
 
         <div id="fun" class="cmd-section">
             <div class="section-header">
-                <i class="fa-solid fa-gamepad"></i>
-                <h2 class="gradient-text">娛樂互動</h2>
+                <i class="fa-solid fa-gamepad section-icon"></i>
+                <div>
+                    <h2 class="gradient-text">娛樂互動</h2>
+                    <span class="en-sub-title">FUN & INTERACTION</span>
+                </div>
             </div>
             <div class="row g-4">
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#f87171 !important"><i class="fa-solid fa-heart-pulse me-2"></i>愛情配對</h5>
+                        <h5 class="card-title" style="color:#f87171 !important"><i class="fa-solid fa-heart-pulse me-2"></i>愛情配對
+                        </h5>
                         <p class="card-desc">隨機計算兩人的契合度分數，純屬娛樂。</p>
                         <div class="mt-3"><span class="cmd-badge" onclick="copyText('!配對 @對象')">!配對 @對象</span></div>
                     </div>
                 </div>
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#ec4899 !important"><i class="fa-solid fa-ring me-2"></i>結婚與後宮</h5>
-                        <p class="card-desc">
-                            完整的結婚流程，可迎娶多位伴侶，系統會自動記錄後宮順序。
-                        </p>
-                        <div class="feature-note note-vip">
-                            <i class="fa-solid fa-circle-exclamation"></i>求婚後需輸入 !yes 答應
-                        </div>
+                        <h5 class="card-title" style="color:#ec4899 !important"><i class="fa-solid fa-ring me-2"></i>古風後宮系統
+                        </h5>
+                        <p class="card-desc">建立你的後宮！防 NTR 機制、30秒自動倒數，並擁有正宮、皇貴妃等古風稱謂。</p>
+                        <div class="feature-note note-vip"><i class="fa-solid fa-clock"></i>求婚時限 30 秒</div>
                         <div>
                             <span class="cmd-badge" onclick="copyText('!求婚 @對象')">!求婚 @對象</span>
                             <span class="cmd-badge" onclick="copyText('!yes')">!yes (答應)</span>
-                            <span class="cmd-badge" onclick="copyText('!cp')">!cp (查伴侶)</span>
+                            <span class="cmd-badge" onclick="copyText('!cp')">!cp (後宮名錄)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6 col-lg-4 searchable-item">
+                    <div class="glass-card">
+                        <h5 class="card-title" style="color:#ef4444 !important"><i class="fa-solid fa-heart-crack me-2"></i>離婚協議
+                        </h5>
+                        <p class="card-desc">解除婚姻關係。為了防止誤觸，系統設有二次確認機制 (30秒內)。</p>
+                        <div class="feature-note note-danger"><i class="fa-solid fa-triangle-exclamation"></i>需輸入確認指令</div>
+                        <div>
                             <span class="cmd-badge" onclick="copyText('!離婚')">!離婚</span>
+                            <span class="cmd-badge" onclick="copyText('!確認離婚')">!確認離婚</span>
                         </div>
                     </div>
                 </div>
                 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#38bdf8 !important"><i class="fa-solid fa-comment-slash me-2"></i>自 Ban 冷靜</h5>
-                        <p class="card-desc">
-                            覺得自己話太多？把「自己」禁言一段時間，冷靜一下。
-                        </p>
-                        <div class="feature-note note-info">
-                            <i class="fa-solid fa-circle-info"></i>上限: 一般 10分 / VIP 1小時
-                        </div>
+                        <h5 class="card-title" style="color:#38bdf8 !important"><i class="fa-solid fa-comment-slash me-2"></i>自 Ban 冷靜
+                        </h5>
+                        <p class="card-desc">覺得自己話太多？把「自己」禁言一段時間，冷靜一下。</p>
+                        <div class="feature-note note-info"><i class="fa-solid fa-circle-info"></i>上限: 一般 10分 / VIP 1小時</div>
                         <div>
                             <span class="cmd-badge" onclick="copyText('!B人 600')">!B人 秒數</span>
                             <span class="cmd-badge" onclick="copyText('!B人 隨機')">!B人 隨機</span>
@@ -796,33 +474,38 @@
 
         <div id="management" class="cmd-section">
             <div class="section-header">
-                <i class="fa-solid fa-shield-halved"></i>
-                <h2 class="gradient-text">管理與後台</h2>
+                <i class="fa-solid fa-shield-halved section-icon"></i>
+                <div>
+                    <h2 class="gradient-text">管理與後台</h2>
+                    <span class="en-sub-title">MANAGEMENT DASHBOARD</span>
+                </div>
             </div>
             
-            <div class="mb-3">
-                <h5 class="text-white-50 mb-3 small fw-bold text-uppercase ls-1">
-                    <i class="fa-solid fa-shield-halved me-2"></i>系統核心權限
-                </h5>
+            <div class="mb-4">
+                <div class="admin-section-container">
+                    <span class="admin-dot"></span>
+                    <span class="admin-label">系統核心權限</span>
+                    <span class="admin-label-en">Core Permissions</span>
+                </div>
                 
                 <div class="admin-grid">
                     <div class="admin-card card-owner">
-                        <div class="admin-icon-box">
-                            <i class="fa-solid fa-crown"></i>
-                        </div>
+                        <div class="admin-icon-box"><i class="fa-solid fa-crown"></i></div>
                         <div class="admin-info">
                             <span class="admin-role">系統持有者</span>
-                            <span class="admin-name name-animate-gold">每台都被當空氣的飝猫珤珤 (fly_cat0420)</span>
+                            <div class="effect-wrapper-gold">
+                                每台都被當空氣的飝猫珤珤<span class="admin-id-unified">(fly_cat0420)</span>
+                            </div>
                         </div>
                     </div>
 
                     <div class="admin-card card-root">
-                        <div class="admin-icon-box">
-                            <i class="fa-solid fa-terminal"></i>
-                        </div>
+                        <div class="admin-icon-box"><i class="fa-solid fa-terminal"></i></div>
                         <div class="admin-info">
                             <span class="admin-role">最高管理員</span>
-                            <span class="admin-name name-animate-neon">玆歐巴 (tp012943)</span>
+                            <div class="effect-wrapper-aurora">
+                                玆歐巴<span class="admin-id-unified">(tp012943)</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -833,139 +516,139 @@
                     <table class="custom-table">
                         <thead>
                             <tr>
-                                <th width="20%">指令</th>
-                                <th width="35%">參數詳解</th>
-                                <th>權限說明</th>
+                                <th width="20%">指令 (Command)</th>
+                                <th width="40%">功能詳解 (Detail Logic)</th>
+                                <th>權限與說明 (Permission)</th>
                             </tr>
                         </thead>
                         <tbody id="adminTableBody">
+                            
                             <tr class="searchable-row">
                                 <td style="vertical-align: middle;">
                                     <span class="cmd-badge" onclick="copyText('!B人')">!B人</span>
-                                    <div class="small text-white-50 mt-2" style="font-family:'JetBrains Mono'">禁言 (Timeout)</div>
+                                    <span class="cmd-type-tag type-ban">禁言 (TIMEOUT)</span>
+                                </td>
+                                <td>
+                                    <div class="logic-card logic-blue">
+                                        <div class="logic-head logic-head-blue">
+                                            <i class="fa-regular fa-snowflake"></i> ❄️ 自願冷靜
+                                        </div>
+                                        <div class="logic-content">
+                                            <div><span class="logic-bold">!B人</span> → 預設 10 分鐘</div>
+                                            <div><span class="logic-bold">!B人 30</span> → 禁言 30 秒</div>
+                                            <div><span class="logic-bold">!B人 隨機</span> → 60~600 秒大冒險</div>
+                                        </div>
+                                    </div>
+                                    <div class="logic-card logic-red">
+                                        <div class="logic-head logic-head-red">
+                                            <i class="fa-solid fa-gavel"></i> 🔨 強制執法
+                                        </div>
+                                        <div class="logic-content">
+                                            <div><span class="logic-bold">!B人 @ID 秒數</span> → 強制禁言對象</div>
+                                        </div>
+                                    </div>
                                 </td>
                                 <td>
                                     <div class="d-flex flex-column gap-2">
-                                        <div style="background: rgba(56, 189, 248, 0.1); border-left: 3px solid #38bdf8; padding: 12px; border-radius: 4px;">
-                                            <div class="d-flex align-items-center mb-2">
-                                                <i class="fa-solid fa-snowflake text-info me-2"></i>
-                                                <span class="fw-bold text-info" style="font-size: 0.95rem;">Self-Ban</span>
+                                        
+                                        <div class="perm-box perm-mod">
+                                            <div class="perm-head-mod">
+                                                <span class="perm-tag-mod">頻道 MOD</span>
+                                                <i class="fa-solid fa-infinity perm-icon-mod"></i>
                                             </div>
-                                            <div class="text-silver small" style="line-height: 1.6;">
-                                                <div><code class="text-white">!B人</code> ➝ 預設 10 分鐘</div>
-                                                <div><code class="text-white">!B人 30</code> ➝ 禁言 30 秒</div>
-                                                <div><code class="text-white">!B人 隨機</code> ➝ 60~600 秒大冒險</div>
+                                            <div class="perm-info-mod">
+                                                <span><i class="fa-regular fa-clock me-1"></i>上限: <span class="perm-val">24小時</span></span>
+                                                <span><i class="fa-solid fa-bolt me-1"></i>冷卻: <span class="perm-val">無</span></span>
                                             </div>
-                                        </div>
-                                        <div style="background: rgba(248, 113, 113, 0.1); border-left: 3px solid #f87171; padding: 12px; border-radius: 4px;">
-                                            <div class="d-flex align-items-center mb-2">
-                                                <i class="fa-solid fa-gavel text-danger me-2"></i>
-                                                <span class="fw-bold text-danger" style="font-size: 0.95rem;">Force Ban</span>
-                                            </div>
-                                            <div class="text-silver small">
-                                                <div><code class="text-white">!B人 @ID 秒數</code> ➝ 強制禁言對象</div>
+                                            <div class="perm-special-highlight">
+                                                <i class="fa-solid fa-crosshairs"></i> 特權：可指定任何人
                                             </div>
                                         </div>
-                                    </div>
-                                </td>
-                                <td>
-                                    <div style="display: flex; flex-direction: column; gap: 8px;">
-                                        <div style="background: rgba(6, 95, 70, 0.3); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 8px; padding: 10px;">
-                                            <div class="d-flex justify-content-between align-items-center mb-2">
-                                                <span class="role-badge bg-mod" style="margin:0;">頻道 MOD</span>
-                                                <i class="fa-solid fa-infinity text-success" title="無限制"></i>
+
+                                        <div class="perm-box perm-vip">
+                                            <div class="perm-head-vip">
+                                                <span class="perm-tag-vip">頻道 VIP</span>
+                                                <i class="fa-solid fa-star perm-icon-vip"></i>
                                             </div>
-                                            <div class="d-flex justify-content-between small text-white-50">
-                                                <span><i class="fa-regular fa-clock me-1"></i>上限: <b class="text-white">24小時</b></span>
-                                                <span><i class="fa-solid fa-bolt me-1"></i>冷卻: <b class="text-white">無</b></span>
-                                            </div>
-                                            <div class="mt-1 small text-success border-top border-success border-opacity-25 pt-1">
-                                                <i class="fa-solid fa-check me-1"></i>可指定任何人
+                                            <div class="perm-info-vip">
+                                                <span><i class="fa-regular fa-clock me-1"></i>上限: <span class="perm-val">1小時</span></span>
+                                                <span><i class="fa-solid fa-hourglass-half me-1"></i>冷卻: <span class="perm-val">3秒</span></span>
                                             </div>
                                         </div>
-                                        <div style="background: rgba(190, 24, 93, 0.2); border: 1px solid rgba(236, 72, 153, 0.3); border-radius: 8px; padding: 10px;">
-                                            <div class="d-flex justify-content-between align-items-center mb-2">
-                                                <span class="role-badge bg-vip" style="margin:0;">頻道 VIP</span>
-                                                <i class="fa-solid fa-star text-danger" style="font-size: 0.8rem; opacity: 0.7;"></i>
+
+                                        <div class="perm-box perm-viewer">
+                                            <div class="perm-head-viewer">
+                                                <span class="perm-tag-viewer">一般觀眾</span>
+                                                <i class="fa-solid fa-user perm-icon-viewer"></i>
                                             </div>
-                                            <div class="d-flex justify-content-between small text-white-50">
-                                                <span><i class="fa-regular fa-clock me-1"></i>上限: <b class="text-white">1小時</b></span>
-                                                <span><i class="fa-solid fa-hourglass-half me-1"></i>冷卻: <b class="text-white">3秒</b></span>
-                                            </div>
-                                        </div>
-                                        <div style="background: rgba(55, 65, 81, 0.4); border: 1px solid rgba(107, 114, 128, 0.3); border-radius: 8px; padding: 10px;">
-                                            <div class="d-flex justify-content-between align-items-center mb-2">
-                                                <span class="role-badge bg-viewer" style="margin:0;">一般觀眾</span>
-                                                <i class="fa-solid fa-user text-secondary" style="font-size: 0.8rem; opacity: 0.7;"></i>
-                                            </div>
-                                            <div class="d-flex justify-content-between small text-white-50">
-                                                <span><i class="fa-regular fa-clock me-1"></i>上限: <b class="text-white">10分鐘</b></span>
-                                                <span><i class="fa-solid fa-hourglass-half me-1"></i>冷卻: <b class="text-white">10秒</b></span>
+                                            <div class="perm-info-viewer">
+                                                <span><i class="fa-regular fa-clock me-1"></i>上限: <span class="perm-val">10分鐘</span></span>
+                                                <span><i class="fa-solid fa-hourglass-half me-1"></i>冷卻: <span class="perm-val">10秒</span></span>
                                             </div>
                                         </div>
+
                                     </div>
                                 </td>
                             </tr>
+                            
                             <tr class="searchable-row">
                                 <td>
-                                    <span class="cmd-badge" onclick="copyText('!解B @ID')">!解B</span>
-                                    <div class="small text-white-50 mt-1">解除禁言 (Unban)</div>
+                                    <span class="cmd-badge" onclick="copyText('!解B')">!解B</span>
+                                    <span class="cmd-type-tag type-unban">解除 (UNBAN)</span>
                                 </td>
                                 <td>
-                                    <span class="param-item"><span class="param-key">無參數</span>批量救援 VIP</span>
-                                    <span class="param-item"><span class="param-key">@ID</span>直接解除指定目標 (不分身分)</span>
+                                    <span class="param-item"><span class="param-key">無參數</span>批量救援 VIP (自動偵測被誤 Ban 的 VIP)</span>
+                                    <span class="param-item"><span class="param-key">@ID</span>直接解除指定目標</span>
                                 </td>
                                 <td>
-                                    <span class="role-badge bg-mod">頻道 MOD</span>
-                                    <p class="mb-0 mt-1 small">適用於誤 Ban 解除或 VIP 救援。</p>
+                                    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
+                                        <span class="role-badge role-admin"><i class="fa-solid fa-user-secret"></i> 系統管理員</span>
+                                        <span class="role-badge role-mod"><i class="fa-solid fa-shield-halved"></i> 頻道 MOD</span>
+                                    </div>
+                                    <p class="mb-0 small text-white-50">適用於誤 Ban 解除或 VIP 批量救援。</p>
                                 </td>
                             </tr>
+
                             <tr class="searchable-row">
                                 <td>
+                                    <div style="display:flex; flex-wrap:wrap; gap:5px;">
+                                        <span class="cmd-badge" onclick="copyText('!備份')">!備份</span>
+                                        <span class="cmd-badge" onclick="copyText('!重啟')">!重啟</span>
+                                        <span class="cmd-badge" onclick="copyText('!測試')">!測試</span>
+                                    </div>
+                                    <span class="cmd-type-tag type-sys">系統維護 (SYS)</span>
+                                </td>
+                                <td>
+                                    <div class="text-silver small" style="line-height: 2;">
+                                        <div><i class="fa-solid fa-database me-2 text-warning"></i><b>備份</b>：手動備份資料庫並清理舊檔。</div>
+                                        <div><i class="fa-solid fa-rotate me-2 text-danger"></i><b>重啟</b>：強制重啟系統程序 (修復連線)。</div>
+                                        <div><i class="fa-solid fa-network-wired me-2 text-info"></i><b>測試</b>：檢查 API 連線與 Token 狀態。</div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="role-badge role-admin"><i class="fa-solid fa-user-secret"></i> 系統管理員</span>
+                                    <p class="mb-0 mt-2 small text-white-50">僅限最高權限者使用，涉及系統核心操作。</p>
+                                </td>
+                            </tr>
+
+                            <tr class="searchable-row">
+                                <td style="vertical-align: middle;">
                                     <span class="cmd-badge" onclick="copyText('!狀態')">!狀態</span>
+                                    <span class="cmd-type-tag type-sys">儀表板 (INFO)</span>
                                 </td>
                                 <td>
                                     <span class="param-item" style="color:#71717a">無參數</span>
                                 </td>
                                 <td>
-                                    <span class="role-badge bg-admin">系統管理員</span>
-                                    <span>顯示系統運作時間、版本、延遲與連線數。</span>
-                                </td>
-                            </tr>
-                            <tr class="searchable-row">
-                                <td>
-                                    <span class="cmd-badge" onclick="copyText('!重啟')">!重啟</span>
-                                </td>
-                                <td>
-                                    <span class="param-item" style="color:#71717a">無參數</span>
-                                </td>
-                                <td>
-                                    <span class="role-badge bg-admin">系統管理員</span>
-                                    <span>強制重啟 Bot 系統程序 (連線修復用)。</span>
-                                </td>
-                            </tr>
-                            <tr class="searchable-row">
-                                <td>
-                                    <span class="cmd-badge" onclick="copyText('!備份')">!備份</span>
-                                </td>
-                                <td>
-                                    <span class="param-item" style="color:#71717a">無參數</span>
-                                </td>
-                                <td>
-                                    <span class="role-badge bg-admin">系統管理員</span>
-                                    <span>立即執行資料庫備份並清理舊檔。</span>
-                                </td>
-                            </tr>
-                            <tr class="searchable-row">
-                                <td>
-                                    <span class="cmd-badge" onclick="copyText('!測試')">!測試</span>
-                                </td>
-                                <td>
-                                    <span class="param-item" style="color:#71717a">無參數</span>
-                                </td>
-                                <td>
-                                    <span class="role-badge bg-admin">系統管理員</span>
-                                    <span>檢查 API 連線狀態與 Token 有效性。</span>
+                                    <span class="role-badge role-admin"><i class="fa-solid fa-user-secret"></i> 系統管理員</span>
+                                    <div class="mt-2 text-silver small">
+                                        顯示「儀表板風格」的報告：
+                                        <ul style="margin: 5px 0 0 -20px;">
+                                            <li>數位運作時間 (Uptime)</li>
+                                            <li>總簽到人數 (Total Users)</li>
+                                            <li>即時連線燈號 (🟢/⚠️/🔴)</li>
+                                        </ul>
+                                    </div>
                                 </td>
                             </tr>
                         </tbody>
@@ -976,7 +659,7 @@
         </div>
 
         <footer>
-            <p class="mb-1">Bot Version: 3.8.3 穩定版</p>
+            <p class="mb-1">Bot Version: 3.9.11 穩定版</p>
             <small>專為 Twitch 打造的系統</small>
         </footer>
 
@@ -984,6 +667,10 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        const searchInput = document.getElementById('searchInput');
+        const cards = document.querySelectorAll('.searchable-item');
+        const rows = document.querySelectorAll('.searchable-row');
+
         function copyText(text) {
             navigator.clipboard.writeText(text).then(function() {
                 var toast = document.getElementById("copyToast");
@@ -995,29 +682,17 @@
         }
 
         function searchCommands() {
-            var input = document.getElementById('searchInput');
-            var filter = input.value.toLowerCase();
+            const filter = searchInput.value.toLowerCase();
             
-            var items = document.getElementsByClassName('searchable-item');
-            for (var i = 0; i < items.length; i++) {
-                var text = items[i].textContent || items[i].innerText;
-                if (text.toLowerCase().indexOf(filter) > -1) {
-                    items[i].parentElement.style.display = ""; 
-                    items[i].parentElement.classList.remove('d-none');
-                } else {
-                    items[i].parentElement.style.display = "none";
-                }
-            }
+            cards.forEach(card => {
+                const text = card.textContent || card.innerText;
+                card.style.display = text.toLowerCase().indexOf(filter) > -1 ? "" : "none";
+            });
 
-            var rows = document.getElementsByClassName('searchable-row');
-            for (var i = 0; i < rows.length; i++) {
-                var text = rows[i].textContent || rows[i].innerText;
-                if (text.toLowerCase().indexOf(filter) > -1) {
-                    rows[i].style.display = "";
-                } else {
-                    rows[i].style.display = "none";
-                }
-            }
+            rows.forEach(row => {
+                const text = row.textContent || row.innerText;
+                row.style.display = text.toLowerCase().indexOf(filter) > -1 ? "" : "none";
+            });
         }
 
         var backToTopBtn = document.getElementById("backToTop");
