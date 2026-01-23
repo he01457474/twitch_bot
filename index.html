@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
     <meta property="og:title" content="Twitch Bot 指令全書">
-    <meta property="og:description" content="查詢所有聊天室指令、簽到系統與娛樂功能。V3.9.11">
+    <meta property="og:description" content="查詢所有聊天室指令、簽到系統與娛樂功能。V3.9.87">
     <meta property="og:image" content="https://cdn-icons-png.flaticon.com/512/4712/4712109.png">
     <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/4712/4712109.png">
     <meta name="theme-color" content="#a855f7">
@@ -103,10 +103,9 @@
             animation: text-shine-bold 4s linear infinite; 
         }
 
-        /* --- [優化] H1 主標題與 Lead Text 層次區隔 --- */
+        /* --- H1 主標題與 Lead Text 層次區隔 --- */
         .hero-section { padding: 100px 0 40px 0; text-align: center; }
         
-        /* H1 標題：Bot 指令手冊 (維持最亮，呼吸光暈) */
         @keyframes title-pulse {
             0% { text-shadow: 0 0 18px rgba(168, 85, 247, 0.8), 0 0 40px rgba(168, 85, 247, 0.4); }
             100% { text-shadow: 0 0 35px rgba(168, 85, 247, 1), 0 0 70px rgba(168, 85, 247, 0.6); }
@@ -114,17 +113,15 @@
 
         .hero-title { 
             font-weight: 900; font-size: 4.5rem; margin-bottom: 25px; 
-            color: #ffffff; /* 純白最高對比 */
+            color: #ffffff; 
             text-shadow: 0 0 25px rgba(168, 85, 247, 0.8);
             animation: title-pulse 3s infinite alternate ease-in-out;
         }
 
-        /* Lead Text (副標題)：降級為柔和淡灰 */
         .hero-desc-box .lead {
-            color: #a1aab0; /* 柔和的淡灰色 */
-            font-weight: 400; /* 變細 */
+            color: #a1aab0; 
+            font-weight: 400; 
         }
-        /* --- [優化結束] --- */
 
 
         /* --- 版本號動畫 --- */
@@ -154,7 +151,6 @@
         /* 內容樣式 */
         .cmd-section { content-visibility: auto; contain-intrinsic-size: 800px; }
         
-        /* H2 標題：觀眾常用指令 (降級漸變色，略微低調) */
         .section-header {
             display: flex; align-items: center; gap: 15px; margin: 80px 0 30px 0;
             padding-bottom: 20px; border-bottom: 2px solid #27272a;
@@ -373,7 +369,7 @@
             <div class="version-container" style="text-align: center; margin-bottom: 60px;">
                 <div class="version-badge">
                     <span class="version-dot"></span>
-                    <span>v3.9.11 穩定版</span>
+                    <span>v3.9.87 穩定版</span>
                 </div>
             </div>
         </div>
@@ -461,6 +457,21 @@
                         <div><span class="cmd-badge" onclick="copyText('!創建多久')">!創建多久</span></div>
                     </div>
                 </div>
+
+                <div class="col-md-6 col-lg-4 searchable-item">
+                    <div class="glass-card">
+                        <h5 class="card-title" style="color:#fb7185 !important">
+                            <i class="fa-solid fa-gift me-2"></i>生日系統
+                        </h5>
+                        <p class="card-desc">登記你的生日，並可產生當月精美壽星名單圖片。<br><span class="text-white-50 small">格式：MM-DD (例如 05-30)</span></p>
+                        <div class="mt-3">
+                            <span class="cmd-badge" onclick="copyText('!登記生日 01-01')">!登記生日</span>
+                            <span class="cmd-badge" onclick="copyText('!生日表')">!生日表</span>
+                            <span class="cmd-badge" onclick="copyText('!刪除生日')">!刪除生日</span>
+                        </div>
+                    </div>
+                </div>
+
             </div>
         </div>
 
@@ -515,6 +526,7 @@
                         <p class="card-desc">覺得自己話太多？把「自己」禁言一段時間，冷靜一下。</p>
                         <div class="feature-note note-info"><i class="fa-solid fa-circle-info"></i>上限: 觀眾 10分 / VIP 1小時</div>
                         <div>
+                            <span class="cmd-badge" onclick="copyText('!600')">!600</span>
                             <span class="cmd-badge" onclick="copyText('!B人 600')">!B人 秒數</span>
                             <span class="cmd-badge" onclick="copyText('!B人 隨機')">!B人 隨機</span>
                         </div>
@@ -661,6 +673,31 @@
                             </tr>
 
                             <tr class="searchable-row">
+                                <td style="vertical-align: middle;">
+                                    <div style="display:flex; flex-wrap:wrap; gap:5px;">
+                                        <span class="cmd-badge" onclick="copyText('!簽到開關')">!簽到開關</span>
+                                        <span class="cmd-badge" onclick="copyText('!定時開關')">!定時開關</span>
+                                    </div>
+                                    <span class="cmd-type-tag type-sys">功能開關 (SWITCH)</span>
+                                </td>
+                                <td>
+                                    <div class="logic-card logic-blue">
+                                        <div class="logic-head logic-head-blue">
+                                            <i class="fa-solid fa-toggle-on"></i> 功能控制
+                                        </div>
+                                        <div class="logic-content">
+                                            <div><span class="logic-bold">簽到開關</span> → 啟用/關閉 !簽到 功能</div>
+                                            <div><span class="logic-bold">定時開關</span> → 啟用/關閉 定時公告訊息</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="role-badge role-admin"><i class="fa-solid fa-user-secret"></i> 系統管理員</span>
+                                    <span class="role-badge role-mod"><i class="fa-solid fa-crown"></i> 頻道台主</span>
+                                </td>
+                            </tr>
+
+                            <tr class="searchable-row">
                                 <td>
                                     <div style="display:flex; flex-wrap:wrap; gap:5px;">
                                         <span class="cmd-badge" onclick="copyText('!備份')">!備份</span>
@@ -710,7 +747,7 @@
         </div>
 
         <footer>
-            <p class="mb-1">Bot Version: 3.9.11 穩定版</p>
+            <p class="mb-1">Bot Version: 3.9.87 穩定版</p>
             <small>專為 Twitch 打造的系統</small>
         </footer>
 
