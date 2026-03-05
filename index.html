@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
     <meta property="og:title" content="Twitch Bot 指令全書">
-    <meta property="og:description" content="查詢所有聊天室指令、簽到系統與娛樂功能。V3.9.83">
+    <meta property="og:description" content="查詢所有聊天室指令、簽到系統與娛樂功能。V4.6.4">
     <meta property="og:image" content="https://cdn-icons-png.flaticon.com/512/4712/4712109.png">
     <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/4712/4712109.png">
     <meta name="theme-color" content="#a855f7">
@@ -122,7 +122,6 @@
             color: #a1aab0; 
             font-weight: 400; 
         }
-
 
         /* --- 版本號動畫 --- */
         @keyframes pulse-green-glow {
@@ -251,9 +250,9 @@
         .search-input:focus { outline: none; border-color: #a855f7; }
         .search-icon { position: absolute; left: 20px; top: 50%; transform: translateY(-50%); color: #a1a1aa; font-size: 1.2rem; }
         
-        .glass-card { background: #0e0e10; border: 1px solid #2d2d30; border-radius: 18px; padding: 30px; height: 100%; will-change: transform; }
+        .glass-card { background: #0e0e10; border: 1px solid #2d2d30; border-radius: 18px; padding: 30px; height: 100%; will-change: transform; display: flex; flex-direction: column; }
         .card-title { font-weight: 900; margin-bottom: 15px; font-size: 1.5rem; color: #fff; }
-        .card-desc { color: var(--text-silver); font-size: 1.05rem; font-weight: 500; padding-bottom: 25px; line-height: 1.7; }
+        .card-desc { color: var(--text-silver); font-size: 1.05rem; font-weight: 500; padding-bottom: 25px; line-height: 1.7; flex-grow: 1; }
         
         .table-container { background: #09090b; border-radius: 16px; border: 1px solid #3f3f46; overflow: hidden; }
         .custom-table th { background: #1c1c1f; color: #fff; padding: 20px; }
@@ -369,7 +368,7 @@
             <div class="version-container" style="text-align: center; margin-bottom: 60px;">
                 <div class="version-badge">
                     <span class="version-dot"></span>
-                    <span>v3.9.83 穩定版</span>
+                    <span>v4.6.4 穩定版</span>
                 </div>
             </div>
         </div>
@@ -406,6 +405,33 @@
                         <div>
                             <span class="cmd-badge" onclick="copyText('!查詢')">!查詢</span>
                             <span class="cmd-badge" onclick="copyText('!查詢 @ID')">!查詢 @ID</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6 col-lg-4 searchable-item">
+                    <div class="glass-card">
+                        <h5 class="card-title" style="color:#6ee7b7 !important">
+                            <i class="fa-solid fa-stopwatch me-2"></i>掛台肝度
+                        </h5>
+                        <p class="card-desc">查詢觀眾的總觀看時數、發言量以及目前的進出聊天室狀態。</p>
+                        <div class="feature-note note-allow"><i class="fa-solid fa-check"></i>支援查詢他人</div>
+                        <div>
+                            <span class="cmd-badge" onclick="copyText('!cu')">!cu</span>
+                            <span class="cmd-badge" onclick="copyText('!cu @ID')">!cu @ID</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6 col-lg-4 searchable-item">
+                    <div class="glass-card">
+                        <h5 class="card-title" style="color:#c084fc !important">
+                            <i class="fa-solid fa-clock-rotate-left me-2"></i>前世查水表
+                        </h5>
+                        <p class="card-desc">稽查使用者的 Twitch 歷史改名紀錄。</p>
+                        <div class="mt-3">
+                            <span class="cmd-badge" onclick="copyText('!前世')">!前世</span>
+                            <span class="cmd-badge" onclick="copyText('!前世 @ID')">!前世 @ID</span>
                         </div>
                     </div>
                 </div>
@@ -470,14 +496,6 @@
                 </div>
             </div>
             <div class="row g-4">
-                <div class="col-md-6 col-lg-4 searchable-item">
-                    <div class="glass-card">
-                        <h5 class="card-title" style="color:#f87171 !important"><i class="fa-solid fa-heart-pulse me-2"></i>愛情配對
-                        </h5>
-                        <p class="card-desc">隨機計算兩人的契合度分數，純屬娛樂。</p>
-                        <div class="mt-3"><span class="cmd-badge" onclick="copyText('!配對 @對象')">!配對 @對象</span></div>
-                    </div>
-                </div>
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
                         <h5 class="card-title" style="color:#ec4899 !important"><i class="fa-solid fa-ring me-2"></i>結婚後宮系統
@@ -574,7 +592,7 @@
                             
                             <tr class="searchable-row">
                                 <td style="vertical-align: middle;">
-                                    <span class="cmd-badge" onclick="copyText('!B人')">!B人</span>
+                                    <div><span class="cmd-badge" onclick="copyText('!B人')">!B人</span></div>
                                     <span class="cmd-type-tag type-ban">禁言 (TIMEOUT)</span>
                                 </td>
                                 <td>
@@ -641,8 +659,8 @@
                             </tr>
                             
                             <tr class="searchable-row">
-                                <td>
-                                    <span class="cmd-badge" onclick="copyText('!解B')">!解B</span>
+                                <td style="vertical-align: middle;">
+                                    <div><span class="cmd-badge" onclick="copyText('!解B')">!解B</span></div>
                                     <span class="cmd-type-tag type-unban">解除 (UNBAN)</span>
                                 </td>
                                 <td>
@@ -684,7 +702,33 @@
                             </tr>
 
                             <tr class="searchable-row">
+                                <td style="vertical-align: middle;">
+                                    <div style="display:flex; flex-wrap:wrap; gap:5px;">
+                                        <span class="cmd-badge" onclick="copyText('!加公告')">!加公告</span>
+                                        <span class="cmd-badge" onclick="copyText('!臨時公告')">!臨時公告</span>
+                                        <span class="cmd-badge" onclick="copyText('!公告列表')">!公告列表</span>
+                                    </div>
+                                    <span class="cmd-type-tag type-sys" style="background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.3); color: #6ee7b7;">廣播管理 (ANNOUNCE)</span>
+                                </td>
                                 <td>
+                                    <div class="text-silver small" style="line-height: 2;">
+                                        <div><span class="logic-bold text-white">!加公告 [內容]</span>：新增<span class="text-warning">常駐</span>輪播公告。</div>
+                                        <div><span class="logic-bold text-white">!臨時公告 [內容]</span>：新增<span class="text-info">僅限本場直播</span>的輪播公告(關台會自動清除)。</div>
+                                        <div><span class="logic-bold text-white">!清除臨時 / !刪公告 [ID]</span>：清除本場臨時公告，或指定刪除某條公告。</div>
+                                        <div><span class="logic-bold text-white">!公告列表 / !公告</span>：查看目前所有公告清單 / 手動強制推播下一則。</div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
+                                        <span class="role-badge role-admin"><i class="fa-solid fa-user-secret"></i> 系統管理員</span>
+                                        <span class="role-badge role-mod"><i class="fa-solid fa-crown"></i> 頻道台主</span>
+                                    </div>
+                                    <p class="mb-0 mt-2 small text-white-50">控制聊天室定時輪播訊息的增刪查改。</p>
+                                </td>
+                            </tr>
+
+                            <tr class="searchable-row">
+                                <td style="vertical-align: middle;">
                                     <div style="display:flex; flex-wrap:wrap; gap:5px;">
                                         <span class="cmd-badge" onclick="copyText('!備份')">!備份</span>
                                         <span class="cmd-badge" onclick="copyText('!重啟')">!重啟</span>
@@ -707,7 +751,7 @@
 
                             <tr class="searchable-row">
                                 <td style="vertical-align: middle;">
-                                    <span class="cmd-badge" onclick="copyText('!狀態')">!狀態</span>
+                                    <div><span class="cmd-badge" onclick="copyText('!狀態')">!狀態</span></div>
                                     <span class="cmd-type-tag type-sys">儀表板 (INFO)</span>
                                 </td>
                                 <td>
@@ -733,7 +777,7 @@
         </div>
 
         <footer>
-            <p class="mb-1">Bot Version: 3.9.83 穩定版</p>
+            <p class="mb-1">Bot Version: 4.6.4 穩定版</p>
             <small>專為 Twitch 打造的系統</small>
         </footer>
 
