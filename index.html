@@ -692,6 +692,56 @@
                             <tr class="searchable-row">
                                 <td style="vertical-align: middle;">
                                     <div style="display:flex; flex-wrap:wrap; gap:5px;">
+                                        <span class="cmd-badge" onclick="copyText('!加指令')">!加指令</span>
+                                        <span class="cmd-badge" onclick="copyText('!刪指令')">!刪指令</span>
+                                        <span class="cmd-badge" onclick="copyText('!查指令')">!查指令</span>
+                                    </div>
+                                    <span class="cmd-type-tag type-sys" style="background: rgba(56, 189, 248, 0.1); border-color: rgba(56, 189, 248, 0.3); color: #7dd3fc;">自訂指令 (CUSTOM)</span>
+                                </td>
+                                <td>
+                                    <div class="text-silver small" style="line-height: 2;">
+                                        <div><span class="logic-bold text-white">!加指令 [名稱] [回覆內容]</span>：新增自訂關鍵字回覆。</div>
+                                        <div><span class="logic-bold text-white">!刪指令 [名稱]</span>：刪除指定的自訂指令。</div>
+                                        <div><span class="logic-bold text-white">!查指令</span>：列出本台所有的自訂指令。</div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
+                                        <span class="role-badge role-admin"><i class="fa-solid fa-user-secret"></i> 系統管理員</span>
+                                        <span class="role-badge role-mod"><i class="fa-solid fa-crown"></i> 頻道台主</span>
+                                        <span class="role-badge role-mod"><i class="fa-solid fa-shield-halved"></i> 頻道 MOD</span>
+                                    </div>
+                                    <p class="mb-0 mt-2 small text-white-50">自訂專屬頻道的文字回覆指令。</p>
+                                </td>
+                            </tr>
+
+                            <tr class="searchable-row">
+                                <td style="vertical-align: middle;">
+                                    <div style="display:flex; flex-wrap:wrap; gap:5px;">
+                                        <span class="cmd-badge" onclick="copyText('!換分類')">!換分類</span>
+                                        <span class="cmd-badge" onclick="copyText('!更改分類')">!更改分類</span>
+                                    </div>
+                                    <span class="cmd-type-tag type-sys" style="background: rgba(139, 92, 246, 0.1); border-color: rgba(139, 92, 246, 0.3); color: #c4b5fd;">分類控制 (CATEGORY)</span>
+                                </td>
+                                <td>
+                                    <div class="text-silver small" style="line-height: 2;">
+                                        <div><span class="logic-bold text-white">!換分類 [遊戲名稱]</span>：快速更改實況分類。</div>
+                                        <div class="text-white-50 mt-1"><i class="fa-solid fa-robot me-1"></i>底層邏輯：連動觸發 Nightbot 的 !game 指令。</div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
+                                        <span class="role-badge role-admin"><i class="fa-solid fa-user-secret"></i> 系統管理員</span>
+                                        <span class="role-badge role-mod"><i class="fa-solid fa-shield-halved"></i> 頻道 MOD</span>
+                                        <span class="role-badge" style="background: rgba(131, 24, 67, 0.3); border-color: #be185d; color: #fbcfe8;"><i class="fa-solid fa-star"></i> 頻道 VIP</span>
+                                    </div>
+                                    <p class="mb-0 mt-2 small text-white-50">允許 VIP 以上權限協助台主更改當前直播的遊戲分類。</p>
+                                </td>
+                            </tr>
+
+                            <tr class="searchable-row">
+                                <td style="vertical-align: middle;">
+                                    <div style="display:flex; flex-wrap:wrap; gap:5px;">
                                         <span class="cmd-badge" onclick="copyText('!簽到開關')">!簽到開關</span>
                                         <span class="cmd-badge" onclick="copyText('!定時開關')">!定時開關</span>
                                     </div>
