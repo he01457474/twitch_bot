@@ -273,6 +273,7 @@
 
         /* Role Badges */
         .role-badge { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 6px; font-size: 0.85rem; font-weight: 700; letter-spacing: 0.5px; border: 1px solid; }
+        .role-owner { background: rgba(234, 179, 8, 0.15); border-color: rgba(234, 179, 8, 0.4); color: #fde047; } /* 🌟 新增台主專屬金色 */
         .role-mod { background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.4); color: #6ee7b7; }
         .role-admin { background: rgba(244, 63, 94, 0.1); border-color: rgba(244, 63, 94, 0.4); color: #fda4af; }
 
@@ -284,6 +285,7 @@
         .type-category { background: rgba(236, 72, 153, 0.15); border-color: rgba(236, 72, 153, 0.4); color: #f472b6; }   /* 粉紫 */
         .type-switch   { background: rgba(245, 158, 11, 0.15); border-color: rgba(245, 158, 11, 0.4); color: #fcd34d; }   /* 黃 */
         .type-announce { background: rgba(45, 212, 191, 0.15); border-color: rgba(45, 212, 191, 0.4); color: #5eead4; }   /* 青藍 */
+        .type-promo    { background: rgba(249, 115, 22, 0.15); border-color: rgba(249, 115, 22, 0.4); color: #fdba74; }   /* 橘色 */
 
         /* !B人特權 - 靜態顯示 */
         .perm-special-highlight {
@@ -453,6 +455,7 @@
                             <i class="fa-solid fa-trophy me-2"></i>排行榜
                         </h5>
                         <p class="card-desc">查看本月前五名簽到排行榜，或查詢自己在頻道中的即時排名。</p>
+                        <div class="feature-note note-vip"><i class="fa-solid fa-lock"></i>查詢他人需 MOD+ 權限</div>
                         <div class="mt-3">
                             <span class="cmd-badge" onclick="copyText('!本月排名')">!本月排名</span>
                             <span class="cmd-badge" onclick="copyText('!我的排名')">!我的排名</span>
@@ -525,10 +528,9 @@
                     <div class="glass-card">
                         <h5 class="card-title" style="color:#fde047 !important"><i class="fa-solid fa-dice me-2"></i>每日運勢占卜
                         </h5>
-                        <p class="card-desc">測試你今天的運氣！包含整體運勢、幸運色、幸運數字以及幸運時段，甚至還有台主的頭髮狀態預測！</p>
+                        <p class="card-desc">測試你今天的運氣！包含整體運勢、幸運色、幸運數字以及幸運時段，甚至還有台主的頭髮狀態預測！(別名：!占卜)</p>
                         <div class="mt-3">
                             <span class="cmd-badge" onclick="copyText('!運勢')">!運勢</span>
-                            <span class="cmd-badge" onclick="copyText('!占卜')">!占卜</span>
                         </div>
                     </div>
                 </div>
@@ -538,11 +540,11 @@
                         <h5 class="card-title" style="color:#ec4899 !important"><i class="fa-solid fa-ring me-2"></i>結婚後宮系統
                         </h5>
                         <p class="card-desc">建立你的婚姻及後宮！防 NTR 機制、30秒自動倒數，並擁有正宮、皇貴妃等古風稱謂。</p>
-                        <div class="feature-note note-vip"><i class="fa-solid fa-clock"></i>求婚時限 30 秒</div>
+                        <div class="feature-note note-vip"><i class="fa-solid fa-lock"></i>查詢他人伴侶需 VIP+ 權限</div>
                         <div>
                             <span class="cmd-badge" onclick="copyText('!求婚 @對象')">!求婚 @對象</span>
                             <span class="cmd-badge" onclick="copyText('!yes')">!yes (答應)</span>
-                            <span class="cmd-badge" onclick="copyText('!cp')">!cp (後宮名錄)</span>
+                            <span class="cmd-badge" onclick="copyText('!cp')">!cp (名錄)</span>
                         </div>
                     </div>
                 </div>
@@ -734,7 +736,7 @@
                                 <td>
                                     <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
                                         <span class="role-badge role-admin"><i class="fa-solid fa-user-secret"></i> 系統管理員</span>
-                                        <span class="role-badge role-mod"><i class="fa-solid fa-crown"></i> 頻道台主</span>
+                                        <span class="role-badge role-owner"><i class="fa-solid fa-crown"></i> 頻道台主</span>
                                         <span class="role-badge role-mod"><i class="fa-solid fa-shield-halved"></i> 頻道 MOD</span>
                                     </div>
                                     <p class="mb-0 mt-2 small text-white-50">自訂專屬頻道的文字回覆指令。</p>
@@ -744,19 +746,42 @@
                             <tr class="searchable-row">
                                 <td>
                                     <div class="d-flex flex-wrap gap-2 mb-3">
+                                        <span class="cmd-badge" onclick="copyText('!設定工商')">!設定工商</span>
+                                        <span class="cmd-badge" onclick="copyText('!刪工商')">!刪工商</span>
+                                        <span class="cmd-badge" onclick="copyText('!清空工商')">!清空工商</span>
+                                    </div>
+                                    <div><span class="cmd-type-tag type-promo">工商推廣 (PROMO)</span></div>
+                                </td>
+                                <td>
+                                    <span class="param-item"><span class="param-key key-yellow">!設定工商 [名稱] [內容]</span>同時新增「本場限定」的自訂指令與定時輪播公告（公告會自動加上 📢）。</span>
+                                    <span class="param-item"><span class="param-key key-red">!刪工商 [名稱]</span>刪除指定的臨時工商指令與其連動的公告。</span>
+                                    <span class="param-item"><span class="param-key key-red">!清空工商</span>一鍵清空本場直播所有的臨時工商指令與連動公告。</span>
+                                </td>
+                                <td>
+                                    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
+                                        <span class="role-badge role-admin"><i class="fa-solid fa-user-secret"></i> 系統管理員</span>
+                                        <span class="role-badge role-owner"><i class="fa-solid fa-crown"></i> 頻道台主</span>
+                                        <span class="role-badge role-mod"><i class="fa-solid fa-shield-halved"></i> 頻道 MOD</span>
+                                    </div>
+                                    <p class="mb-0 mt-2 small text-white-50">超級方便的一鍵工商設定，直播關台後會自動全數銷毀。</p>
+                                </td>
+                            </tr>
+
+                            <tr class="searchable-row">
+                                <td>
+                                    <div class="d-flex flex-wrap gap-2 mb-3">
                                         <span class="cmd-badge" onclick="copyText('!換分類')">!換分類</span>
-                                        <span class="cmd-badge" onclick="copyText('!更改分類')">!更改分類</span>
                                     </div>
                                     <div><span class="cmd-type-tag type-category">分類控制 (CATEGORY)</span></div>
                                 </td>
                                 <td>
-                                    <span class="param-item"><span class="param-key key-purple">!換分類 [遊戲名稱]</span>快速更改目前的實況分類。</span>
+                                    <span class="param-item"><span class="param-key key-purple">!換分類 [遊戲名稱]</span>快速更改目前的實況分類 (別名：!更改分類)。</span>
                                     <div class="text-white-50 mt-2 small"><i class="fa-solid fa-robot me-1"></i>底層邏輯：連動觸發 Nightbot 的 !game 指令。</div>
                                 </td>
                                 <td>
                                     <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
                                         <span class="role-badge role-admin"><i class="fa-solid fa-user-secret"></i> 系統管理員</span>
-                                        <span class="role-badge role-mod"><i class="fa-solid fa-crown"></i> 頻道台主</span>
+                                        <span class="role-badge role-owner"><i class="fa-solid fa-crown"></i> 頻道台主</span>
                                         <span class="role-badge role-mod"><i class="fa-solid fa-shield-halved"></i> 頻道 MOD</span>
                                     </div>
                                     <p class="mb-0 mt-2 small text-white-50">允許 MOD 以上權限協助台主更改遊戲分類。</p>
@@ -773,12 +798,12 @@
                                 </td>
                                 <td>
                                     <span class="param-item"><span class="param-key key-blue">!簽到開關</span>啟用或關閉「每日簽到」功能。</span>
-                                    <span class="param-item"><span class="param-key key-blue">!定時開關</span>啟用或關閉「定時輪播公告」功能。</span>
+                                    <span class="param-item"><span class="param-key key-blue">!定時開關</span>啟用或關閉「定時輪播公告」功能 (別名：!公告開關)。</span>
                                 </td>
                                 <td>
                                     <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
                                         <span class="role-badge role-admin"><i class="fa-solid fa-user-secret"></i> 系統管理員</span>
-                                        <span class="role-badge role-mod"><i class="fa-solid fa-crown"></i> 頻道台主</span>
+                                        <span class="role-badge role-owner"><i class="fa-solid fa-crown"></i> 頻道台主</span>
                                     </div>
                                     <p class="mb-0 mt-2 small text-white-50">全域啟用或關閉頻道的功能服務。</p>
                                 </td>
@@ -789,8 +814,8 @@
                                     <div class="d-flex flex-wrap gap-2 mb-3">
                                         <span class="cmd-badge" onclick="copyText('!加公告')">!加公告</span>
                                         <span class="cmd-badge" onclick="copyText('!臨時公告')">!臨時公告</span>
-                                        <span class="cmd-badge" onclick="copyText('!清除臨時')">!清除臨時</span>
                                         <span class="cmd-badge" onclick="copyText('!刪公告')">!刪公告</span>
+                                        <span class="cmd-badge" onclick="copyText('!清除臨時')">!清除臨時</span>
                                         <span class="cmd-badge" onclick="copyText('!公告列表')">!公告列表</span>
                                         <span class="cmd-badge" onclick="copyText('!公告')">!公告</span>
                                     </div>
@@ -798,16 +823,16 @@
                                 </td>
                                 <td>
                                     <span class="param-item"><span class="param-key key-green">!加公告 [內容]</span>新增常駐輪播公告。</span>
-                                    <span class="param-item"><span class="param-key key-yellow">!臨時公告 [內容]</span>新增僅限本場直播的輪播公告 <span class="text-nowrap">(關台自動清除)。</span></span>
-                                    <span class="param-item"><span class="param-key key-red">!清除臨時</span>清空本頻道的臨時公告。</span>
+                                    <span class="param-item"><span class="param-key key-yellow">!臨時公告 [內容]</span>新增本場限定公告 <span class="text-nowrap">(別名：!今晚公告)。</span></span>
                                     <span class="param-item"><span class="param-key key-red">!刪公告 [ID]</span>刪除指定 ID 的公告 (包含臨時與常駐)。</span>
+                                    <span class="param-item"><span class="param-key key-red">!清除臨時</span>一鍵清空本場臨時公告 <span class="text-nowrap">(別名：!刪除臨時)。</span></span>
                                     <span class="param-item"><span class="param-key key-blue">!公告列表</span>查看目前所有公告清單與 ID。</span>
                                     <span class="param-item"><span class="param-key key-purple">!公告</span>手動強制推播下一則輪播訊息。</span>
                                 </td>
                                 <td>
                                     <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
                                         <span class="role-badge role-admin"><i class="fa-solid fa-user-secret"></i> 系統管理員</span>
-                                        <span class="role-badge role-mod"><i class="fa-solid fa-crown"></i> 頻道台主</span>
+                                        <span class="role-badge role-owner"><i class="fa-solid fa-crown"></i> 頻道台主</span>
                                     </div>
                                     <p class="mb-0 mt-2 small text-white-50">控制聊天室定時輪播訊息的增刪查改。</p>
                                 </td>
