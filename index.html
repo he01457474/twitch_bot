@@ -95,7 +95,7 @@
         /* 共用動畫：流光特效 */
         @keyframes text-shine-bold { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
         
-        /* 左上 LOGO 文字 (保留流光) */
+        /* 左上 LOGO 文字 */
         .brand-text {
             font-weight: 900; font-size: 1.6rem; letter-spacing: 1px;
             background: linear-gradient(90deg, #ffffff 0%, #e9d5ff 25%, #a855f7 50%, #e9d5ff 75%, #ffffff 100%);
@@ -103,7 +103,7 @@
             animation: text-shine-bold 4s linear infinite; 
         }
 
-        /* --- H1 主標題與 Lead Text 層次區隔 --- */
+        /* --- H1 主標題與 Lead Text --- */
         .hero-section { padding: 100px 0 40px 0; text-align: center; }
         
         @keyframes title-pulse {
@@ -147,7 +147,6 @@
             animation: pulse-green-glow 2s infinite;
         }
 
-        /* 內容樣式 */
         .cmd-section { content-visibility: auto; contain-intrinsic-size: 800px; }
         
         .section-header {
@@ -254,15 +253,36 @@
         .card-title { font-weight: 900; margin-bottom: 15px; font-size: 1.5rem; color: #fff; }
         .card-desc { color: var(--text-silver); font-size: 1.05rem; font-weight: 500; padding-bottom: 25px; line-height: 1.7; flex-grow: 1; }
         
-        /* 表格與參數標籤的多色彩樣式 */
         .table-container { background: #09090b; border-radius: 16px; border: 1px solid #3f3f46; overflow: hidden; }
         .custom-table th { background: #1c1c1f; color: #fff; padding: 20px; }
         .custom-table td { padding: 20px; border-bottom: 1px solid #27272a; color: #fff; vertical-align: top; }
         
-        .param-item { display: block; margin-bottom: 10px; font-size: 1rem; color: #e4e4e7; line-height: 1.6; }
+        /* 🌟 重構：功能詳解的 Flexbox 網格對齊系統 */
+        .param-item { 
+            display: flex; 
+            align-items: flex-start; 
+            gap: 12px; 
+            margin-bottom: 14px; 
+            font-size: 0.95rem; 
+            color: #e4e4e7; 
+            line-height: 1.6; 
+        }
+        .param-key { 
+            display: inline-block; 
+            font-family: 'JetBrains Mono', monospace; 
+            padding: 4px 10px; 
+            border-radius: 6px; 
+            font-weight: bold; 
+            border: 1px solid; 
+            flex-shrink: 0; /* 鎖死寬度，絕對不縮水 */
+            white-space: nowrap; /* 鎖死文字，絕對不折行 */
+        }
+        .param-text {
+            flex-grow: 1; /* 說明文字自動填滿剩餘空間 */
+            padding-top: 3px; /* 微調讓文字與標籤垂直置中 */
+        }
         
-        /* 色彩豐富的參數標籤 */
-        .param-key { display: inline-block; font-family: 'JetBrains Mono', monospace; padding: 3px 10px; border-radius: 6px; margin-right: 10px; font-weight: bold; border: 1px solid; }
+        /* 色彩標籤 */
         .key-yellow { color: #fbbf24; background: rgba(251, 191, 36, 0.15); border-color: rgba(251, 191, 36, 0.4); }
         .key-blue { color: #38bdf8; background: rgba(56, 189, 248, 0.15); border-color: rgba(56, 189, 248, 0.4); }
         .key-green { color: #34d399; background: rgba(52, 211, 153, 0.15); border-color: rgba(52, 211, 153, 0.4); }
@@ -273,93 +293,61 @@
 
         /* Role Badges */
         .role-badge { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 6px; font-size: 0.85rem; font-weight: 700; letter-spacing: 0.5px; border: 1px solid; }
-        .role-owner { background: rgba(234, 179, 8, 0.15); border-color: rgba(234, 179, 8, 0.4); color: #fde047; } /* 🌟 新增台主專屬金色 */
+        .role-owner { background: rgba(234, 179, 8, 0.15); border-color: rgba(234, 179, 8, 0.4); color: #fde047; } 
         .role-mod { background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.4); color: #6ee7b7; }
         .role-admin { background: rgba(244, 63, 94, 0.1); border-color: rgba(244, 63, 94, 0.4); color: #fda4af; }
 
-        /* 系統優化：指令分類標籤 (獨立類別管理) */
+        /* 系統分類標籤 */
         .cmd-type-tag { display: inline-block; padding: 4px 10px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; font-family: 'JetBrains Mono'; letter-spacing: 0.5px; border: 1px solid; }
-        .type-ban      { background: rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.4); color: #fca5a5; }     /* 紅 */
-        .type-unban    { background: rgba(52, 211, 153, 0.15); border-color: rgba(52, 211, 153, 0.4); color: #6ee7b7; }   /* 綠 */
-        .type-custom   { background: rgba(56, 189, 248, 0.15); border-color: rgba(56, 189, 248, 0.4); color: #7dd3fc; }   /* 藍 */
-        .type-category { background: rgba(236, 72, 153, 0.15); border-color: rgba(236, 72, 153, 0.4); color: #f472b6; }   /* 粉紫 */
-        .type-switch   { background: rgba(245, 158, 11, 0.15); border-color: rgba(245, 158, 11, 0.4); color: #fcd34d; }   /* 黃 */
-        .type-announce { background: rgba(45, 212, 191, 0.15); border-color: rgba(45, 212, 191, 0.4); color: #5eead4; }   /* 青藍 */
-        .type-promo    { background: rgba(249, 115, 22, 0.15); border-color: rgba(249, 115, 22, 0.4); color: #fdba74; }   /* 橘色 */
+        .type-ban      { background: rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.4); color: #fca5a5; }   
+        .type-unban    { background: rgba(52, 211, 153, 0.15); border-color: rgba(52, 211, 153, 0.4); color: #6ee7b7; }   
+        .type-custom   { background: rgba(56, 189, 248, 0.15); border-color: rgba(56, 189, 248, 0.4); color: #7dd3fc; }   
+        .type-category { background: rgba(236, 72, 153, 0.15); border-color: rgba(236, 72, 153, 0.4); color: #f472b6; }   
+        .type-switch   { background: rgba(245, 158, 11, 0.15); border-color: rgba(245, 158, 11, 0.4); color: #fcd34d; }   
+        .type-announce { background: rgba(45, 212, 191, 0.15); border-color: rgba(45, 212, 191, 0.4); color: #5eead4; }   
+        .type-promo    { background: rgba(249, 115, 22, 0.15); border-color: rgba(249, 115, 22, 0.4); color: #fdba74; }   
+        .type-active   { background: rgba(245, 158, 11, 0.15); border-color: rgba(245, 158, 11, 0.4); color: #fcd34d; }   
 
-        /* !B人特權 - 靜態顯示 */
         .perm-special-highlight {
             margin-top: 8px; padding: 6px 10px; border-radius: 4px;
             background: linear-gradient(90deg, rgba(234, 179, 8, 0.15) 0%, rgba(0,0,0,0) 100%);
-            border-left: 3px solid #eab308; 
-            color: #fde047; font-size: 0.8rem; font-weight: 700;
+            border-left: 3px solid #eab308; color: #fde047; font-size: 0.8rem; font-weight: 700;
             display: flex; align-items: center; gap: 8px;
             filter: drop-shadow(0 0 2px rgba(234, 179, 8, 0.2));
         }
 
-        /* 指令 Hover 互動特效 */
         .cmd-badge { 
             background: rgba(168, 85, 247, 0.15); color: #e9d5ff; 
             border: 1px solid rgba(168, 85, 247, 0.4); padding: 8px 14px; 
             border-radius: 6px; font-family: 'JetBrains Mono'; font-weight: 600; 
-            cursor: pointer; display: inline-block; 
-            transition: all 0.2s ease; 
+            cursor: pointer; display: inline-block; transition: all 0.2s ease; 
         }
         .cmd-badge:hover {
-            background: rgba(168, 85, 247, 0.5); 
-            border-color: #ffffff; color: #ffffff;
-            transform: translateY(-2px); 
-            box-shadow: 0 4px 12px rgba(168, 85, 247, 0.3); 
+            background: rgba(168, 85, 247, 0.5); border-color: #ffffff; color: #ffffff;
+            transform: translateY(-2px); box-shadow: 0 4px 12px rgba(168, 85, 247, 0.3); 
         }
-
     </style>
 </head>
 <body>
 
-    <div class="bg-container">
-        <div class="bg-grid"></div>
-    </div>
+    <div class="bg-container"><div class="bg-grid"></div></div>
 
-    <div id="copyToast" class="copy-tooltip">
-        <i class="fa-solid fa-check-circle me-2"></i>指令已複製
-    </div>
-
-    <button id="backToTop" onclick="scrollToTop()">
-        <i class="fa-solid fa-arrow-up"></i>
-    </button>
+    <div id="copyToast" class="copy-tooltip"><i class="fa-solid fa-check-circle me-2"></i>指令已複製</div>
+    <button id="backToTop" onclick="scrollToTop()"><i class="fa-solid fa-arrow-up"></i></button>
 
     <nav class="navbar navbar-expand-lg navbar-dark sticky-top">
         <div class="container">
             <a class="navbar-brand" href="#">
-                <i class="fa-solid fa-robot"></i>
-                <span class="brand-text">BOT MANUAL</span>
+                <i class="fa-solid fa-robot"></i><span class="brand-text">BOT MANUAL</span>
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
-                    <li class="nav-item">
-                        <a class="nav-link" href="#viewer">
-                            <i class="fa-solid fa-users"></i>
-                            <span>觀眾指令</span>
-                            <span class="nav-badge">VIEWER</span>
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#fun">
-                            <i class="fa-solid fa-gamepad"></i>
-                            <span>娛樂互動</span>
-                            <span class="nav-badge">FUN</span>
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#management">
-                            <i class="fa-solid fa-shield-halved"></i>
-                            <span>管理後台</span>
-                            <span class="nav-badge">ADMIN</span>
-                        </a>
-                    </li>
+                    <li class="nav-item"><a class="nav-link" href="#viewer"><i class="fa-solid fa-users"></i><span>觀眾指令</span></a></li>
+                    <li class="nav-item"><a class="nav-link" href="#fun"><i class="fa-solid fa-gamepad"></i><span>娛樂互動</span></a></li>
+                    <li class="nav-item"><a class="nav-link" href="#management"><i class="fa-solid fa-shield-halved"></i><span>管理後台</span></a></li>
                 </ul>
             </div>
         </div>
@@ -368,21 +356,13 @@
     <div class="hero-section">
         <div class="container">
             <h1 class="hero-title">Bot 指令手冊</h1>
-            
-            <div class="hero-desc-box">
-                <p class="lead">整合結婚後宮、簽到系統、全自動斗內廣播與自動化管理的智慧助手</p>
-            </div>
-            
+            <div class="hero-desc-box"><p class="lead">整合結婚後宮、簽到系統、全自動斗內廣播與自動化管理的智慧助手</p></div>
             <div class="search-container">
                 <i class="fa-solid fa-magnifying-glass search-icon"></i>
                 <input type="text" id="searchInput" class="search-input" placeholder="搜尋指令 (例如: 求婚, 簽到, 排名...)" oninput="searchCommands()">
             </div>
-
             <div class="version-container" style="text-align: center; margin-bottom: 60px;">
-                <div class="version-badge">
-                    <span class="version-dot"></span>
-                    <span>v5.0.2 穩定版</span>
-                </div>
+                <div class="version-badge"><span class="version-dot"></span><span>v5.0.2 穩定版</span></div>
             </div>
         </div>
     </div>
@@ -392,17 +372,12 @@
         <div id="viewer" class="cmd-section">
             <div class="section-header">
                 <i class="fa-solid fa-users section-icon"></i>
-                <div>
-                    <h2 class="gradient-text">觀眾常用指令</h2>
-                    <span class="en-sub-title">VIEWER COMMANDS</span>
-                </div>
+                <div><h2 class="gradient-text">觀眾常用指令</h2><span class="en-sub-title">VIEWER COMMANDS</span></div>
             </div>
             <div class="row g-4">
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#34d399 !important">
-                            <i class="fa-solid fa-calendar-check me-2"></i>每日簽到
-                        </h5>
+                        <h5 class="card-title" style="color:#34d399 !important"><i class="fa-solid fa-calendar-check me-2"></i>每日簽到</h5>
                         <p class="card-desc">累積觀看次數與積分，是鐵粉的證明！<br><span class="text-white-50 small">每日限一次，需開台狀態。</span></p>
                         <div class="mt-3"><span class="cmd-badge" onclick="copyText('!簽到')">!簽到</span></div>
                     </div>
@@ -410,64 +385,42 @@
                 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#a78bfa !important">
-                            <i class="fa-solid fa-address-card me-2"></i>個人查詢
-                        </h5>
+                        <h5 class="card-title" style="color:#a78bfa !important"><i class="fa-solid fa-address-card me-2"></i>個人查詢</h5>
                         <p class="card-desc">查詢完整的簽到履歷，包含：本月簽到次數、歷史簽到總次數、本月開台次數以及最後簽到日。</p>
                         <div class="feature-note note-vip"><i class="fa-solid fa-lock"></i>查詢他人需 VIP+ 權限</div>
-                        <div>
-                            <span class="cmd-badge" onclick="copyText('!查詢')">!查詢</span>
-                            <span class="cmd-badge" onclick="copyText('!查詢 @ID')">!查詢 @ID</span>
-                        </div>
+                        <div><span class="cmd-badge" onclick="copyText('!查詢')">!查詢</span> <span class="cmd-badge" onclick="copyText('!查詢 @ID')">!查詢 @ID</span></div>
                     </div>
                 </div>
 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#6ee7b7 !important">
-                            <i class="fa-solid fa-stopwatch me-2"></i>掛台肝度
-                        </h5>
+                        <h5 class="card-title" style="color:#6ee7b7 !important"><i class="fa-solid fa-stopwatch me-2"></i>掛台肝度</h5>
                         <p class="card-desc">查詢觀眾的總觀看時數、發言量以及目前的進出聊天室狀態。</p>
                         <div class="feature-note note-allow"><i class="fa-solid fa-check"></i>支援查詢他人</div>
-                        <div>
-                            <span class="cmd-badge" onclick="copyText('!cu')">!cu</span>
-                            <span class="cmd-badge" onclick="copyText('!cu @ID')">!cu @ID</span>
-                        </div>
+                        <div><span class="cmd-badge" onclick="copyText('!cu')">!cu</span> <span class="cmd-badge" onclick="copyText('!cu @ID')">!cu @ID</span></div>
                     </div>
                 </div>
 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#c084fc !important">
-                            <i class="fa-solid fa-clock-rotate-left me-2"></i>前世查水表
-                        </h5>
-                        <p class="card-desc">稽查使用者的 Twitch 歷史改名紀錄。</p>
-                        <div class="mt-3">
-                            <span class="cmd-badge" onclick="copyText('!前世')">!前世</span>
-                            <span class="cmd-badge" onclick="copyText('!前世 @ID')">!前世 @ID</span>
-                        </div>
+                        <h5 class="card-title" style="color:#c084fc !important"><i class="fa-solid fa-clock-rotate-left me-2"></i>前世查水表</h5>
+                        <p class="card-desc">稽查使用者的 Twitch 歷史改名紀錄。<br><span class="text-white-50 small">※ 僅能查詢機器人導入後的改名紀錄，不溯及既往。</span></p>
+                        <div class="mt-3"><span class="cmd-badge" onclick="copyText('!前世')">!前世</span> <span class="cmd-badge" onclick="copyText('!前世 @ID')">!前世 @ID</span></div>
                     </div>
                 </div>
 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#fbbf24 !important">
-                            <i class="fa-solid fa-trophy me-2"></i>排行榜
-                        </h5>
+                        <h5 class="card-title" style="color:#fbbf24 !important"><i class="fa-solid fa-trophy me-2"></i>排行榜</h5>
                         <p class="card-desc">查看本月前五名簽到排行榜，或查詢自己在頻道中的即時排名。</p>
                         <div class="feature-note note-vip"><i class="fa-solid fa-lock"></i>查詢他人需 MOD+ 權限</div>
-                        <div class="mt-3">
-                            <span class="cmd-badge" onclick="copyText('!本月排名')">!本月排名</span>
-                            <span class="cmd-badge" onclick="copyText('!我的排名')">!我的排名</span>
-                        </div>
+                        <div class="mt-3"><span class="cmd-badge" onclick="copyText('!本月排名')">!本月排名</span> <span class="cmd-badge" onclick="copyText('!我的排名')">!我的排名</span></div>
                     </div>
                 </div>
 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#fb923c !important">
-                            <i class="fa-solid fa-clock-rotate-left me-2"></i>歷史榮譽榜
-                        </h5>
+                        <h5 class="card-title" style="color:#fb923c !important"><i class="fa-solid fa-clock-rotate-left me-2"></i>歷史榮譽榜</h5>
                         <p class="card-desc">查詢過去指定月份的前五名簽到排行榜 (格式 YYYY-MM)。</p>
                         <div class="mt-3"><span class="cmd-badge" onclick="copyText('!月排名 2025-11')">!月排名 YYYY-MM</span></div>
                     </div>
@@ -475,37 +428,25 @@
 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#f472b6 !important">
-                            <i class="fa-solid fa-heart me-2"></i>追隨時間
-                        </h5>
-                        <p class="card-desc">精確計算你的追隨時長，並自動對應中文名稱。</p>
+                        <h5 class="card-title" style="color:#f472b6 !important"><i class="fa-solid fa-heart me-2"></i>追隨時間</h5>
+                        <p class="card-desc">精確計算你的追隨時長，並自動對應中文名稱 (別名：!追隨時間、!followage)。</p>
                         <div class="feature-note note-allow"><i class="fa-solid fa-check"></i>支援查詢他人</div>
-                        <div>
-                            <span class="cmd-badge" onclick="copyText('!芯寶')">!芯寶</span>
-                            <span class="cmd-badge" onclick="copyText('!芯寶 @ID')">!芯寶 @ID</span>
-                        </div>
+                        <div><span class="cmd-badge" onclick="copyText('!芯寶')">!芯寶</span> <span class="cmd-badge" onclick="copyText('!芯寶 @ID')">!芯寶 @ID</span></div>
                     </div>
                 </div>
 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#22d3ee !important">
-                            <i class="fa-solid fa-cake-candles me-2"></i>帳號生日
-                        </h4>
+                        <h5 class="card-title" style="color:#22d3ee !important"><i class="fa-solid fa-cake-candles me-2"></i>帳號生日</h4>
                         <p class="card-desc">查詢你的Twitch 帳號的註冊日，以及帳號註冊了多久 (中文格式)。</p>
                         <div class="feature-note note-vip"><i class="fa-solid fa-lock"></i>查詢他人需 VIP+ 權限</div>
-                        <div>
-                            <span class="cmd-badge" onclick="copyText('!創建多久')">!創建多久</span>
-                            <span class="cmd-badge" onclick="copyText('!創建多久 @ID')">!創建多久 @ID</span>
-                        </div>
+                        <div><span class="cmd-badge" onclick="copyText('!創建多久')">!創建多久</span> <span class="cmd-badge" onclick="copyText('!創建多久 @ID')">!創建多久 @ID</span></div>
                     </div>
                 </div>
                 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#e2e8f0 !important">
-                            <i class="fa-solid fa-circle-question me-2"></i>指令幫助
-                        </h5>
+                        <h5 class="card-title" style="color:#e2e8f0 !important"><i class="fa-solid fa-circle-question me-2"></i>指令幫助</h5>
                         <p class="card-desc">獲取完整的機器人指令列表連結，隨時查閱所有可用功能。</p>
                         <div class="mt-3"><span class="cmd-badge" onclick="copyText('!幫助')">!幫助</span></div>
                     </div>
@@ -517,28 +458,21 @@
         <div id="fun" class="cmd-section">
             <div class="section-header">
                 <i class="fa-solid fa-gamepad section-icon"></i>
-                <div>
-                    <h2 class="gradient-text">娛樂互動</h2>
-                    <span class="en-sub-title">FUN & INTERACTION</span>
-                </div>
+                <div><h2 class="gradient-text">娛樂互動</h2><span class="en-sub-title">FUN & INTERACTION</span></div>
             </div>
             <div class="row g-4">
                 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#fde047 !important"><i class="fa-solid fa-dice me-2"></i>每日運勢占卜
-                        </h5>
-                        <p class="card-desc">測試你今天的運氣！包含整體運勢、幸運色、幸運數字以及幸運時段，甚至還有台主的頭髮狀態預測！(別名：!占卜)</p>
-                        <div class="mt-3">
-                            <span class="cmd-badge" onclick="copyText('!運勢')">!運勢</span>
-                        </div>
+                        <h5 class="card-title" style="color:#fde047 !important"><i class="fa-solid fa-dice me-2"></i>每日運勢占卜</h5>
+                        <p class="card-desc">測試你今天的運氣！包含運勢、幸運色、數字與台主頭髮預測！(別名：!占卜)</p>
+                        <div class="mt-3"><span class="cmd-badge" onclick="copyText('!運勢')">!運勢</span></div>
                     </div>
                 </div>
 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#ec4899 !important"><i class="fa-solid fa-ring me-2"></i>結婚後宮系統
-                        </h5>
+                        <h5 class="card-title" style="color:#ec4899 !important"><i class="fa-solid fa-ring me-2"></i>結婚後宮系統</h5>
                         <p class="card-desc">建立你的婚姻及後宮！防 NTR 機制、30秒自動倒數，並擁有正宮、皇貴妃等古風稱謂。</p>
                         <div class="feature-note note-vip"><i class="fa-solid fa-lock"></i>查詢他人伴侶需 VIP+ 權限</div>
                         <div>
@@ -551,8 +485,7 @@
 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#ef4444 !important"><i class="fa-solid fa-heart-crack me-2"></i>離婚協議
-                        </h5>
+                        <h5 class="card-title" style="color:#ef4444 !important"><i class="fa-solid fa-heart-crack me-2"></i>離婚協議</h5>
                         <p class="card-desc">解除婚姻關係。為了防止誤觸，系統設有二次確認機制 (30秒)。</p>
                         <div class="feature-note note-danger"><i class="fa-solid fa-triangle-exclamation"></i>需輸入確認指令</div>
                         <div>
@@ -564,8 +497,7 @@
                 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#38bdf8 !important"><i class="fa-solid fa-comment-slash me-2"></i>自 Ban 冷靜
-                        </h5>
+                        <h5 class="card-title" style="color:#38bdf8 !important"><i class="fa-solid fa-comment-slash me-2"></i>自 Ban 冷靜</h5>
                         <p class="card-desc">覺得自己話太多？把「自己」禁言一段時間，冷靜一下。</p>
                         <div class="feature-note note-info"><i class="fa-solid fa-circle-info"></i>上限: 觀眾 10分 / VIP 1小時</div>
                         <div>
@@ -581,10 +513,7 @@
         <div id="management" class="cmd-section">
             <div class="section-header">
                 <i class="fa-solid fa-shield-halved section-icon"></i>
-                <div>
-                    <h2 class="gradient-text">管理與後台</h2>
-                    <span class="en-sub-title">MANAGEMENT DASHBOARD</span>
-                </div>
+                <div><h2 class="gradient-text">管理與後台</h2><span class="en-sub-title">MANAGEMENT DASHBOARD</span></div>
             </div>
             
             <div class="mb-4">
@@ -593,25 +522,19 @@
                     <span class="admin-label">系統核心權限</span>
                     <span class="admin-label-en">Core Permissions</span>
                 </div>
-                
                 <div class="admin-grid">
                     <div class="admin-card card-owner">
                         <div class="admin-icon-box"><i class="fa-solid fa-crown"></i></div>
                         <div class="admin-info">
                             <span class="admin-role">系統持有者</span>
-                            <div class="effect-wrapper-gold">
-                                每台都被當空氣的飝猫珤珤<span class="admin-id-unified">(fly_cat0420)</span>
-                            </div>
+                            <div class="effect-wrapper-gold">每台都被當空氣的飝猫珤珤<span class="admin-id-unified">(fly_cat0420)</span></div>
                         </div>
                     </div>
-
                     <div class="admin-card card-root">
                         <div class="admin-icon-box"><i class="fa-solid fa-terminal"></i></div>
                         <div class="admin-info">
                             <span class="admin-role">最高管理員</span>
-                            <div class="effect-wrapper-aurora">
-                                玆歐巴<span class="admin-id-unified">(tp012943)</span>
-                            </div>
+                            <div class="effect-wrapper-aurora">玆歐巴<span class="admin-id-unified">(tp012943)</span></div>
                         </div>
                     </div>
                 </div>
@@ -622,8 +545,8 @@
                     <table class="custom-table">
                         <thead>
                             <tr>
-                                <th width="20%">指令 (Command)</th>
-                                <th width="40%">功能詳解 (Detail Logic)</th>
+                                <th width="18%">指令 (Command)</th>
+                                <th width="42%">功能詳解 (Detail Logic)</th>
                                 <th>權限與說明 (Permission)</th>
                             </tr>
                         </thead>
@@ -631,84 +554,67 @@
                             
                             <tr class="searchable-row">
                                 <td>
-                                    <div class="d-flex flex-wrap gap-2 mb-3">
-                                        <span class="cmd-badge" onclick="copyText('!B人')">!B人</span>
-                                    </div>
+                                    <div class="d-flex flex-wrap gap-2 mb-3"><span class="cmd-badge" onclick="copyText('!B人')">!B人</span></div>
                                     <div><span class="cmd-type-tag type-ban">禁言 (TIMEOUT)</span></div>
                                 </td>
                                 <td>
                                     <div class="logic-card logic-blue">
-                                        <div class="logic-head logic-head-blue">
-                                            <i class="fa-regular fa-snowflake"></i> ❄️ 自願冷靜
-                                        </div>
+                                        <div class="logic-head logic-head-blue"><i class="fa-regular fa-snowflake"></i> ❄️ 自願冷靜</div>
                                         <div class="logic-content">
-                                            <div><span class="logic-bold">!B人</span> → 預設 10 分鐘</div>
-                                            <div><span class="logic-bold">!B人 30</span> → 禁言 30 秒</div>
-                                            <div><span class="logic-bold">!B人 隨機</span> → 60~600 秒大冒險</div>
+                                            <div class="d-flex mb-1"><span class="logic-bold text-nowrap me-2">!B人</span> <span>→ 預設 10 分鐘</span></div>
+                                            <div class="d-flex mb-1"><span class="logic-bold text-nowrap me-2">!B人 30</span> <span>→ 禁言 30 秒</span></div>
+                                            <div class="d-flex"><span class="logic-bold text-nowrap me-2">!B人 隨機</span> <span>→ 60~600 秒大冒險</span></div>
                                         </div>
                                     </div>
                                     <div class="logic-card logic-red">
-                                        <div class="logic-head logic-head-red">
-                                            <i class="fa-solid fa-gavel"></i> 🔨 強制執法
-                                        </div>
+                                        <div class="logic-head logic-head-red"><i class="fa-solid fa-gavel"></i> 🔨 強制執法</div>
                                         <div class="logic-content">
-                                            <div><span class="logic-bold">!B人 @ID 秒數</span> → 強制禁言對象</div>
+                                            <div class="d-flex"><span class="logic-bold text-nowrap me-2">!B人 @ID 秒數</span> <span>→ 強制禁言對象</span></div>
                                         </div>
                                     </div>
                                 </td>
                                 <td>
                                     <div class="d-flex flex-column gap-2">
-                                        
                                         <div class="perm-box perm-mod">
-                                            <div class="perm-head-mod">
-                                                <span class="perm-tag-mod">頻道 MOD</span>
-                                                <i class="fa-solid fa-infinity perm-icon-mod"></i>
-                                            </div>
+                                            <div class="perm-head-mod"><span class="perm-tag-mod">頻道 MOD</span><i class="fa-solid fa-infinity perm-icon-mod"></i></div>
                                             <div class="perm-info-mod">
                                                 <span><i class="fa-regular fa-clock me-1"></i>上限: <span class="perm-val">24小時</span></span>
                                                 <span><i class="fa-solid fa-bolt me-1"></i>冷卻: <span class="perm-val">無</span></span>
                                             </div>
-                                            <div class="perm-special-highlight">
-                                                <i class="fa-solid fa-crosshairs"></i> 特權：可指定任何人
-                                            </div>
+                                            <div class="perm-special-highlight"><i class="fa-solid fa-crosshairs"></i> 特權：可指定任何人</div>
                                         </div>
-
                                         <div class="perm-box perm-vip">
-                                            <div class="perm-head-vip">
-                                                <span class="perm-tag-vip">頻道 VIP</span>
-                                                <i class="fa-solid fa-star perm-icon-vip"></i>
-                                            </div>
+                                            <div class="perm-head-vip"><span class="perm-tag-vip">頻道 VIP</span><i class="fa-solid fa-star perm-icon-vip"></i></div>
                                             <div class="perm-info-vip">
                                                 <span><i class="fa-regular fa-clock me-1"></i>上限: <span class="perm-val">1小時</span></span>
                                                 <span><i class="fa-solid fa-hourglass-half me-1"></i>冷卻: <span class="perm-val">3秒</span></span>
                                             </div>
                                         </div>
-
                                         <div class="perm-box perm-viewer">
-                                            <div class="perm-head-viewer">
-                                                <span class="perm-tag-viewer">一般觀眾</span>
-                                                <i class="fa-solid fa-user perm-icon-viewer"></i>
-                                            </div>
+                                            <div class="perm-head-viewer"><span class="perm-tag-viewer">一般觀眾</span><i class="fa-solid fa-user perm-icon-viewer"></i></div>
                                             <div class="perm-info-viewer">
                                                 <span><i class="fa-regular fa-clock me-1"></i>上限: <span class="perm-val">10分鐘</span></span>
                                                 <span><i class="fa-solid fa-hourglass-half me-1"></i>冷卻: <span class="perm-val">10秒</span></span>
                                             </div>
                                         </div>
-
                                     </div>
                                 </td>
                             </tr>
                             
                             <tr class="searchable-row">
                                 <td>
-                                    <div class="d-flex flex-wrap gap-2 mb-3">
-                                        <span class="cmd-badge" onclick="copyText('!解B')">!解B</span>
-                                    </div>
+                                    <div class="d-flex flex-wrap gap-2 mb-3"><span class="cmd-badge" onclick="copyText('!解B')">!解B</span></div>
                                     <div><span class="cmd-type-tag type-unban">解除 (UNBAN)</span></div>
                                 </td>
                                 <td>
-                                    <span class="param-item"><span class="param-key key-blue">無參數</span>自動批量救援被誤 Ban 的 VIP。</span>
-                                    <span class="param-item"><span class="param-key key-yellow">@ID</span>直接解除指定目標的禁言。</span>
+                                    <div class="param-item">
+                                        <div class="param-key key-blue">無參數</div>
+                                        <div class="param-text">自動批量救援被誤 Ban 的 VIP。</div>
+                                    </div>
+                                    <div class="param-item">
+                                        <div class="param-key key-yellow">@ID</div>
+                                        <div class="param-text">直接解除指定目標的禁言。</div>
+                                    </div>
                                 </td>
                                 <td>
                                     <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
@@ -729,9 +635,18 @@
                                     <div><span class="cmd-type-tag type-custom">自訂指令 (CUSTOM)</span></div>
                                 </td>
                                 <td>
-                                    <span class="param-item"><span class="param-key key-green">!加指令 [名稱] [內容]</span>新增自訂關鍵字回覆。</span>
-                                    <span class="param-item"><span class="param-key key-red">!刪指令 [名稱]</span>刪除指定的自訂指令。</span>
-                                    <span class="param-item"><span class="param-key key-blue">!查指令</span>列出本台所有的自訂指令。</span>
+                                    <div class="param-item">
+                                        <div class="param-key key-green">!加指令 [名稱] [內容]</div>
+                                        <div class="param-text">新增自訂關鍵字回覆。</div>
+                                    </div>
+                                    <div class="param-item">
+                                        <div class="param-key key-red">!刪指令 [名稱]</div>
+                                        <div class="param-text">刪除指定的自訂指令。</div>
+                                    </div>
+                                    <div class="param-item">
+                                        <div class="param-key key-blue">!查指令</div>
+                                        <div class="param-text">列出本台所有的自訂指令。</div>
+                                    </div>
                                 </td>
                                 <td>
                                     <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
@@ -753,9 +668,18 @@
                                     <div><span class="cmd-type-tag type-promo">工商推廣 (PROMO)</span></div>
                                 </td>
                                 <td>
-                                    <span class="param-item"><span class="param-key key-yellow">!設定工商 [名稱] [內容]</span>同時新增「本場限定」的自訂指令與定時輪播公告（公告會自動加上 📢）。</span>
-                                    <span class="param-item"><span class="param-key key-red">!刪工商 [名稱]</span>刪除指定的臨時工商指令與其連動的公告。</span>
-                                    <span class="param-item"><span class="param-key key-red">!清空工商</span>一鍵清空本場直播所有的臨時工商指令與連動公告。</span>
+                                    <div class="param-item">
+                                        <div class="param-key key-yellow">!設定工商 [名稱] [內容]</div>
+                                        <div class="param-text">同時新增「本場限定」的自訂指令與定時輪播公告（公告會自動加上 📢）。</div>
+                                    </div>
+                                    <div class="param-item">
+                                        <div class="param-key key-red">!刪工商 [名稱]</div>
+                                        <div class="param-text">刪除指定的臨時工商指令與其連動的公告。</div>
+                                    </div>
+                                    <div class="param-item">
+                                        <div class="param-key key-red">!清空工商</div>
+                                        <div class="param-text">一鍵清空本場直播所有的臨時工商指令與連動公告。</div>
+                                    </div>
                                 </td>
                                 <td>
                                     <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
@@ -769,14 +693,41 @@
 
                             <tr class="searchable-row">
                                 <td>
-                                    <div class="d-flex flex-wrap gap-2 mb-3">
-                                        <span class="cmd-badge" onclick="copyText('!換分類')">!換分類</span>
+                                    <div class="d-flex flex-wrap gap-2 mb-3"><span class="cmd-badge" onclick="copyText('!活躍榜')">!活躍榜</span></div>
+                                    <div><span class="cmd-type-tag type-active">活躍度 (ACTIVE)</span></div>
+                                </td>
+                                <td>
+                                    <div class="param-item">
+                                        <div class="param-key key-yellow">無參數</div>
+                                        <div class="param-text">
+                                            即時統計並顯示本台前 5 名最高活躍度 (EXP) 的觀眾。
+                                            <div class="text-white-50 mt-1 small"><i class="fa-solid fa-calculator me-1"></i>EXP 計算：觀看分鐘數 × 2 + 發言次數 × 5</div>
+                                        </div>
                                     </div>
+                                </td>
+                                <td>
+                                    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
+                                        <span class="role-badge role-admin"><i class="fa-solid fa-user-secret"></i> 系統管理員</span>
+                                        <span class="role-badge role-owner"><i class="fa-solid fa-crown"></i> 頻道台主</span>
+                                        <span class="role-badge role-mod"><i class="fa-solid fa-shield-halved"></i> 頻道 MOD</span>
+                                    </div>
+                                    <p class="mb-0 mt-2 small text-white-50">揪出頻道死忠鐵粉的專屬指令 (別名：!top5、!活躍排行榜)。</p>
+                                </td>
+                            </tr>
+
+                            <tr class="searchable-row">
+                                <td>
+                                    <div class="d-flex flex-wrap gap-2 mb-3"><span class="cmd-badge" onclick="copyText('!換分類')">!換分類</span></div>
                                     <div><span class="cmd-type-tag type-category">分類控制 (CATEGORY)</span></div>
                                 </td>
                                 <td>
-                                    <span class="param-item"><span class="param-key key-purple">!換分類 [遊戲名稱]</span>快速更改目前的實況分類 (別名：!更改分類)。</span>
-                                    <div class="text-white-50 mt-2 small"><i class="fa-solid fa-robot me-1"></i>底層邏輯：連動觸發 Nightbot 的 !game 指令。</div>
+                                    <div class="param-item">
+                                        <div class="param-key key-purple">!換分類 [名稱]</div>
+                                        <div class="param-text">
+                                            快速更改目前的實況分類 (別名：!更改分類)。
+                                            <div class="text-white-50 mt-1 small"><i class="fa-solid fa-robot me-1"></i>底層邏輯：連動觸發 Nightbot 的 !game 指令。</div>
+                                        </div>
+                                    </div>
                                 </td>
                                 <td>
                                     <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
@@ -797,8 +748,14 @@
                                     <div><span class="cmd-type-tag type-switch">功能開關 (SWITCH)</span></div>
                                 </td>
                                 <td>
-                                    <span class="param-item"><span class="param-key key-blue">!簽到開關</span>啟用或關閉「每日簽到」功能。</span>
-                                    <span class="param-item"><span class="param-key key-blue">!定時開關</span>啟用或關閉「定時輪播公告」功能 (別名：!公告開關)。</span>
+                                    <div class="param-item">
+                                        <div class="param-key key-blue">!簽到開關</div>
+                                        <div class="param-text">啟用或關閉「每日簽到」功能。</div>
+                                    </div>
+                                    <div class="param-item">
+                                        <div class="param-key key-blue">!定時開關</div>
+                                        <div class="param-text">啟用或關閉「定時輪播公告」功能 (別名：!公告開關)。</div>
+                                    </div>
                                 </td>
                                 <td>
                                     <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
@@ -822,12 +779,30 @@
                                     <div><span class="cmd-type-tag type-announce">廣播管理 (ANNOUNCE)</span></div>
                                 </td>
                                 <td>
-                                    <span class="param-item"><span class="param-key key-green">!加公告 [內容]</span>新增常駐輪播公告。</span>
-                                    <span class="param-item"><span class="param-key key-yellow">!臨時公告 [內容]</span>新增本場限定公告 <span class="text-nowrap">(別名：!今晚公告)。</span></span>
-                                    <span class="param-item"><span class="param-key key-red">!刪公告 [ID]</span>刪除指定 ID 的公告 (包含臨時與常駐)。</span>
-                                    <span class="param-item"><span class="param-key key-red">!清除臨時</span>一鍵清空本場臨時公告 <span class="text-nowrap">(別名：!刪除臨時)。</span></span>
-                                    <span class="param-item"><span class="param-key key-blue">!公告列表</span>查看目前所有公告清單與 ID。</span>
-                                    <span class="param-item"><span class="param-key key-purple">!公告</span>手動強制推播下一則輪播訊息。</span>
+                                    <div class="param-item">
+                                        <div class="param-key key-green">!加公告 [內容]</div>
+                                        <div class="param-text">新增常駐輪播公告。</div>
+                                    </div>
+                                    <div class="param-item">
+                                        <div class="param-key key-yellow">!臨時公告 [內容]</div>
+                                        <div class="param-text">新增本場限定公告 (別名：!今晚公告)。</div>
+                                    </div>
+                                    <div class="param-item">
+                                        <div class="param-key key-red">!刪公告 [ID]</div>
+                                        <div class="param-text">刪除指定 ID 的公告 (包含臨時與常駐)。</div>
+                                    </div>
+                                    <div class="param-item">
+                                        <div class="param-key key-red">!清除臨時</div>
+                                        <div class="param-text">一鍵清空本場臨時公告 (別名：!刪除臨時)。</div>
+                                    </div>
+                                    <div class="param-item">
+                                        <div class="param-key key-blue">!公告列表</div>
+                                        <div class="param-text">查看目前所有公告清單與 ID。</div>
+                                    </div>
+                                    <div class="param-item">
+                                        <div class="param-key key-purple">!公告</div>
+                                        <div class="param-text">手動強制推播下一則輪播訊息。</div>
+                                    </div>
                                 </td>
                                 <td>
                                     <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
