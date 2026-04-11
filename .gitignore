@@ -1,0 +1,27 @@
+# 敏感設定（絕對不上傳）
+.env
+
+# 機器人主程式（走私有 repo）
+3.py
+
+# 資料庫與備份
+*.db
+*.db-shm
+*.db-wal
+backups/
+
+# 日誌
+logs/
+*.log
+
+# Python 暫存
+__pycache__/
+*.pyc
+*.pyo
+
+# Claude Code 設定
+.claude/
+
+# 系統暫存
+.DS_Store
+Thumbs.db
