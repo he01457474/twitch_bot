@@ -1,5 +1,5 @@
-﻿[Console]::OutputEncoding = [System.Text.Encoding]::GetEncoding(936)
-chcp 936 | Out-Null
+﻿[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+chcp 65001 | Out-Null
 
 Write-Host '正在關閉 Halo PixelBar USB 省電模式...' -ForegroundColor Cyan
 Write-Host ''
