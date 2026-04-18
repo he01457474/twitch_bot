@@ -20,9 +20,19 @@ Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Enum\USB' |
 
 Write-Host ''
 if ($found) {
-    Write-Host '完成！請重新插拔喭筒 USB 讓設定生效。' -ForegroundColor Yellow
+    Write-Host '裝置省電已關閉！' -ForegroundColor Green
 } else {
-    Write-Host '找不到喭筒裝置，請確認喭筒已插上。' -ForegroundColor Red
+    Write-Host '找不到喇叭裝置，請確認喇叭已插上。' -ForegroundColor Red
 }
+
+Write-Host ''
+Write-Host '關閉電源計畫 USB 選擇性暫停...' -ForegroundColor Cyan
+powercfg /SETACVALUEINDEX SCHEME_CURRENT 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226 0
+powercfg /SETDCVALUEINDEX SCHEME_CURRENT 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226 0
+powercfg /SETACTIVE SCHEME_CURRENT
+Write-Host '  OK' -ForegroundColor Green
+
+Write-Host ''
+Write-Host '完成！請重新插拔喇叭 USB 讓設定生效。' -ForegroundColor Yellow
 Write-Host ''
 Read-Host '按 Enter 關閉'

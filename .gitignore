@@ -25,3 +25,6 @@ __pycache__/
 # 系統暫存
 .DS_Store
 Thumbs.db
+
+# Playwright MCP 暫存
+.playwright-mcp/

@@ -4,4 +4,5 @@ if %errorlevel% neq 0 (
     powershell -Command "Start-Process '%~f0' -Verb RunAs"
     exit
 )
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0usb_power_fix.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\audio\usb_power_fix.ps1"
+start "" /min C:\Users\he014\AppData\Local\Programs\Python\Python310\pythonw.exe "%~dp0scripts\audio\keepalive_halo.py"
