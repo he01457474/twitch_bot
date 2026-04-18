@@ -1,0 +1,13 @@
+api: yes
+apiAddress: :9997
+
+authInternalUsers:
+  - user: any
+    pass:
+    permissions:
+      - action: publish
+      - action: read
+      - action: api
+
+paths:
+  all_others:

@@ -28,3 +28,10 @@ Thumbs.db
 
 # Playwright MCP 暫存
 .playwright-mcp/
+
+# 執行檔與壓縮包
+*.exe
+*.zip
+
+# 巢狀 git repo（各自獨立管理）
+docs/srt-relay-guide/

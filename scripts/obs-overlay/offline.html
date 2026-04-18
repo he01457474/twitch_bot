@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: transparent;
+    font-family: 'Arial Black', Arial, sans-serif;
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-start;
+    padding: 10px;
+  }
+  #widget {
+    background: rgba(0, 0, 0, 0.55);
+    border-radius: 8px;
+    padding: 6px 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  #dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #ff3333;
+    box-shadow: 0 0 6px #ff3333;
+    flex-shrink: 0;
+  }
+  #label {
+    font-size: 22px;
+    font-weight: 900;
+    color: #ff3333;
+    text-shadow: 1px 1px 3px #000;
+    letter-spacing: 2px;
+  }
+</style>
+</head>
+<body>
+<div id="widget">
+  <div id="dot"></div>
+  <div id="label">OFFLINE</div>
+</div>
+</body>
+</html>

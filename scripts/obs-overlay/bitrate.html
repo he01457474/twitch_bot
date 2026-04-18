@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: transparent;
+    font-family: 'Arial Black', Arial, sans-serif;
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-start;
+    padding: 10px;
+  }
+  #widget {
+    background: rgba(0, 0, 0, 0.55);
+    border-radius: 8px;
+    padding: 6px 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  #dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #00ff88;
+    box-shadow: 0 0 6px #00ff88;
+    flex-shrink: 0;
+    transition: background 0.3s;
+  }
+  #dot.low { background: #ffaa00; box-shadow: 0 0 6px #ffaa00; }
+  #dot.offline { background: #ff3333; box-shadow: 0 0 6px #ff3333; }
+  #label {
+    font-size: 22px;
+    font-weight: 900;
+    color: #ffffff;
+    text-shadow: 1px 1px 3px #000;
+    letter-spacing: 1px;
+    min-width: 120px;
+  }
+</style>
+</head>
+<body>
+<div id="widget">
+  <div id="dot"></div>
+  <div id="label">-- kbps</div>
+</div>
+<script>
+  const STREAM = 'flycat';
+  const API = `http://localhost:9997/v3/paths/get/${STREAM}`;
+  const LOW_THRESHOLD = 1500;
+
+  let prevBytes = null;
+  let prevTime = null;
+
+  async function update() {
+    try {
+      const res = await fetch(API, { cache: 'no-store' });
+      if (!res.ok) throw new Error('no response');
+      const data = await res.json();
+
+      const bytes = data.bytesReceived ?? 0;
+      const now = Date.now();
+
+      if (prevBytes !== null && prevTime !== null) {
+        const kbps = Math.round((bytes - prevBytes) * 8 / (now - prevTime));
+        const dot = document.getElementById('dot');
+        const label = document.getElementById('label');
+
+        let display;
+        if (kbps >= 1000) {
+          display = (kbps / 1000).toFixed(1) + ' Mbps';
+        } else {
+          display = kbps + ' kbps';
+        }
+        label.textContent = display;
+
+        if (kbps < 100) {
+          dot.className = 'offline';
+        } else if (kbps < LOW_THRESHOLD) {
+          dot.className = 'low';
+        } else {
+          dot.className = '';
+        }
+      }
+
+      prevBytes = bytes;
+      prevTime = now;
+    } catch (e) {
+      document.getElementById('dot').className = 'offline';
+      document.getElementById('label').textContent = '連線中...';
+      prevBytes = null;
+      prevTime = null;
+    }
+  }
+
+  update();
+  setInterval(update, 1000);
+</script>
+</body>
+</html>
