@@ -1,56 +1,53 @@
 @echo off
-set "PATHFILE=%TEMP%\noalbs_pf_%RANDOM%.txt"
-echo %~f0>"%PATHFILE%"
 set "TMPPS=%TEMP%\noalbs_install_%RANDOM%.ps1"
-powershell -NoProfile -Command "$p=(Get-Content '%PATHFILE%' -Encoding Default).Trim();$l=(Get-Content $p -Encoding Default);[IO.File]::WriteAllLines('%TMPPS%',$l[10..($l.Length-1)],[Text.Encoding]::GetEncoding(936))"
-del "%PATHFILE%"
+powershell -NoProfile -Command "$l=(Get-Content '%~f0' -Encoding UTF8);$l[6..($l.Length-1)]|Out-File '%TMPPS%' -Encoding UTF8"
 powershell -ExecutionPolicy Bypass -NoProfile -File "%TMPPS%"
 del "%TMPPS%" 2>nul
 goto :eof
-::PSSTART
-$ErrorActionPreference = 'Stop'
+chcp 65001 | Out-Null
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$ErrorActionPreference = 'Stop'
 
 Write-Host ''
 Write-Host '=============================' -ForegroundColor Cyan
-Write-Host '   NOALBS Ò»æI°²ÑbÔO¶¨¹¤¾ß   ' -ForegroundColor Cyan
+Write-Host '   NOALBS ä¸€éµå®‰è£è¨­å®šå·¥å…·   ' -ForegroundColor Cyan
 Write-Host '=============================' -ForegroundColor Cyan
 Write-Host ''
 
-$twitchId = (Read-Host '¢Ù ÄãµÄ Twitch ID£¨Ó¢ÎÄ¤Ì–£¬ÀıÈç kevin123£©').Trim().ToLower()
+$twitchId = (Read-Host 'â‘  ä½ çš„ Twitch IDï¼ˆè‹±æ–‡å¸³è™Ÿï¼Œä¾‹å¦‚ kevin123ï¼‰').Trim().ToLower()
 
 Write-Host ''
-Write-Host '¢Ú Õˆµ½ÏÂÃæß@‚€¾WÖ·£¬ÓÃÄãµÄ Twitch ¤Ì–µÇÈëáá°´ Connect£¬Ñ}Ñu oauth:... ß@¶Î' -ForegroundColor Yellow
+Write-Host 'â‘¡ è«‹åˆ°ä¸‹é¢é€™å€‹ç¶²å€ï¼Œç”¨ä½ çš„ Twitch å¸³è™Ÿç™»å…¥å¾ŒæŒ‰ Connectï¼Œè¤‡è£½ oauth:... é€™æ®µ' -ForegroundColor Yellow
 Write-Host '   https://twitchapps.com/tmi/' -ForegroundColor Cyan
-$twitchToken = (Read-Host '   ÙNÉÏÄãµÄ Token£¨oauth:xxxxxxxxxx£©').Trim()
+$twitchToken = (Read-Host '   è²¼ä¸Šä½ çš„ Tokenï¼ˆoauth:xxxxxxxxxxï¼‰').Trim()
 
 Write-Host ''
-$obsPassword = (Read-Host '¢Û ÄãµÄ OBS WebSocket ÃÜ´a£¨OBS ¡ú ¹¤¾ß ¡ú WebSocket ËÅ·şÆ÷ÔO¶¨£©').Trim()
+$obsPassword = (Read-Host 'â‘¢ ä½ çš„ OBS WebSocket å¯†ç¢¼ï¼ˆOBS â†’ å·¥å…· â†’ WebSocket ä¼ºæœå™¨è¨­å®šï¼‰').Trim()
 
 $installDir = "$env:USERPROFILE\Desktop\NOALBS_$twitchId"
 $zipPath    = "$env:TEMP\noalbs.zip"
 $noalbsUrl  = 'https://github.com/NOALBS/nginx-obs-automatic-low-bitrate-switching/releases/download/v2.16.1/noalbs-v2.16.1-x86_64-pc-windows-msvc.zip'
 
 Write-Host ''
-Write-Host 'ÕıÔÚÏÂİd NOALBS...' -ForegroundColor Cyan
+Write-Host 'æ­£åœ¨ä¸‹è¼‰ NOALBS...' -ForegroundColor Cyan
 
 try {
     Invoke-WebRequest -Uri $noalbsUrl -OutFile $zipPath -UseBasicParsing
 } catch {
     Write-Host ''
-    Write-Host '[åeÕ`] ÏÂİdÊ§”¡£¬Õˆ´_ÕJ¾WÂ·ßB¾€Õı³£ááÖØÔ‡¡£' -ForegroundColor Red
-    Read-Host '°´ Enter êPé]'
+    Write-Host '[éŒ¯èª¤] ä¸‹è¼‰å¤±æ•—ï¼Œè«‹ç¢ºèªç¶²è·¯é€£ç·šæ­£å¸¸å¾Œé‡è©¦ã€‚' -ForegroundColor Red
+    Read-Host 'æŒ‰ Enter é—œé–‰'
     exit 1
 }
 
-Write-Host 'ÕıÔÚ½â‰º¿s...' -ForegroundColor Cyan
+Write-Host 'æ­£åœ¨è§£å£“ç¸®...' -ForegroundColor Cyan
 Expand-Archive -Path $zipPath -DestinationPath $installDir -Force
 Remove-Item $zipPath -ErrorAction SilentlyContinue
 
 $inner = Get-ChildItem $installDir -Directory | Select-Object -First 1
 $noalbsPath = if ($inner) { $inner.FullName } else { $installDir }
 
-Write-Host 'ÏÂİdÍê³É' -ForegroundColor Green
+Write-Host 'ä¸‹è¼‰å®Œæˆ' -ForegroundColor Green
 
 @"
 TWITCH_BOT_USERNAME=$twitchId
@@ -104,18 +101,18 @@ TWITCH_BOT_OAUTH=$twitchToken
 
 Write-Host ''
 Write-Host '=============================' -ForegroundColor Green
-Write-Host '         °²ÑbÍê³É£¡          ' -ForegroundColor Green
+Write-Host '         å®‰è£å®Œæˆï¼          ' -ForegroundColor Green
 Write-Host '=============================' -ForegroundColor Green
 Write-Host ''
-Write-Host "ÔO¶¨™nÎ»ÖÃ£º$noalbsPath" -ForegroundColor Cyan
+Write-Host "è¨­å®šæª”ä½ç½®ï¼š$noalbsPath" -ForegroundColor Cyan
 Write-Host ''
-Write-Host '½ÓÏÂí£º' -ForegroundColor Yellow
-Write-Host '  1. ´_ÕJ OBS ÒÑé_†¢ÇÒ WebSocket ¹¦ÄÜÓĞ†¢ÓÃ'
-Write-Host '  2. ëp“ôÙYÁÏŠAÑeµÄ noalbs.exe'
-Write-Host '  3. ¿´µ½›]ÓĞ¼tÉ«åeÕ`¾Í´ú±í³É¹¦ÁË'
+Write-Host 'æ¥ä¸‹ä¾†ï¼š' -ForegroundColor Yellow
+Write-Host '  1. ç¢ºèª OBS å·²é–‹å•Ÿä¸” WebSocket åŠŸèƒ½æœ‰å•Ÿç”¨'
+Write-Host '  2. é›™æ“Šè³‡æ–™å¤¾è£¡çš„ noalbs.exe'
+Write-Host '  3. çœ‹åˆ°æ²’æœ‰ç´…è‰²éŒ¯èª¤å°±ä»£è¡¨æˆåŠŸäº†'
 Write-Host ''
 
 Start-Process explorer.exe $noalbsPath
 Start-Process 'https://flycatirl.netlify.app/'
 
-Read-Host '°´ Enter êPé]'
+Read-Host 'æŒ‰ Enter é—œé–‰'
