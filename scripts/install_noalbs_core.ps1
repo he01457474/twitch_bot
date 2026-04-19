@@ -18,7 +18,7 @@ $twitchToken = (Read-Host '   貼上你的 Token（oauth:xxxxxxxxxx）').Trim()
 Write-Host ''
 $obsPassword = (Read-Host '③ 你的 OBS WebSocket 密碼（OBS → 工具 → WebSocket 伺服器設定）').Trim()
 
-$installDir = "$env:USERPROFILE\Desktop\NOALBS_$twitchId"
+$installDir = "$PSScriptRoot\NOALBS_$twitchId"
 $zipPath    = "$env:TEMP\noalbs.zip"
 $noalbsUrl  = 'https://github.com/NOALBS/nginx-obs-automatic-low-bitrate-switching/releases/download/v2.16.1/noalbs-v2.16.1-x86_64-pc-windows-msvc.zip'
 
