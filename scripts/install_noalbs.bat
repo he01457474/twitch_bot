@@ -1,6 +1,6 @@
 @echo off
 set "TMPPS=%TEMP%\noalbs_install_%RANDOM%.ps1"
-powershell -NoProfile -Command "$l=(Get-Content '%~f0' -Encoding UTF8);$l[6..($l.Length-1)]|Out-File '%TMPPS%' -Encoding UTF8"
+powershell -NoProfile -Command "$l=(Get-Content '%~f0' -Encoding UTF8);Set-Content -Path '%TMPPS%' -Encoding UTF8 -Value $l[6..($l.Length-1)]"
 powershell -ExecutionPolicy Bypass -NoProfile -File "%TMPPS%"
 del "%TMPPS%" 2>nul
 goto :eof
