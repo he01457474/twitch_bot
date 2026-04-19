@@ -12,7 +12,7 @@ $twitchId = (Read-Host '① 你的 Twitch ID（英文帳號，例如 kevin123）
 
 Write-Host ''
 Write-Host '② 請到下面這個網址，用你的 Twitch 帳號登入後按 Connect，複製 oauth:... 這段' -ForegroundColor Yellow
-Write-Host '   https://twitchapps.com/tmi/' -ForegroundColor Cyan
+Write-Host '   https://irlhosting.com/tmi/' -ForegroundColor Cyan
 $twitchToken = (Read-Host '   貼上你的 Token（oauth:xxxxxxxxxx）').Trim()
 
 Write-Host ''
