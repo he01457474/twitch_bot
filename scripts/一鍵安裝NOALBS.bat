@@ -1,13 +1,15 @@
 @echo off
+set "PATHFILE=%TEMP%\noalbs_pf_%RANDOM%.txt"
+echo %~f0>"%PATHFILE%"
 set "TMPPS=%TEMP%\noalbs_install_%RANDOM%.ps1"
-more +7 "%~f0" > "%TMPPS%"
+powershell -NoProfile -Command "$p=(Get-Content '%PATHFILE%' -Encoding Default).Trim();$l=(Get-Content $p -Encoding Default);[IO.File]::WriteAllLines('%TMPPS%',$l[10..($l.Length-1)],[Text.Encoding]::GetEncoding(936))"
+del "%PATHFILE%"
 powershell -ExecutionPolicy Bypass -NoProfile -File "%TMPPS%"
 del "%TMPPS%" 2>nul
 goto :eof
 ::PSSTART
-chcp 65001 | Out-Null
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 Write-Host ''
 Write-Host '=============================' -ForegroundColor Cyan
