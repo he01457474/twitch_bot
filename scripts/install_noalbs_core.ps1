@@ -8,15 +8,24 @@ Write-Host '   NOALBS 一鍵安裝設定工具   ' -ForegroundColor Cyan
 Write-Host '=============================' -ForegroundColor Cyan
 Write-Host ''
 
-$twitchId = (Read-Host '① 你的 Twitch ID（英文帳號，例如 kevin123）').Trim().ToLower()
+do {
+    $twitchId = (Read-Host '① 你的 Twitch ID（英文帳號，例如 kevin123）').Trim().ToLower()
+    if (-not $twitchId) { Write-Host '  請填入 Twitch ID' -ForegroundColor Red }
+} while (-not $twitchId)
 
 Write-Host ''
 Write-Host '② 請到下面這個網址，用你的 Twitch 帳號登入後按 Connect，複製 oauth:... 這段' -ForegroundColor Yellow
 Write-Host '   https://irlhosting.com/tmi/' -ForegroundColor Cyan
-$twitchToken = (Read-Host '   貼上你的 Token（oauth:xxxxxxxxxx）').Trim()
+do {
+    $twitchToken = (Read-Host '   貼上你的 Token（oauth:xxxxxxxxxx）').Trim()
+    if (-not $twitchToken) { Write-Host '  請填入 Token' -ForegroundColor Red }
+} while (-not $twitchToken)
 
 Write-Host ''
-$obsPassword = (Read-Host '③ 你的 OBS WebSocket 密碼（OBS → 工具 → WebSocket 伺服器設定）').Trim()
+do {
+    $obsPassword = (Read-Host '③ 你的 OBS WebSocket 密碼（OBS → 工具 → WebSocket 伺服器設定）').Trim()
+    if (-not $obsPassword) { Write-Host '  請填入 OBS WebSocket 密碼' -ForegroundColor Red }
+} while (-not $obsPassword)
 
 $installDir = "$PSScriptRoot\NOALBS_$twitchId"
 $zipPath    = "$env:TEMP\noalbs.zip"
