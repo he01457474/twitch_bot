@@ -35,6 +35,10 @@
 - 系統 code page：CP936（GBK），非 Unicode 程式預設用簡體中文編碼
 - 慣用語言順序：中文（簡體，中國）→ 繁體中文（台灣）→ 韓文
 
+## PowerShell 腳本編碼
+- 包含中文的 `.ps1` 一律加 UTF-8 BOM（`EF BB BF`），否則 PS5 會以 GBK 讀取，破壞語法
+- 寫入方式：`[System.IO.File]::WriteAllText($path, $content, (New-Object System.Text.UTF8Encoding $true))`
+
 ## 中文亂碼處理
 遇到工具輸出 GBK 亂碼時：
 1. 先以 CP936/GBK 解讀，轉成**繁體中文**呈現
