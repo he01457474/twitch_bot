@@ -39,7 +39,7 @@ if (-not $ducRunning) {
 
 # [4/5] NOALBS
 Write-Host "[4/5] 啟動 NOALBS..."
-$noalbsDir = "D:\tset\FlyCatClaude Code\tools\noalbs\noalbs-v2.16.1-x86_64-pc-windows-msvc"
+$noalbsDir = "D:\tset\FlyCatClaude Code\scripts\NOALBS_bbbb123\noalbs-v2.16.1-x86_64-pc-windows-msvc"
 $noalbsExe = "$noalbsDir\noalbs.exe"
 Start-Process $noalbsExe -WorkingDirectory $noalbsDir -WindowStyle Hidden
 
