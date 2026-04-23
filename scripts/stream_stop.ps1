@@ -47,6 +47,24 @@ if ($docker) {
     Write-Host "Docker Desktop 未在執行" -ForegroundColor DarkGray
 }
 
+# BRB 伺服器
+$brbProc = Get-Process powershell -ErrorAction SilentlyContinue | Where-Object {
+    $_.MainWindowTitle -eq "" -and ($_ | Select-Object -ExpandProperty CommandLine -ErrorAction SilentlyContinue) -match "brb_server"
+}
+if ($brbProc) {
+    Stop-Process -Id $brbProc.Id -Force
+    Write-Host "BRB 伺服器已關閉" -ForegroundColor Green
+} else {
+    # 用 port 找
+    $brbPid = (netstat -ano | Select-String ":8080.*LISTENING") -replace ".*\s+(\d+)$", '$1' | Select-Object -First 1
+    if ($brbPid) {
+        Stop-Process -Id ([int]$brbPid.Trim()) -Force -ErrorAction SilentlyContinue
+        Write-Host "BRB 伺服器已關閉" -ForegroundColor Green
+    } else {
+        Write-Host "BRB 伺服器未在執行" -ForegroundColor DarkGray
+    }
+}
+
 Write-Host ""
 Write-Host "全部關閉完成！" -ForegroundColor Cyan
 Start-Sleep -Seconds 8

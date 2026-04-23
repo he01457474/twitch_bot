@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>BRB Clips</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000; width: 100%; height: 100vh; overflow: hidden; }
+
+  #player {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    object-fit: contain;
+    opacity: 1;
+    transition: opacity 0.4s ease;
+  }
+  #player.fade { opacity: 0; }
+  #clip-label { display: none; }
+
+  /* 全寬進度條，貼底 */
+  #progress-bar {
+    position: fixed;
+    bottom: 0; left: 0;
+    width: 100%; height: 4px;
+    background: rgba(255,255,255,0.1);
+    z-index: 10;
+  }
+  #progress-fill {
+    height: 100%;
+    width: 0%;
+    background: #9147ff;
+  }
+
+  /* 暫停圖示 */
+  #pause-icon {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 72px;
+    color: rgba(255,255,255,0.85);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    z-index: 15;
+    text-shadow: 0 2px 16px rgba(0,0,0,0.6);
+  }
+  #pause-icon.show { opacity: 1; }
+
+  /* 音量控制（右下，滑鼠靠近才顯示） */
+  #vol-wrap {
+    position: fixed;
+    bottom: 22px; right: 60px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    z-index: 10;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  body:hover #vol-wrap { opacity: 1; }
+
+  #vol-icon {
+    color: rgba(255,255,255,0.7);
+    font-size: 14px;
+    cursor: pointer;
+    user-select: none;
+  }
+  #vol-slider {
+    -webkit-appearance: none;
+    width: 80px; height: 4px;
+    background: rgba(255,255,255,0.3);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+  }
+  #vol-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: #9147ff;
+    cursor: pointer;
+  }
+
+  /* 載入轉圈 */
+  #loading {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 16px;
+    background: #0e0e10;
+    z-index: 20;
+    transition: opacity 0.5s ease;
+  }
+  #loading.hide { opacity: 0; pointer-events: none; }
+  #loading-text { color: #adadb8; font: 14px 'Segoe UI', sans-serif; }
+  .spinner {
+    width: 40px; height: 40px;
+    border: 3px solid rgba(145,71,255,0.25);
+    border-top-color: #9147ff;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="spinner"></div>
+  <div id="loading-text">載入剪輯中...</div>
+</div>
+
+<video id="player" class="landscape" autoplay playsinline></video>
+
+<div id="clip-label">--</div>
+<div id="progress-bar"><div id="progress-fill"></div></div>
+
+<div id="pause-icon">⏸</div>
+<div id="vol-wrap">
+  <span id="vol-icon">🔊</span>
+  <input id="vol-slider" type="range" min="0" max="1" step="0.05" value="0.8">
+</div>
+
+<script>
+  const player    = document.getElementById("player");
+  const pauseIcon = document.getElementById("pause-icon");
+  const loading = document.getElementById("loading");
+  const loadTxt = document.getElementById("loading-text");
+  const label   = document.getElementById("clip-label");
+  const fill    = document.getElementById("progress-fill");
+  const slider  = document.getElementById("vol-slider");
+  const volIcon = document.getElementById("vol-icon");
+
+  let queue   = [];
+  let current = 0;
+  let progRAF = null;
+  let skipTimer = null;
+
+  function shuffle(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+
+  // ── 音量 ──────────────────────────────────────────
+  function setVolume(v) {
+    player.volume = v;
+    player.muted  = (v === 0);
+    slider.value  = v;
+    volIcon.textContent = v === 0 ? "🔇" : v < 0.5 ? "🔉" : "🔊";
+  }
+
+  slider.addEventListener("input", () => setVolume(parseFloat(slider.value)));
+  volIcon.addEventListener("click", () => {
+    setVolume(player.volume > 0 ? 0 : parseFloat(slider.value) || 0.8);
+  });
+
+  // ── 進度條 ────────────────────────────────────────
+  function updateProgress() {
+    if (player.duration) {
+      fill.style.width = (player.currentTime / player.duration * 100) + "%";
+    }
+    progRAF = requestAnimationFrame(updateProgress);
+  }
+
+  // ── 播放邏輯 ──────────────────────────────────────
+  function clearTimers() {
+    cancelAnimationFrame(progRAF);
+    clearTimeout(skipTimer);
+  }
+
+  function advance() {
+    clearTimers();
+    current = (current + 1) % queue.length;
+    if (current === 0) queue = shuffle([...queue]);
+    playItem(current);
+  }
+
+  function playItem(idx) {
+    const { slug, url } = queue[idx];
+    label.textContent = `${idx + 1} / ${queue.length}`;
+    fill.style.width  = "0%";
+
+    player.classList.add("fade");
+    setTimeout(() => {
+      clearTimers();
+      player.src = url;
+      player.load();
+      player.play().catch(() => {});
+      player.classList.remove("fade");
+    }, 400);
+
+    // 最多播 3 分鐘，防止卡住
+    skipTimer = setTimeout(advance, 3 * 60 * 1000);
+  }
+
+  player.addEventListener("loadedmetadata", () => {
+    // 直式影片從清單移除並跳過
+    if (player.videoWidth > 0 && player.videoHeight > 0 && player.videoHeight > player.videoWidth) {
+      queue.splice(current, 1);
+      if (queue.length === 0) {
+        loading.classList.remove("hide");
+        loadTxt.textContent = "沒有橫式剪輯可播放";
+        return;
+      }
+      current = current % queue.length;
+      playItem(current);
+      return;
+    }
+
+    progRAF = requestAnimationFrame(updateProgress);
+    clearTimeout(skipTimer);
+    if (!player.paused) {
+      skipTimer = setTimeout(advance, (player.duration + 5) * 1000);
+    }
+  });
+
+  player.addEventListener("ended", advance);
+
+  // 點擊暫停 / 繼續
+  let pauseHideTimer = null;
+  function togglePause() {
+    if (player.paused) {
+      player.play().catch(() => {});
+      pauseIcon.textContent = "▶";
+      // 繼續播：重新計算剩餘時間
+      clearTimeout(skipTimer);
+      const remaining = (player.duration - player.currentTime + 5) * 1000;
+      if (remaining > 0) skipTimer = setTimeout(advance, remaining);
+    } else {
+      player.pause();
+      pauseIcon.textContent = "⏸";
+      // 暫停：停止逾時計時
+      clearTimeout(skipTimer);
+    }
+    pauseIcon.classList.add("show");
+    clearTimeout(pauseHideTimer);
+    pauseHideTimer = setTimeout(() => pauseIcon.classList.remove("show"), 800);
+  }
+
+  document.addEventListener("click", togglePause);
+  document.addEventListener("keydown", e => {
+    if (e.code === "Space") { e.preventDefault(); togglePause(); }
+  });
+
+  // 播放失敗 → 跳下一支
+  player.addEventListener("error", () => {
+    console.warn("播放失敗，跳下一支");
+    clearTimers();
+    skipTimer = setTimeout(advance, 1000);
+  });
+
+
+  // ── 初始化 ────────────────────────────────────────
+  async function init() {
+    // 讀音量設定
+    try {
+      const cfg = await (await fetch("/api/config")).json();
+      setVolume(cfg.volume ?? 0.8);
+    } catch (e) {
+      setVolume(0.8);
+    }
+
+    // 讀剪輯清單
+    try {
+      loadTxt.textContent = "正在取得剪輯清單...";
+      const data = await (await fetch("/api/clips")).json();
+      const entries = Object.entries(data);
+      if (entries.length > 0) {
+        queue = shuffle(entries.map(([slug, url]) => ({ slug, url })));
+        loading.classList.add("hide");
+        playItem(0);
+        return;
+      }
+    } catch (e) {}
+
+    loadTxt.textContent = "無法載入剪輯，請確認 BRB 伺服器有在執行";
+  }
+
+  init();
+
+  // 每 30 秒補充背景已載好的新剪輯
+  setInterval(async () => {
+    try {
+      const data = await (await fetch("/api/clips")).json();
+      const existing = new Set(queue.map(c => c.slug));
+      const newItems = Object.entries(data)
+        .filter(([slug]) => !existing.has(slug))
+        .map(([slug, url]) => ({ slug, url }));
+      if (newItems.length > 0) {
+        // 打亂後插入剩餘位置，不影響當前正在播的
+        const shuffled = shuffle(newItems);
+        queue.splice(current + 1, 0, ...shuffled);
+      }
+    } catch (e) {}
+  }, 20000);
+</script>
+
+</body>
+</html>

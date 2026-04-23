@@ -37,11 +37,17 @@ if (-not $ducRunning) {
     Write-Host "No-IP DUC 已在執行" -ForegroundColor Green
 }
 
-# [4/4] NOALBS
-Write-Host "[4/4] 啟動 NOALBS..."
+# [4/5] NOALBS
+Write-Host "[4/5] 啟動 NOALBS..."
 $noalbsDir = "D:\tset\FlyCatClaude Code\tools\noalbs\noalbs-v2.16.1-x86_64-pc-windows-msvc"
 $noalbsExe = "$noalbsDir\noalbs.exe"
 Start-Process $noalbsExe -WorkingDirectory $noalbsDir -WindowStyle Hidden
+
+# [5/5] BRB 伺服器
+Write-Host "[5/5] 啟動 BRB 伺服器..."
+$brbScript = "D:\tset\FlyCatClaude Code\scripts\brb_server.ps1"
+Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File `"$brbScript`"" -WindowStyle Hidden
+Write-Host "BRB 伺服器已啟動 (http://localhost:8080/brb-clips.html)" -ForegroundColor Green
 
 Write-Host ""
 Write-Host "全部啟動完成！記得開手機 IRL Pro。" -ForegroundColor Cyan
