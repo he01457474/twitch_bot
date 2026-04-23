@@ -137,11 +137,19 @@ $listener.Start()
 Write-Host "[BRB] 伺服器啟動：http://localhost:$port/brb-clips.html"
 Write-Host "[BRB] 關閉此視窗即停止"
 
+$notifiedDone = $false
+
 while ($listener.IsListening) {
     $ctx  = $listener.GetContext()
     $path = $ctx.Request.Url.LocalPath
     $res  = $ctx.Response
     $res.Headers.Add("Access-Control-Allow-Origin", "*")
+
+    # 背景載入完成通知（只印一次）
+    if (-not $notifiedDone -and $cache.allDone) {
+        $notifiedDone = $true
+        Write-Host ("[BRB] 全部剪輯載入完成！共 " + $cache.urls.Count + " 支") -ForegroundColor Green
+    }
 
     if ($path -eq "/api/config") {
         $payload = Get-Content $configPath -Raw
