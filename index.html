@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
     <meta property="og:title" content="Twitch Bot 指令全書">
-    <meta property="og:description" content="查詢所有聊天室指令、簽到系統、斗內監聽與娛樂功能。V5.0.2">
+    <meta property="og:description" content="查詢所有聊天室指令、簽到系統、斗內監聽與娛樂功能。V5.1.0">
     <meta property="og:image" content="https://cdn-icons-png.flaticon.com/512/4712/4712109.png">
     <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/4712/4712109.png">
     <meta name="theme-color" content="#a855f7">
@@ -362,7 +362,7 @@
                 <input type="text" id="searchInput" class="search-input" placeholder="搜尋指令 (例如: 求婚, 簽到, 排名...)" oninput="searchCommands()">
             </div>
             <div class="version-container" style="text-align: center; margin-bottom: 60px;">
-                <div class="version-badge"><span class="version-dot"></span><span>v5.0.2 穩定版</span></div>
+                <div class="version-badge"><span class="version-dot"></span><span>v5.1.0 穩定版</span></div>
             </div>
         </div>
     </div>
@@ -378,11 +378,19 @@
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
                         <h5 class="card-title" style="color:#34d399 !important"><i class="fa-solid fa-calendar-check me-2"></i>每日簽到</h5>
-                        <p class="card-desc">累積觀看次數與積分，是鐵粉的證明！<br><span class="text-white-50 small">每日限一次，需開台狀態。</span></p>
+                        <p class="card-desc">每次簽到獲得 EXP，連續簽到每天多 +5，最高第 30 天封頂（+175 EXP）。<br><span class="text-white-50 small">每日限一次，需開台狀態。</span></p>
                         <div class="mt-3"><span class="cmd-badge" onclick="copyText('!簽到')">!簽到</span></div>
                     </div>
                 </div>
-                
+
+                <div class="col-md-6 col-lg-4 searchable-item">
+                    <div class="glass-card">
+                        <h5 class="card-title" style="color:#34d399 !important"><i class="fa-solid fa-rotate-left me-2"></i>補簽</h5>
+                        <p class="card-desc">昨天忘記簽到嗎？補回昨天的簽到，streak 繼續延續！<br><span class="text-white-50 small">每月限 3 次，補簽獲得基礎 +30 EXP（不含連續加成）。</span></p>
+                        <div class="mt-3"><span class="cmd-badge" onclick="copyText('!補簽')">!補簽</span></div>
+                    </div>
+                </div>
+
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
                         <h5 class="card-title" style="color:#a78bfa !important"><i class="fa-solid fa-address-card me-2"></i>個人查詢</h5>
@@ -395,7 +403,7 @@
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
                         <h5 class="card-title" style="color:#6ee7b7 !important"><i class="fa-solid fa-stopwatch me-2"></i>掛台肝度</h5>
-                        <p class="card-desc">查詢觀眾的總觀看時數、發言量以及目前的進出聊天室狀態。</p>
+                        <p class="card-desc">查詢等級、觀看時數、發言量、連簽天數以及目前的進出聊天室狀態。EXP 由觀看、發言、簽到三項合計。</p>
                         <div class="feature-note note-allow"><i class="fa-solid fa-check"></i>支援查詢他人</div>
                         <div><span class="cmd-badge" onclick="copyText('!cu')">!cu</span> <span class="cmd-badge" onclick="copyText('!cu @ID')">!cu @ID</span></div>
                     </div>
