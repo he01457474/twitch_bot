@@ -54,8 +54,12 @@
 ### Repo 分工
 | Repo | 內容 | 網址 |
 |------|------|------|
-| 公開 | `index.html` 指令手冊（GitHub Pages） | https://github.com/he01457474/twitch_bot |
+| 公開 | `index.html` 指令手冊（Netlify） | https://github.com/he01457474/twitch_bot |
 | 私有 | `test.py` 機器人程式碼 | https://github.com/he01457474/twitch_bot_private |
+
+### 分支規則
+- `index.html` 更新後，必須推到 **`main`** 分支，Netlify 才會自動部署
+- `master` 分支照常 commit，但 `index.html` 要額外 `git push origin main` 或用 `git checkout main && git checkout master -- index.html && git commit && git push origin main && git checkout master`
 
 ### 本機路徑
 - 工作目錄：`D:\tset\FlyCatClaude Code`（公開 repo）
