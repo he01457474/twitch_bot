@@ -37,6 +37,11 @@ DISH_POS = [
     (345, 385), (490, 385), (635, 385),
 ]
 
+# 防卡頓：離開餐廳 → 去地圖 → 回來
+MAP_BTN        = (33,  505)   # 地圖按鈕
+HOME_BTN       = (880, 538)   # 家園按鈕
+RESTAURANT_BTN = (880, 449)   # 家園選單裡的餐廳
+
 
 def load_config():
     if os.path.exists(CONFIG_FILE):
@@ -179,6 +184,29 @@ class RestaurantBot:
             time.sleep(0.1)
         return True
 
+    def leave_and_return(self, on_status):
+        """離開餐廳去地圖繞一圈，避免卡頓"""
+        on_status("防卡頓：前往地圖…")
+        self.click(*MAP_BTN, delay=3.0)
+        if self._stop.is_set(): return
+        on_status("防卡頓：回到餐廳…")
+        self.click(*HOME_BTN, delay=1.0)
+        self.click(*RESTAURANT_BTN, delay=3.0)
+
+    def wait_with_antlag(self, total_seconds, interval_seconds, on_status, status_msg):
+        """等待期間定時離開餐廳防卡頓"""
+        elapsed = 0
+        while elapsed < total_seconds and not self._stop.is_set():
+            chunk = min(interval_seconds, total_seconds - elapsed)
+            remaining = total_seconds - elapsed
+            on_status(f"{status_msg}（剩餘 {remaining // 60:.0f} 分 {remaining % 60:.0f} 秒）")
+            if not self.wait(chunk):
+                return False
+            elapsed += chunk
+            if elapsed < total_seconds and not self._stop.is_set():
+                self.leave_and_return(on_status)
+        return not self._stop.is_set()
+
     def navigate_to_page(self, target_page):
         for _ in range(10):
             if self._stop.is_set(): return
@@ -198,13 +226,15 @@ class RestaurantBot:
         self.click(*RECIPE_CLOSE, delay=0.5)
         self.click(sx, sy, delay=0.5)
 
-    def run(self, page, dish, cook_minutes, restart_delay, on_status):
+    def run(self, page, dish, cook_minutes, restart_delay, antlag_minutes, on_status):
         self.hwnd = self.find_window()
         if not self.hwnd:
             on_status("找不到 Flash Player 視窗", error=True)
             return
 
         self._stop.clear()
+        antlag_sec = antlag_minutes * 60 if antlag_minutes > 0 else cook_minutes * 60
+
         while not self._stop.is_set():
             on_status("設定鍋爐中…")
             for sx, sy in self.stoves:
@@ -214,8 +244,7 @@ class RestaurantBot:
 
             if self._stop.is_set(): break
 
-            on_status(f"烹飪中，等待 {cook_minutes} 分鐘…")
-            if not self.wait(cook_minutes * 60): break
+            if not self.wait_with_antlag(cook_minutes * 60, antlag_sec, on_status, "烹飪中"): break
 
             on_status("收菜中…")
             for sx, sy in self.stoves:
@@ -246,10 +275,11 @@ class App:
         f.pack()
 
         rows = [
-            ("食譜頁數 (1~9)",   6,  1,  9),
-            ("菜的位置 (1~6)",   1,  1,  6),
-            ("烹飪時間（分鐘）", 20, 1, 99),
-            ("收菜後延遲（秒）", 30, 0, 600),
+            ("食譜頁數 (1~9)",          6,  1,   9),
+            ("菜的位置 (1~6)",          1,  1,   6),
+            ("烹飪時間（分鐘）",        20, 1,  99),
+            ("收菜後延遲（秒）",        30, 0, 600),
+            ("防卡頓間隔（分鐘，0=關）", 5, 0,  99),
         ]
         self.vars = []
         for i, (lbl, val, lo, hi) in enumerate(rows):
@@ -281,11 +311,11 @@ class App:
         self.stop_btn.config(state=state_b)
 
     def _start(self):
-        page, dish, minutes, delay = [v.get() for v in self.vars]
+        page, dish, minutes, delay, antlag = [v.get() for v in self.vars]
         self._set_running(True)
         threading.Thread(
             target=self.bot.run,
-            args=(page, dish, minutes, delay, self._on_status),
+            args=(page, dish, minutes, delay, antlag, self._on_status),
             daemon=True
         ).start()
 
