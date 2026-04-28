@@ -28,9 +28,13 @@ DEFAULT_STOVES = [
     (785, 215), (785, 265), (785, 315),
 ]
 
-LEFT_ARROW   = (245, 478)
-RIGHT_ARROW  = (715, 478)
+LEFT_ARROW   = (250, 480)
+RIGHT_ARROW  = (710, 480)
 RECIPE_CLOSE = (733, 110)
+
+# 食譜底部 5 個頁碼 tab 的 x 座標（從左到右）
+PAGE_TABS_X = [345, 395, 445, 495, 545]
+PAGE_TAB_Y  = 480
 
 DISH_POS = [
     (345, 245), (490, 245), (635, 245),
@@ -208,12 +212,22 @@ class RestaurantBot:
         return not self._stop.is_set()
 
     def navigate_to_page(self, target_page):
+        # 先點左箭頭 10 次，確保回到最左邊（顯示第 1~5 頁）
         for _ in range(10):
             if self._stop.is_set(): return
             self.click(*LEFT_ARROW, delay=0.15)
-        for _ in range(target_page - 1):
-            if self._stop.is_set(): return
-            self.click(*RIGHT_ARROW, delay=0.15)
+
+        if target_page <= 5:
+            # 目標在第 1~5 頁，直接點對應 tab
+            self.click(PAGE_TABS_X[target_page - 1], PAGE_TAB_Y, delay=0.3)
+        else:
+            # 目標在第 6 頁以後，右移讓目標頁出現在最右邊 tab
+            for _ in range(target_page - 5):
+                if self._stop.is_set(): return
+                self.click(*RIGHT_ARROW, delay=0.15)
+            # 目標頁現在在最右邊的 tab（index 4）
+            self.click(PAGE_TABS_X[4], PAGE_TAB_Y, delay=0.3)
+
         time.sleep(0.3)
 
     def setup_stove(self, sx, sy, page, dish):
