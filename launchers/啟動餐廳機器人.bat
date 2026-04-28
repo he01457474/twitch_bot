@@ -1,4 +1,3 @@
 @echo off
 cd /d "%~dp0.."
-python tools\restaurant_bot.py
-pause
+start "" pythonw tools\restaurant_bot.py

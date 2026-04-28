@@ -2,36 +2,153 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import threading
 import time
+import json
+import os
+import ctypes
 import win32gui
 import win32api
+import win32ui
+import win32con
+from PIL import Image, ImageTk
+
+# 隱藏 CMD 視窗
+try:
+    hwnd_con = ctypes.windll.kernel32.GetConsoleWindow()
+    if hwnd_con:
+        ctypes.windll.user32.ShowWindow(hwnd_con, 0)
+except Exception:
+    pass
 
 MOLE_W = 960
 MOLE_H = 560
+CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "restaurant_config.json")
 
-# 鍋爐座標（Mole 座標，若點錯需校準）
-STOVES = [
-    (175, 215), (175, 265), (175, 315),  # 左側三個
-    (785, 215), (785, 265), (785, 315),  # 右側三個
+DEFAULT_STOVES = [
+    (175, 215), (175, 265), (175, 315),
+    (785, 215), (785, 265), (785, 315),
 ]
 
-# 食譜翻頁箭頭
-LEFT_ARROW  = (245, 478)
-RIGHT_ARROW = (715, 478)
-
-# 食譜關閉按鈕（X）
+LEFT_ARROW   = (245, 478)
+RIGHT_ARROW  = (715, 478)
 RECIPE_CLOSE = (733, 110)
 
-# 菜色位置（2行3列，左到右、上到下）
 DISH_POS = [
-    (345, 245), (490, 245), (635, 245),  # 第1、2、3格
-    (345, 385), (490, 385), (635, 385),  # 第4、5、6格
+    (345, 245), (490, 245), (635, 245),
+    (345, 385), (490, 385), (635, 385),
 ]
+
+
+def load_config():
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r") as f:
+                data = json.load(f)
+                return [tuple(s) for s in data.get("stoves", DEFAULT_STOVES)]
+        except Exception:
+            pass
+    return list(DEFAULT_STOVES)
+
+
+def save_config(stoves):
+    try:
+        with open(CONFIG_FILE, "w") as f:
+            json.dump({"stoves": stoves}, f)
+    except Exception:
+        pass
+
+
+def capture_window(hwnd):
+    rect = win32gui.GetClientRect(hwnd)
+    w, h = rect[2], rect[3]
+    hwndDC  = win32gui.GetWindowDC(hwnd)
+    mfcDC   = win32ui.CreateDCFromHandle(hwndDC)
+    saveDC  = mfcDC.CreateCompatibleDC()
+    bmp     = win32ui.CreateBitmap()
+    bmp.CreateCompatibleBitmap(mfcDC, w, h)
+    saveDC.SelectObject(bmp)
+    saveDC.BitBlt((0, 0), (w, h), mfcDC, (0, 0), win32con.SRCCOPY)
+    info    = bmp.GetInfo()
+    raw     = bmp.GetBitmapBits(True)
+    win32gui.DeleteObject(bmp.GetHandle())
+    saveDC.DeleteDC()
+    mfcDC.DeleteDC()
+    win32gui.ReleaseDC(hwnd, hwndDC)
+    img = Image.frombuffer("RGB", (info["bmWidth"], info["bmHeight"]), raw, "raw", "BGRX", 0, 1)
+    return img, w, h
+
+
+class CalibrationWindow:
+    def __init__(self, parent, hwnd, on_done):
+        self.hwnd   = hwnd
+        self.on_done = on_done
+        self.clicks  = []
+        self.display_scale = 1.0
+
+        self.win = tk.Toplevel(parent)
+        self.win.title("校準鍋爐位置")
+        self.win.grab_set()
+        self._build()
+
+    def _build(self):
+        ttk.Label(self.win,
+                  text="請依序點擊 6 個鍋爐位置（點完自動關閉）",
+                  padding=8).pack()
+        self.info = ttk.Label(self.win, text="▶ 第 1 個鍋爐", foreground="blue", padding=4)
+        self.info.pack()
+
+        try:
+            img, game_w, game_h = capture_window(self.hwnd)
+        except Exception as e:
+            messagebox.showerror("錯誤", f"截圖失敗：{e}", parent=self.win)
+            self.win.destroy()
+            return
+
+        self.game_w, self.game_h = game_w, game_h
+        max_w, max_h = 900, 580
+        scale = min(max_w / game_w, max_h / game_h, 1.0)
+        self.display_scale = scale
+        disp_img = img.resize((int(game_w * scale), int(game_h * scale)))
+        self.photo = ImageTk.PhotoImage(disp_img)
+
+        self.canvas = tk.Canvas(self.win,
+                                width=int(game_w * scale),
+                                height=int(game_h * scale),
+                                cursor="crosshair")
+        self.canvas.pack(padx=8, pady=8)
+        self.canvas.create_image(0, 0, anchor=tk.NW, image=self.photo)
+        self.canvas.bind("<Button-1>", self._on_click)
+
+    def _on_click(self, event):
+        scale_game = max(self.game_w / MOLE_W, self.game_h / MOLE_H)
+        cx = event.x / self.display_scale
+        cy = event.y / self.display_scale
+        mole_x = int(cx / scale_game)
+        mole_y = int(cy / scale_game)
+        self.clicks.append((mole_x, mole_y))
+        n = len(self.clicks)
+
+        r = 6
+        self.canvas.create_oval(event.x-r, event.y-r, event.x+r, event.y+r,
+                                fill="red", outline="white", width=2)
+        self.canvas.create_text(event.x+12, event.y, text=str(n),
+                                fill="red", font=("Arial", 11, "bold"))
+
+        if n < 6:
+            self.info.config(text=f"▶ 第 {n+1} 個鍋爐")
+        else:
+            self.info.config(text="✔ 校準完成！")
+            self.win.after(800, self._finish)
+
+    def _finish(self):
+        self.on_done(self.clicks)
+        self.win.destroy()
 
 
 class RestaurantBot:
     def __init__(self):
-        self.hwnd = None
-        self._stop = threading.Event()
+        self.hwnd   = None
+        self._stop  = threading.Event()
+        self.stoves = load_config()
 
     def find_window(self):
         found = []
@@ -44,19 +161,18 @@ class RestaurantBot:
     def click(self, mole_x, mole_y, delay=0.1):
         if not self.hwnd:
             return
-        rect = win32gui.GetClientRect(self.hwnd)
-        w, h = rect[2], rect[3]
+        rect  = win32gui.GetClientRect(self.hwnd)
+        w, h  = rect[2], rect[3]
         scale = max(w / MOLE_W, h / MOLE_H)
-        cx = int(mole_x * scale)
-        cy = int(mole_y * scale)
-        lparam = (cy << 16) | (cx & 0xFFFF)
-        win32api.SendMessage(self.hwnd, 0x201, 0, lparam)  # WM_LBUTTONDOWN
-        win32api.SendMessage(self.hwnd, 0x202, 0, lparam)  # WM_LBUTTONUP
+        cx    = int(mole_x * scale)
+        cy    = int(mole_y * scale)
+        lp    = (cy << 16) | (cx & 0xFFFF)
+        win32api.SendMessage(self.hwnd, 0x201, 0, lp)
+        win32api.SendMessage(self.hwnd, 0x202, 0, lp)
         if delay > 0:
             time.sleep(delay)
 
     def wait(self, seconds):
-        """可中斷的等待"""
         for _ in range(int(seconds * 10)):
             if self._stop.is_set():
                 return False
@@ -64,33 +180,22 @@ class RestaurantBot:
         return True
 
     def navigate_to_page(self, target_page):
-        # 先點左箭頭 10 次重置到第 1 頁
         for _ in range(10):
-            if self._stop.is_set():
-                return
+            if self._stop.is_set(): return
             self.click(*LEFT_ARROW, delay=0.15)
-        # 再點右箭頭到達目標頁
         for _ in range(target_page - 1):
-            if self._stop.is_set():
-                return
+            if self._stop.is_set(): return
             self.click(*RIGHT_ARROW, delay=0.15)
         time.sleep(0.3)
 
     def setup_stove(self, sx, sy, page, dish):
-        # 第一步：點鍋爐開食譜
         self.click(sx, sy, delay=1.0)
-        if self._stop.is_set():
-            return
-        # 翻到目標頁
+        if self._stop.is_set(): return
         self.navigate_to_page(page)
-        if self._stop.is_set():
-            return
-        # 點選菜色
+        if self._stop.is_set(): return
         dx, dy = DISH_POS[dish - 1]
         self.click(dx, dy, delay=0.5)
-        # 關閉食譜
         self.click(*RECIPE_CLOSE, delay=0.5)
-        # 第二步：再點鍋爐開始倒數
         self.click(sx, sy, delay=0.5)
 
     def run(self, page, dish, cook_minutes, restart_delay, on_status):
@@ -100,39 +205,27 @@ class RestaurantBot:
             return
 
         self._stop.clear()
-
         while not self._stop.is_set():
-            # 設定 6 個鍋爐
             on_status("設定鍋爐中…")
-            for sx, sy in STOVES:
-                if self._stop.is_set():
-                    break
+            for sx, sy in self.stoves:
+                if self._stop.is_set(): break
                 self.setup_stove(sx, sy, page, dish)
-                if not self.wait(0.8):
-                    break
+                if not self.wait(0.8): break
 
-            if self._stop.is_set():
-                break
+            if self._stop.is_set(): break
 
-            # 等待烹飪完成
-            on_status(f"等待 {cook_minutes} 分鐘…")
-            if not self.wait(cook_minutes * 60):
-                break
+            on_status(f"烹飪中，等待 {cook_minutes} 分鐘…")
+            if not self.wait(cook_minutes * 60): break
 
-            # 收菜
             on_status("收菜中…")
-            for sx, sy in STOVES:
-                if self._stop.is_set():
-                    break
+            for sx, sy in self.stoves:
+                if self._stop.is_set(): break
                 self.click(sx, sy, delay=0.8)
 
-            if self._stop.is_set():
-                break
+            if self._stop.is_set(): break
 
-            # 重新開始前等待
             on_status(f"等待 {restart_delay} 秒後重新開始…")
-            if not self.wait(restart_delay):
-                break
+            if not self.wait(restart_delay): break
 
         on_status("已停止")
 
@@ -145,58 +238,78 @@ class App:
         self.root = root
         self.root.title("摩爾莊園｜餐廳自動做菜")
         self.root.resizable(False, False)
-        self.bot = RestaurantBot()
-        self.thread = None
+        self.bot  = RestaurantBot()
         self._build_ui()
 
     def _build_ui(self):
         f = ttk.Frame(self.root, padding=15)
         f.pack()
 
-        labels = ["食譜頁數 (1~9)", "菜的位置 (1~6)", "烹飪時間（分鐘）", "收菜後延遲（秒）"]
-        defaults = [6, 1, 20, 30]
-        ranges = [(1, 9), (1, 6), (1, 99), (0, 600)]
+        rows = [
+            ("食譜頁數 (1~9)",   6,  1,  9),
+            ("菜的位置 (1~6)",   1,  1,  6),
+            ("烹飪時間（分鐘）", 20, 1, 99),
+            ("收菜後延遲（秒）", 30, 0, 600),
+        ]
         self.vars = []
-
-        for i, (lbl, val, (lo, hi)) in enumerate(zip(labels, defaults, ranges)):
+        for i, (lbl, val, lo, hi) in enumerate(rows):
             ttk.Label(f, text=lbl).grid(row=i, column=0, sticky=tk.W, pady=4, padx=(0, 10))
             v = tk.IntVar(value=val)
             ttk.Spinbox(f, from_=lo, to=hi, textvariable=v, width=8).grid(row=i, column=1, pady=4)
             self.vars.append(v)
 
         self.status = ttk.Label(f, text="狀態：待機", foreground="gray")
-        self.status.grid(row=len(labels), column=0, columnspan=2, pady=(12, 6))
+        self.status.grid(row=len(rows), column=0, columnspan=2, pady=(12, 6))
 
-        btn_frame = ttk.Frame(f)
-        btn_frame.grid(row=len(labels)+1, column=0, columnspan=2)
+        btn_f = ttk.Frame(f)
+        btn_f.grid(row=len(rows)+1, column=0, columnspan=2)
 
-        self.start_btn = ttk.Button(btn_frame, text="開始", command=self._start)
-        self.start_btn.pack(side=tk.LEFT, padx=6)
+        self.start_btn = ttk.Button(btn_f, text="開始", command=self._start)
+        self.start_btn.pack(side=tk.LEFT, padx=5)
 
-        self.stop_btn = ttk.Button(btn_frame, text="停止", command=self._stop, state=tk.DISABLED)
-        self.stop_btn.pack(side=tk.LEFT, padx=6)
+        self.stop_btn  = ttk.Button(btn_f, text="停止", command=self._stop, state=tk.DISABLED)
+        self.stop_btn.pack(side=tk.LEFT, padx=5)
+
+        self.calib_btn = ttk.Button(btn_f, text="校準鍋爐", command=self._calibrate)
+        self.calib_btn.pack(side=tk.LEFT, padx=5)
+
+    def _set_running(self, running):
+        state_a = tk.DISABLED if running else tk.NORMAL
+        state_b = tk.NORMAL   if running else tk.DISABLED
+        self.start_btn.config(state=state_a)
+        self.calib_btn.config(state=state_a)
+        self.stop_btn.config(state=state_b)
 
     def _start(self):
         page, dish, minutes, delay = [v.get() for v in self.vars]
-        self.start_btn.config(state=tk.DISABLED)
-        self.stop_btn.config(state=tk.NORMAL)
-        self.thread = threading.Thread(
+        self._set_running(True)
+        threading.Thread(
             target=self.bot.run,
             args=(page, dish, minutes, delay, self._on_status),
             daemon=True
-        )
-        self.thread.start()
+        ).start()
 
     def _stop(self):
         self.bot.stop()
         self.stop_btn.config(state=tk.DISABLED)
 
+    def _calibrate(self):
+        hwnd = self.bot.find_window()
+        if not hwnd:
+            messagebox.showerror("錯誤", "找不到 Flash Player 視窗\n請先開啟遊戲")
+            return
+        CalibrationWindow(self.root, hwnd, self._on_calibrated)
+
+    def _on_calibrated(self, stoves):
+        self.bot.stoves = stoves
+        save_config(stoves)
+        messagebox.showinfo("完成", "鍋爐座標已更新並儲存！")
+
     def _on_status(self, msg, error=False):
         color = "red" if error else ("gray" if msg == "已停止" else "green")
         self.root.after(0, lambda: self.status.config(text=f"狀態：{msg}", foreground=color))
         if msg == "已停止" or error:
-            self.root.after(0, lambda: self.start_btn.config(state=tk.NORMAL))
-            self.root.after(0, lambda: self.stop_btn.config(state=tk.DISABLED))
+            self.root.after(0, lambda: self._set_running(False))
         if error:
             self.root.after(0, lambda: messagebox.showerror("錯誤", msg))
 
