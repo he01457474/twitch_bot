@@ -467,12 +467,19 @@ class RestaurantBot:
         if self._stop.is_set(): return
 
         # ── 放入食材 ──────────────────────────────────
-        time.sleep(0.5)
+        # 等食譜關閉動畫完全結束，再點鍋爐
+        time.sleep(1.5)
         log("放入食材…")
-        self.click(sx, sy, delay=1.2)
+        pre_stove = self.get_pixel(sx, sy)
+        self.click(sx, sy, delay=0.3)
+        # 等鍋爐像素變化，確認食材確實放入（最多等 3s）
+        ok_food, _, _ = self.wait_for_pixel_change(sx, sy, timeout=3.0, baseline=pre_stove)
+        if not ok_food:
+            log("放入食材後鍋爐無變化，點擊可能未被接受，仍繼續嘗試開始烹飪")
         if self._stop.is_set(): return
 
         # ── 開始烹飪 ──────────────────────────────────
+        time.sleep(0.5)
         log("開始烹飪…")
         self.click(sx, sy, delay=0.5)
         log(f"鍋爐 ({sx},{sy}) 烹飪中 ✓")
