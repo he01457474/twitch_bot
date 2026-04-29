@@ -387,19 +387,19 @@ class RestaurantBot:
             self.click(sx, sy, delay=0.3)
             ok, c_before, c_after = self.wait_for_pixel_change(*check, timeout=3.0, baseline=pre)
             if ok:
-                log(f"食譜已開啟 ✓ ({c_before}→{c_after})")
+                log(f"食譜已開啟 ✓  check_pt({check[0]},{check[1]}): {c_before}→{c_after}")
                 recipe_opened = True
                 break
 
             # 食譜沒開，出現了彈窗或收菜動畫
             if spoiled:
                 # 腐壞 → 點確認清除，再試一次開食譜
-                log(f"點確認清除腐壞食物…")
+                log(f"點確認清除腐壞 ({confirm_btn[0]},{confirm_btn[1]})…")
                 self.click_real(*confirm_btn, delay=1.0)
                 spoiled = False  # 清除後重試，不再判定為腐壞
             else:
                 # 做菜中 → 點取消，不打擾，跳過這個鍋爐
-                log(f"偵測到做菜中彈窗，點取消，跳過此鍋爐")
+                log(f"做菜中，點取消 ({cancel_btn[0]},{cancel_btn[1]})，跳過")
                 self.click_real(*cancel_btn, delay=0.5)
                 return
 
@@ -502,7 +502,7 @@ class App:
         self.stop_btn   = ttk.Button(btn_f, text="停止",     command=self._stop, state=tk.DISABLED)
         self.calib_s    = ttk.Button(btn_f, text="校準鍋爐", command=self._calib_stoves)
         self.calib_r    = ttk.Button(btn_f, text="校準食譜", command=self._calib_recipe)
-        self.calib_c    = ttk.Button(btn_f, text="校準確認鈕", command=self._calib_cancel)
+        self.calib_c    = ttk.Button(btn_f, text="校準彈窗按鈕", command=self._calib_cancel)
         self.calib_sp   = ttk.Button(btn_f, text="校準腐壞色", command=self._calib_spoiled)
         self.preview_btn= ttk.Button(btn_f, text="預覽座標", command=self._preview_coords)
 
@@ -603,16 +603,20 @@ class App:
         hwnd = self._get_hwnd()
         if not hwnd: return
         messagebox.showinfo(
-            "校準確認按鈕",
-            "請先點有腐壞食物的鍋爐，讓「捐菜給拉姆」彈窗出現，\n再回到這裡點「確定」開始校準。\n\n截圖後點一下彈窗的「確認」按鈕位置。"
+            "校準彈窗按鈕",
+            "請先點任意一個鍋爐，讓「捐菜給拉姆」彈窗出現，\n再回到這裡點「確定」開始校準。\n\n"
+            "截圖後依序點：\n"
+            "①「確認」按鈕（清除腐壞食物用）\n"
+            "②「取消」按鈕（做菜中退出用）"
         )
-        CalibrationWindow(self.root, hwnd, ["確認按鈕"], self._done_cancel)
+        CalibrationWindow(self.root, hwnd, ["① 確認按鈕", "② 取消按鈕"], self._done_cancel)
 
     def _done_cancel(self, pts):
         self.recipe["confirm_btn"] = pts[0]
+        self.recipe["cancel_btn"]  = pts[1]
         self.bot.recipe = self.recipe
         self._save_all()
-        messagebox.showinfo("完成", f"確認按鈕座標已儲存：{pts[0]}")
+        messagebox.showinfo("完成", f"確認：{pts[0]}　取消：{pts[1]}\n已儲存。")
 
     def _calib_spoiled(self):
         hwnd = self._get_hwnd()
