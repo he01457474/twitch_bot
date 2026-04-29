@@ -34,6 +34,7 @@ DEFAULT_RECIPE = {
     "close":       (733, 110),
     "page_tabs":   [(345,480),(395,480),(445,480),(495,480),(545,480)],
     "dishes":      [(345,245),(490,245),(635,245),(345,385),(490,385),(635,385)],
+    "check_pt":    (490, 300),   # 食譜中心偵測點（判斷食譜是否開啟）
 }
 DEFAULT_SETTINGS = {
     "page": 6, "dish": 1, "cook_minutes": 20,
@@ -64,6 +65,7 @@ def load_config():
         "close":       tuple(r.get("close",        DEFAULT_RECIPE["close"])),
         "page_tabs":   [tuple(t) for t in r.get("page_tabs", DEFAULT_RECIPE["page_tabs"])],
         "dishes":      [tuple(d) for d in r.get("dishes",    DEFAULT_RECIPE["dishes"])],
+        "check_pt":    tuple(r.get("check_pt",    DEFAULT_RECIPE["check_pt"])),
     }
 
     s = data.get("settings", {})
@@ -191,6 +193,32 @@ class RestaurantBot:
         win32gui.EnumWindows(cb, None)
         return found[0] if found else None
 
+    def get_pixel(self, mole_x, mole_y):
+        """取得摩爾座標的像素顏色 (R, G, B)"""
+        try:
+            img, w, h = capture_window(self.hwnd)
+            scale = max(w / MOLE_W, h / MOLE_H)
+            px = min(int(mole_x * scale), w - 1)
+            py = min(int(mole_y * scale), h - 1)
+            return img.convert("RGB").getpixel((px, py))
+        except Exception:
+            return (0, 0, 0)
+
+    def color_diff(self, c1, c2):
+        return sum(abs(a - b) for a, b in zip(c1, c2))
+
+    def wait_for_pixel_change(self, mole_x, mole_y, timeout=5.0, threshold=40):
+        """等到指定點顏色發生明顯變化，回傳 True=有變 / False=超時"""
+        baseline = self.get_pixel(mole_x, mole_y)
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if self._stop.is_set():
+                return False
+            time.sleep(0.15)
+            if self.color_diff(self.get_pixel(mole_x, mole_y), baseline) > threshold:
+                return True
+        return False
+
     def click(self, mole_x, mole_y, delay=0.1):
         if not self.hwnd:
             return
@@ -250,14 +278,34 @@ class RestaurantBot:
         time.sleep(0.3)
 
     def setup_stove(self, sx, sy, page, dish, on_status=None):
-        if on_status: on_status("點擊鍋爐，等待食譜開啟…")
-        self.click(sx, sy, delay=2.0)          # 等食譜視窗完全開啟
+        check = self.recipe["check_pt"]
+
+        # 步驟 1：點鍋爐，偵測食譜是否開啟（最多重試 3 次）
+        for attempt in range(3):
+            if self._stop.is_set(): return
+            if on_status: on_status(f"點擊鍋爐（第 {attempt+1} 次）…")
+            self.click(sx, sy, delay=0.3)
+            if self.wait_for_pixel_change(*check, timeout=5.0):
+                break
+            if on_status: on_status("食譜未開啟，重試…")
+        else:
+            if on_status: on_status("無法開啟食譜，跳過此鍋爐")
+            return
+
         if self._stop.is_set(): return
         if on_status: on_status(f"切換到第 {page} 頁…")
         self.navigate_to_page(page)
-        if self._stop.is_set(): return
-        if on_status: on_status(f"點選第 {dish} 個菜色，開始烹飪…")
-        self.click(*self.recipe["dishes"][dish - 1], delay=0.8)
+
+        # 步驟 2：點菜，偵測食譜是否關閉（最多重試 2 次）
+        for attempt in range(2):
+            if self._stop.is_set(): return
+            if on_status: on_status(f"點選第 {dish} 個菜色…" + ("（重試）" if attempt else ""))
+            self.click(*self.recipe["dishes"][dish - 1], delay=0.3)
+            if self.wait_for_pixel_change(*check, timeout=3.0):
+                if on_status: on_status("烹飪開始！")
+                break
+        else:
+            if on_status: on_status("點菜未成功，可能需要重新校準座標")
 
     def run(self, page, dish, cook_minutes, restart_delay, antlag_minutes, on_status):
         self.hwnd = self.find_window()
@@ -269,11 +317,11 @@ class RestaurantBot:
         antlag_sec = antlag_minutes * 60 if antlag_minutes > 0 else cook_minutes * 60
 
         while not self._stop.is_set():
-            on_status("設定鍋爐中…")
-            for sx, sy in self.stoves:
+            for i, (sx, sy) in enumerate(self.stoves):
                 if self._stop.is_set(): break
-                self.setup_stove(sx, sy, page, dish)
-                if not self.wait(0.8): break
+                on_status(f"設定鍋爐 {i+1}/{len(self.stoves)}…")
+                self.setup_stove(sx, sy, page, dish, on_status)
+                if not self.wait(0.5): break
 
             if self._stop.is_set(): break
             if not self.wait_with_antlag(cook_minutes * 60, antlag_sec, on_status, "烹飪中"): break
@@ -390,13 +438,15 @@ class App:
         prompts = (
             ["左箭頭 (←)", "右箭頭 (→)"] +
             [f"頁碼 Tab {i+1}" for i in range(5)] +
-            [f"菜格 {i+1}" for i in range(6)]
+            [f"菜格 {i+1}" for i in range(6)] +
+            ["食譜中心偵測點（點食譜空白處任意一點）"]
         )
         messagebox.showinfo(
             "校準食譜",
             "請先手動點鍋爐打開食譜，再來這裡截圖校準。\n\n"
             "依序點擊：左箭頭、右箭頭、\n"
-            "頁碼Tab 1~5、菜格 1~6（左到右、上到下）",
+            "頁碼Tab 1~5、菜格 1~6（左到右、上到下）、\n"
+            "最後點食譜內任意空白處作為偵測點",
         )
         CalibrationWindow(self.root, hwnd, prompts, self._done_recipe)
 
@@ -407,6 +457,7 @@ class App:
             "close":       (0, 0),   # 不再使用
             "page_tabs":   pts[2:7],
             "dishes":      pts[7:13],
+            "check_pt":    pts[13],
         }
         self.bot.recipe = self.recipe
         self._save_all()
