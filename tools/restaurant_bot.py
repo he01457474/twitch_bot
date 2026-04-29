@@ -11,15 +11,6 @@ import win32ui
 import win32con
 from PIL import Image, ImageTk
 
-# DPI 感知（確保 GetClientRect 拿到實體像素，不受 Windows 縮放影響）
-try:
-    ctypes.windll.shcore.SetProcessDpiAwareness(2)  # Per-Monitor DPI Aware
-except Exception:
-    try:
-        ctypes.windll.user32.SetProcessDPIAware()
-    except Exception:
-        pass
-
 # 隱藏 CMD 視窗
 try:
     hwnd_con = ctypes.windll.kernel32.GetConsoleWindow()
@@ -265,13 +256,19 @@ class RestaurantBot:
         cx, cy = int(mole_x * scale), int(mole_y * scale)
         lp = (cy << 16) | (cx & 0xFFFF)
         try:
-            # 移動實體游標到對應的螢幕座標（不改變焦點）
-            sx, sy = win32gui.ClientToScreen(self.hwnd, (cx, cy))
+            # 用 GetWindowRect 算螢幕位置，避免 DPI 縮放問題
+            wr = win32gui.GetWindowRect(self.hwnd)
+            cr = win32gui.GetClientRect(self.hwnd)
+            # client area 相對於 window 的偏移 = (wr.right-wr.left-cr.right)//2 為邊框寬
+            border_x = (wr[2] - wr[0] - cr[2]) // 2
+            border_y = (wr[3] - wr[1] - cr[3]) - border_x
+            sx = wr[0] + border_x + cx
+            sy = wr[1] + border_y + cy
             win32api.SetCursorPos((sx, sy))
             time.sleep(0.05)
         except Exception:
             pass
-        win32api.SendMessage(self.hwnd, 0x201, 1, lp)  # wParam=1 (MK_LBUTTON)
+        win32api.SendMessage(self.hwnd, 0x201, 1, lp)
         win32api.SendMessage(self.hwnd, 0x202, 0, lp)
         if delay > 0:
             time.sleep(delay)
