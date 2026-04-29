@@ -290,7 +290,32 @@ class RestaurantBot:
 
         time.sleep(0.3)
 
-    def setup_stove(self, sx, sy, page, dish, on_status=None):
+    def is_recipe_open(self, closed_color, threshold=40):
+        """比對 check_pt 目前顏色與「食譜關閉」基準色，判斷食譜是否開啟"""
+        current = self.get_pixel(*self.recipe["check_pt"])
+        return self.color_diff(current, closed_color) > threshold
+
+    def ensure_recipe_closed(self, closed_color, on_status=None):
+        """若食譜目前是開啟狀態，嘗試關閉它"""
+        if not self.is_recipe_open(closed_color):
+            return True
+        if on_status: on_status(f"偵測到食譜已開啟（check_pt 顏色與基準不符），先關閉…")
+        close = self.recipe.get("close", (0, 0))
+        if close == (0, 0):
+            if on_status: on_status("警告：X 按鈕未校準，無法自動關閉食譜")
+            return False
+        self.click(*close, delay=0.5)
+        deadline = time.time() + 3.0
+        while time.time() < deadline:
+            if self._stop.is_set(): return False
+            time.sleep(0.2)
+            if not self.is_recipe_open(closed_color):
+                if on_status: on_status("食譜已關閉 ✓")
+                return True
+        if on_status: on_status("警告：無法確認食譜是否關閉，繼續執行…")
+        return False
+
+    def setup_stove(self, sx, sy, page, dish, closed_color, on_status=None):
         def log(msg):
             if on_status: on_status(msg)
 
@@ -302,6 +327,9 @@ class RestaurantBot:
         dish_pt = self.recipe["dishes"][dish - 1]
 
         log(f"[鍋爐 ({sx},{sy})] 開始設定")
+
+        # 先確認食譜是關閉狀態
+        self.ensure_recipe_closed(closed_color, on_status)
 
         # 步驟 1：點鍋爐，偵測食譜是否開啟（最多重試 3 次）
         for attempt in range(3):
@@ -365,11 +393,16 @@ class RestaurantBot:
         self._stop.clear()
         antlag_sec = antlag_minutes * 60 if antlag_minutes > 0 else cook_minutes * 60
 
+        # 截「食譜關閉」基準色（啟動時食譜應該是關的）
+        on_status("截取食譜關閉基準色…")
+        closed_color = self.get_pixel(*self.recipe["check_pt"])
+        on_status(f"基準色已截取：{closed_color}（食譜關閉狀態）")
+
         while not self._stop.is_set():
             for i, (sx, sy) in enumerate(self.stoves):
                 if self._stop.is_set(): break
                 on_status(f"設定鍋爐 {i+1}/{len(self.stoves)}…")
-                self.setup_stove(sx, sy, page, dish, on_status)
+                self.setup_stove(sx, sy, page, dish, closed_color, on_status)
                 if not self.wait(0.5): break
 
             if self._stop.is_set(): break
