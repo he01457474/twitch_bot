@@ -87,7 +87,8 @@ def save_config(stoves, recipe, settings):
 def capture_window(hwnd):
     rect = win32gui.GetClientRect(hwnd)
     w, h = rect[2], rect[3]
-    hwndDC = win32gui.GetWindowDC(hwnd)
+    # 用 GetDC 取 client area DC，和 click() 的座標系一致
+    hwndDC = win32gui.GetDC(hwnd)
     mfcDC  = win32ui.CreateDCFromHandle(hwndDC)
     saveDC = mfcDC.CreateCompatibleDC()
     bmp    = win32ui.CreateBitmap()
