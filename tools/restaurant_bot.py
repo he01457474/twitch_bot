@@ -315,16 +315,22 @@ class RestaurantBot:
         self.click(*RESTAURANT_BTN, delay=3.0)
 
     def wait_with_antlag(self, total_seconds, interval_seconds, on_status, msg):
-        elapsed = 0
+        elapsed = 0.0
+        since_antlag = 0.0   # 距上次防卡頓已過幾秒
         while elapsed < total_seconds and not self._stop.is_set():
-            chunk = min(interval_seconds, total_seconds - elapsed)
             rem = total_seconds - elapsed
             on_status(f"{msg}（剩餘 {int(rem//60)} 分 {int(rem%60)} 秒）")
-            if not self.wait(chunk):
-                return False
-            elapsed += chunk
-            if elapsed < total_seconds and not self._stop.is_set():
+            # 每秒一格，0.1s 檢查一次 stop
+            for _ in range(10):
+                if self._stop.is_set():
+                    return False
+                time.sleep(0.1)
+            elapsed     += 1.0
+            since_antlag += 1.0
+            # 到防卡頓間隔就出去繞一圈
+            if since_antlag >= interval_seconds and elapsed < total_seconds:
                 self.leave_and_return(on_status)
+                since_antlag = 0.0
         return not self._stop.is_set()
 
     def navigate_to_page(self, target_page):
