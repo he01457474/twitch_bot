@@ -351,16 +351,26 @@ class RestaurantBot:
         check   = self.recipe["check_pt"]
         dish_pt = self.recipe["dishes"][dish - 1]
 
-        # 步驟 1：點鍋爐，偵測食譜開啟
-        log(f"點鍋爐 ({sx},{sy})…")
-        pre = self.get_pixel(*check)
-        self.click(sx, sy, delay=0.3)
-        ok, c_before, c_after = self.wait_for_pixel_change(*check, timeout=4.0, baseline=pre)
-        if ok:
-            log(f"食譜已開啟 ✓ ({c_before}→{c_after})")
-        else:
-            log(f"偵測點無變化（{c_before}），假設食譜已開啟…")
-            time.sleep(1.0)
+        # 步驟 1：點鍋爐，偵測食譜開啟（最多 2 次，處理鍋爐上有菜的情況）
+        recipe_opened = False
+        for attempt in range(2):
+            if self._stop.is_set(): return
+            log(f"點鍋爐 ({sx},{sy})" + ("（第 2 次）…" if attempt else "…"))
+            pre = self.get_pixel(*check)
+            self.click(sx, sy, delay=0.3)
+            ok, c_before, c_after = self.wait_for_pixel_change(*check, timeout=3.0, baseline=pre)
+            if ok:
+                log(f"食譜已開啟 ✓ ({c_before}→{c_after})")
+                recipe_opened = True
+                break
+            else:
+                log(f"偵測點無變化（{c_before}），嘗試關閉當前 UI…")
+                self.close_recipe(sx, sy, on_status)
+                time.sleep(0.5)
+
+        if not recipe_opened:
+            log(f"鍋爐 ({sx},{sy}) 無法開啟食譜（可能正在做菜），跳過")
+            return
         if self._stop.is_set(): return
 
         # 步驟 2：切換頁面
