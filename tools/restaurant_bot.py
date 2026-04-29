@@ -341,69 +341,59 @@ class RestaurantBot:
         def log(msg):
             if on_status: on_status(msg)
 
-        def err(msg):
-            self._stop.set()
-            if on_status: on_status(msg, error=True)
-
-        check = self.recipe["check_pt"]
+        check   = self.recipe["check_pt"]
         dish_pt = self.recipe["dishes"][dish - 1]
 
         log(f"[鍋爐 ({sx},{sy})] 開始設定")
 
-        # 先確認食譜是關閉狀態
+        # 確認食譜是關閉狀態（偵測點有效才判斷）
         self.ensure_recipe_closed(closed_color, on_status)
+        if self._stop.is_set(): return
 
-        # 步驟 1：點鍋爐，偵測食譜是否開啟（最多重試 3 次）
-        for attempt in range(3):
-            if self._stop.is_set(): return
-            log(f"點鍋爐 ({sx},{sy})，等待食譜（偵測點 {check}）…")
-            pre = self.get_pixel(*check)          # 點擊前先截基準色
-            self.click(sx, sy, delay=0.1)
-            ok, c_before, c_after = self.wait_for_pixel_change(*check, timeout=5.0, baseline=pre)
-            if ok:
-                log(f"食譜已開啟 ✓  偵測色 {c_before}→{c_after}")
-                break
-            log(f"食譜未開啟 ✗  偵測點 {check} 顏色未變（{c_before}），第 {attempt+1}/3 次")
+        # 步驟 1：點鍋爐，等待食譜開啟
+        # 偵測只當參考，不管有沒有偵測到都繼續
+        log(f"點鍋爐 ({sx},{sy})…")
+        pre = self.get_pixel(*check)
+        self.click(sx, sy, delay=0.3)
+        ok, c_before, c_after = self.wait_for_pixel_change(*check, timeout=2.0, baseline=pre)
+        if ok:
+            log(f"食譜開啟已偵測 ✓  {c_before}→{c_after}")
         else:
-            err(f"3 次仍無法開啟食譜\n鍋爐座標 ({sx},{sy})，偵測點 {check} 顏色未變（{c_before}）\n請確認鍋爐座標或偵測點是否正確")
-            return
+            log(f"偵測點無變化（{c_before}），假設食譜已開啟，繼續…")
+            time.sleep(1.2)   # 給食譜額外開啟時間
 
         if self._stop.is_set(): return
+
+        # 步驟 2：切換頁面
         log(f"切換到第 {page} 頁…")
         self.navigate_to_page(page)
+        if self._stop.is_set(): return
 
-        # 步驟 2：點菜，偵測食譜是否關閉（最多重試 3 次）
+        # 步驟 3：點菜，偵測食譜是否關閉（最多重試 3 次）
         for attempt in range(3):
             if self._stop.is_set():
                 self.close_recipe(sx, sy, on_status)
                 return
             log(f"點菜色 {dish} ({dish_pt[0]},{dish_pt[1]})…" + (f"（第 {attempt+1} 次）" if attempt else ""))
-            pre = self.get_pixel(*check)          # 點擊前先截基準色
+            pre = self.get_pixel(*check)
             self.click_real(*dish_pt, delay=0.1)
             ok, c_before, c_after = self.wait_for_pixel_change(*check, timeout=3.0, baseline=pre)
             if ok:
-                log(f"烹飪開始 ✓  偵測色 {c_before}→{c_after}")
+                log(f"烹飪開始 ✓  {c_before}→{c_after}")
                 return
-            log(f"點菜失敗 ✗  偵測點 {check} 顏色未變（{c_before}）")
-            if attempt < 2:
-                self.close_recipe(sx, sy, on_status)
-                time.sleep(0.5)
-                log(f"重新開啟食譜…")
-                for retry in range(3):
-                    if self._stop.is_set(): return
-                    pre2 = self.get_pixel(*check)  # 點擊前先截基準色
-                    self.click(sx, sy, delay=0.1)
-                    ok2, cb2, ca2 = self.wait_for_pixel_change(*check, timeout=5.0, baseline=pre2)
-                    if ok2:
-                        log(f"食譜重新開啟 ✓  偵測色 {cb2}→{ca2}")
-                        self.navigate_to_page(page)
-                        break
-                    log(f"重開食譜失敗 ✗（{cb2}），第 {retry+1}/3 次")
-                else:
-                    err(f"關閉後 3 次仍無法重新開啟食譜\n鍋爐座標 ({sx},{sy})，偵測點 {check}")
-                    return
+            log(f"點菜偵測無變化（{c_before}），嘗試關閉食譜重試…")
+            self.close_recipe(sx, sy, on_status)
+            time.sleep(0.5)
+            # 重新開啟食譜
+            log(f"重新開啟食譜…")
+            pre2 = self.get_pixel(*check)
+            self.click(sx, sy, delay=0.3)
+            ok2, cb2, ca2 = self.wait_for_pixel_change(*check, timeout=2.0, baseline=pre2)
+            if not ok2:
+                time.sleep(1.0)
+            self.navigate_to_page(page)
 
-        err(f"點菜 3 次失敗\n菜格座標 ({dish_pt[0]},{dish_pt[1]}) 可能不正確，請重新校準食譜")
+        log(f"點菜 3 次均無偵測到成功，繼續下一個鍋爐（菜格座標 {dish_pt} 可能需要校準）")
         self.close_recipe(sx, sy, on_status)
 
     def run(self, page, dish, cook_minutes, restart_delay, antlag_minutes, on_status):
