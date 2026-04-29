@@ -343,23 +343,19 @@ class RestaurantBot:
         if on_status: on_status("警告：無法確認食譜是否關閉，繼續執行…")
         return False
 
-    def setup_stove(self, sx, sy, page, dish, on_status=None):
-        def log(msg):
-            if on_status: on_status(msg)
-
-        dish_pt = self.recipe["dishes"][dish - 1]
-
-        log(f"點鍋爐 ({sx},{sy})，等待食譜開啟…")
-        self.click(sx, sy, delay=2.0)
-        if self._stop.is_set(): return
-
-        log(f"切換到第 {page} 頁…")
-        self.navigate_to_page(page)
-        if self._stop.is_set(): return
-
-        log(f"點菜色 {dish}，座標 ({dish_pt[0]},{dish_pt[1]})…")
-        self.click_real(*dish_pt, delay=0.8)
-        log(f"鍋爐 ({sx},{sy}) 完成")
+    def setup_stove(self, sx, sy, on_status=None):
+        if on_status: on_status(f"點鍋爐 ({sx},{sy})…")
+        check = self.recipe["check_pt"]
+        pre = self.get_pixel(*check)
+        self.click(sx, sy, delay=0.3)
+        ok, c_before, c_after = self.wait_for_pixel_change(*check, timeout=3.0, baseline=pre)
+        if ok:
+            if on_status: on_status(f"鍋爐 ({sx},{sy}) ✓ 食譜已開啟（偵測色 {c_before}→{c_after}）")
+        else:
+            if on_status: on_status(f"鍋爐 ({sx},{sy}) ✗ 未偵測到食譜開啟（偵測點 {check} 顏色未變 {c_before}）")
+        # 不管有沒有偵測到，等 2 秒後關掉食譜（X 按鈕），準備下一個鍋爐
+        time.sleep(2.0)
+        self.close_recipe(sx, sy, on_status)
 
     def run(self, page, dish, cook_minutes, restart_delay, antlag_minutes, on_status):
         self.hwnd = self.find_window()
@@ -370,25 +366,14 @@ class RestaurantBot:
         self._stop.clear()
         antlag_sec = antlag_minutes * 60 if antlag_minutes > 0 else cook_minutes * 60
 
-        while not self._stop.is_set():
-            for i, (sx, sy) in enumerate(self.stoves):
-                if self._stop.is_set(): break
-                on_status(f"設定鍋爐 {i+1}/{len(self.stoves)}…")
-                self.setup_stove(sx, sy, page, dish, on_status)
-                if not self.wait(0.5): break
-
+        # 測試模式：只跑一輪鍋爐點擊，確認可以點到後再加下一步
+        on_status("開始測試鍋爐點擊…")
+        for i, (sx, sy) in enumerate(self.stoves):
             if self._stop.is_set(): break
-            if not self.wait_with_antlag(cook_minutes * 60, antlag_sec, on_status, "烹飪中"): break
+            self.setup_stove(sx, sy, on_status)
+            if not self.wait(0.5): break
 
-            on_status("收菜中…")
-            for sx, sy in self.stoves:
-                if self._stop.is_set(): break
-                self.click(sx, sy, delay=0.8)
-
-            if self._stop.is_set(): break
-            on_status(f"等待 {restart_delay} 秒後重新開始…")
-            if not self.wait(restart_delay): break
-
+        on_status("測試完成，請確認每個鍋爐是否有被點到")
         on_status("已停止")
 
     def stop(self):
