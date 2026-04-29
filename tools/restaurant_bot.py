@@ -208,11 +208,11 @@ class RestaurantBot:
         return sum(abs(a - b) for a, b in zip(c1, c2))
 
     def close_recipe(self, sx, sy, on_status=None):
-        """點 X 按鈕關閉食譜"""
+        """點 X 按鈕關閉食譜（用真實滑鼠）"""
         close = self.recipe.get("close", (0, 0))
         if close != (0, 0):
             if on_status: on_status(f"關閉食譜：點 X ({close[0]},{close[1]})")
-            self.click(*close, delay=0.5)
+            self.click_real(*close, delay=0.5)
         else:
             if on_status: on_status("警告：X 按鈕座標未校準 (0,0)，無法關閉食譜")
 
@@ -233,6 +233,7 @@ class RestaurantBot:
         return False, baseline, current
 
     def click(self, mole_x, mole_y, delay=0.1):
+        """背景點擊（SendMessage），適合底層遊戲元素如鍋爐"""
         if not self.hwnd:
             return
         rect  = win32gui.GetClientRect(self.hwnd)
@@ -242,6 +243,28 @@ class RestaurantBot:
         lp = (cy << 16) | (cx & 0xFFFF)
         win32api.SendMessage(self.hwnd, 0x201, 0, lp)
         win32api.SendMessage(self.hwnd, 0x202, 0, lp)
+        if delay > 0:
+            time.sleep(delay)
+
+    def click_real(self, mole_x, mole_y, delay=0.1):
+        """真實滑鼠點擊（帶到前景），適合食譜彈出視窗等 SendMessage 無效的元素"""
+        if not self.hwnd:
+            return
+        rect  = win32gui.GetClientRect(self.hwnd)
+        w, h  = rect[2], rect[3]
+        scale = max(w / MOLE_W, h / MOLE_H)
+        cx, cy = int(mole_x * scale), int(mole_y * scale)
+        try:
+            win32gui.SetForegroundWindow(self.hwnd)
+            time.sleep(0.1)
+            sx, sy = win32gui.ClientToScreen(self.hwnd, (cx, cy))
+            win32api.SetCursorPos((sx, sy))
+            time.sleep(0.05)
+            win32api.mouse_event(0x0002, 0, 0, 0, 0)  # MOUSEEVENTF_LEFTDOWN
+            time.sleep(0.08)
+            win32api.mouse_event(0x0004, 0, 0, 0, 0)  # MOUSEEVENTF_LEFTUP
+        except Exception as e:
+            pass
         if delay > 0:
             time.sleep(delay)
 
@@ -277,16 +300,16 @@ class RestaurantBot:
         r = self.recipe
         for _ in range(10):
             if self._stop.is_set(): return
-            self.click(*r["left_arrow"], delay=0.15)
+            self.click_real(*r["left_arrow"], delay=0.15)
 
         tabs = r["page_tabs"]
         if target_page <= 5:
-            self.click(*tabs[target_page - 1], delay=0.3)
+            self.click_real(*tabs[target_page - 1], delay=0.3)
         else:
             for _ in range(target_page - 5):
                 if self._stop.is_set(): return
-                self.click(*r["right_arrow"], delay=0.15)
-            self.click(*tabs[4], delay=0.3)
+                self.click_real(*r["right_arrow"], delay=0.15)
+            self.click_real(*tabs[4], delay=0.3)
 
         time.sleep(0.3)
 
@@ -357,7 +380,7 @@ class RestaurantBot:
                 return
             log(f"點菜色 {dish} ({dish_pt[0]},{dish_pt[1]})…" + (f"（第 {attempt+1} 次）" if attempt else ""))
             pre = self.get_pixel(*check)          # 點擊前先截基準色
-            self.click(*dish_pt, delay=0.1)
+            self.click_real(*dish_pt, delay=0.1)
             ok, c_before, c_after = self.wait_for_pixel_change(*check, timeout=3.0, baseline=pre)
             if ok:
                 log(f"烹飪開始 ✓  偵測色 {c_before}→{c_after}")
