@@ -413,15 +413,27 @@ class RestaurantBot:
         self.navigate_to_page(page)
         if self._stop.is_set(): return
 
-        # 步驟 3：點菜色
+        # 步驟 3：點菜色，等食譜關閉
         log(f"點菜色 {dish}，座標 ({dish_pt[0]},{dish_pt[1]})…")
         pre = self.get_pixel(*check)
         self.click_real(*dish_pt, delay=0.3)
         ok, c_before, c_after = self.wait_for_pixel_change(*check, timeout=3.0, baseline=pre)
-        if ok:
-            log(f"烹飪開始 ✓ ({c_before}→{c_after})")
-        else:
-            log(f"點菜偵測無變化（{c_before}），若食譜還開著請重新校準菜格座標")
+        if not ok:
+            log(f"點菜後食譜沒有關閉（{c_before}），請重新校準菜格座標")
+            return
+        log(f"食譜已關閉 ✓ ({c_before}→{c_after})")
+        if self._stop.is_set(): return
+
+        # 步驟 4：點鍋爐放入食材
+        time.sleep(0.5)
+        log(f"放入食材…")
+        self.click(sx, sy, delay=1.2)
+        if self._stop.is_set(): return
+
+        # 步驟 5：點鍋爐開始烹飪
+        log(f"開始烹飪…")
+        self.click(sx, sy, delay=0.5)
+        log(f"鍋爐 ({sx},{sy}) 烹飪中 ✓")
 
     def run(self, page, dish, cook_minutes, restart_delay, antlag_minutes, on_status):
         self.hwnd = self.find_window()
