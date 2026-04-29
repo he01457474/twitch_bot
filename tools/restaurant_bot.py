@@ -216,9 +216,11 @@ class RestaurantBot:
         else:
             if on_status: on_status("警告：X 按鈕座標未校準 (0,0)，無法關閉食譜")
 
-    def wait_for_pixel_change(self, mole_x, mole_y, timeout=5.0, threshold=40):
-        """等到指定點顏色發生明顯變化，回傳 (成功, 基準色, 最終色)"""
-        baseline = self.get_pixel(mole_x, mole_y)
+    def wait_for_pixel_change(self, mole_x, mole_y, timeout=5.0, threshold=40, baseline=None):
+        """等到指定點顏色發生明顯變化，回傳 (成功, 基準色, 最終色)
+        baseline 可在點擊前先傳入，避免 click delay 導致截到錯誤的基準色"""
+        if baseline is None:
+            baseline = self.get_pixel(mole_x, mole_y)
         deadline = time.time() + timeout
         current = baseline
         while time.time() < deadline:
@@ -305,8 +307,9 @@ class RestaurantBot:
         for attempt in range(3):
             if self._stop.is_set(): return
             log(f"點鍋爐 ({sx},{sy})，等待食譜（偵測點 {check}）…")
-            self.click(sx, sy, delay=0.3)
-            ok, c_before, c_after = self.wait_for_pixel_change(*check, timeout=5.0)
+            pre = self.get_pixel(*check)          # 點擊前先截基準色
+            self.click(sx, sy, delay=0.1)
+            ok, c_before, c_after = self.wait_for_pixel_change(*check, timeout=5.0, baseline=pre)
             if ok:
                 log(f"食譜已開啟 ✓  偵測色 {c_before}→{c_after}")
                 break
@@ -325,8 +328,9 @@ class RestaurantBot:
                 self.close_recipe(sx, sy, on_status)
                 return
             log(f"點菜色 {dish} ({dish_pt[0]},{dish_pt[1]})…" + (f"（第 {attempt+1} 次）" if attempt else ""))
-            self.click(*dish_pt, delay=0.3)
-            ok, c_before, c_after = self.wait_for_pixel_change(*check, timeout=3.0)
+            pre = self.get_pixel(*check)          # 點擊前先截基準色
+            self.click(*dish_pt, delay=0.1)
+            ok, c_before, c_after = self.wait_for_pixel_change(*check, timeout=3.0, baseline=pre)
             if ok:
                 log(f"烹飪開始 ✓  偵測色 {c_before}→{c_after}")
                 return
@@ -337,8 +341,9 @@ class RestaurantBot:
                 log(f"重新開啟食譜…")
                 for retry in range(3):
                     if self._stop.is_set(): return
-                    self.click(sx, sy, delay=0.3)
-                    ok2, cb2, ca2 = self.wait_for_pixel_change(*check, timeout=5.0)
+                    pre2 = self.get_pixel(*check)  # 點擊前先截基準色
+                    self.click(sx, sy, delay=0.1)
+                    ok2, cb2, ca2 = self.wait_for_pixel_change(*check, timeout=5.0, baseline=pre2)
                     if ok2:
                         log(f"食譜重新開啟 ✓  偵測色 {cb2}→{ca2}")
                         self.navigate_to_page(page)
