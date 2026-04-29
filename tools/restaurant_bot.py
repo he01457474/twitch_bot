@@ -468,27 +468,27 @@ class RestaurantBot:
 
         # ── 放入食材 ──────────────────────────────────
         # 等食譜關閉動畫完全結束，再點鍋爐
-        time.sleep(1.5)
+        time.sleep(2.0)
         log("放入食材…")
         pre_stove = self.get_pixel(sx, sy)
-        self.click(sx, sy, delay=0.3)
+        self.click(sx, sy, delay=1.0)   # 給遊戲時間接受點擊
 
         # 等「製作中」讀條出現（第一次像素變化）
-        ok1, _, bar_color = self.wait_for_pixel_change(sx, sy, timeout=3.0, baseline=pre_stove)
+        ok1, _, bar_color = self.wait_for_pixel_change(sx, sy, timeout=4.0, baseline=pre_stove)
         if not ok1:
             log("放入食材後無反應，仍繼續")
         else:
             # 等讀條跑完（第二次像素變化，讀條消失後才能點）
             log("讀條中，等待製作完成…")
-            ok2, _, _ = self.wait_for_pixel_change(sx, sy, timeout=8.0, baseline=bar_color)
+            ok2, _, _ = self.wait_for_pixel_change(sx, sy, timeout=12.0, baseline=bar_color)
             if not ok2:
                 log("讀條等待超時，仍繼續")
         if self._stop.is_set(): return
 
         # ── 開始烹飪 ──────────────────────────────────
-        time.sleep(0.3)
+        time.sleep(1.5)   # 讀條結束後讓畫面穩定
         log("開始烹飪…")
-        self.click(sx, sy, delay=0.5)
+        self.click(sx, sy, delay=2.0)   # 等烹飪動畫啟動後再去下一個鍋爐
         log(f"鍋爐 ({sx},{sy}) 烹飪中 ✓")
 
     def run(self, page, dish, cook_minutes, restart_delay, antlag_minutes, on_status):
