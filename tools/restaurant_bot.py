@@ -207,6 +207,14 @@ class RestaurantBot:
     def color_diff(self, c1, c2):
         return sum(abs(a - b) for a, b in zip(c1, c2))
 
+    def close_recipe(self, sx, sy):
+        """嘗試關閉食譜（ESC + 點鍋爐位置）"""
+        win32api.SendMessage(self.hwnd, win32con.WM_KEYDOWN, win32con.VK_ESCAPE, 0)
+        win32api.SendMessage(self.hwnd, win32con.WM_KEYUP,   win32con.VK_ESCAPE, 0)
+        time.sleep(0.4)
+        # 點鍋爐位置（在食譜範圍外），部分情況可關閉食譜
+        self.click(sx, sy, delay=0.5)
+
     def wait_for_pixel_change(self, mole_x, mole_y, timeout=5.0, threshold=40):
         """等到指定點顏色發生明顯變化，回傳 True=有變 / False=超時"""
         baseline = self.get_pixel(mole_x, mole_y)
@@ -296,16 +304,34 @@ class RestaurantBot:
         if on_status: on_status(f"切換到第 {page} 頁…")
         self.navigate_to_page(page)
 
-        # 步驟 2：點菜，偵測食譜是否關閉（最多重試 2 次）
-        for attempt in range(2):
-            if self._stop.is_set(): return
-            if on_status: on_status(f"點選第 {dish} 個菜色…" + ("（重試）" if attempt else ""))
+        # 步驟 2：點菜，偵測食譜是否關閉（最多重試 3 次）
+        for attempt in range(3):
+            if self._stop.is_set():
+                self.close_recipe(sx, sy)
+                return
+            if on_status: on_status(f"點選第 {dish} 個菜色…" + (f"（第 {attempt+1} 次）" if attempt else ""))
             self.click(*self.recipe["dishes"][dish - 1], delay=0.3)
             if self.wait_for_pixel_change(*check, timeout=3.0):
                 if on_status: on_status("烹飪開始！")
-                break
-        else:
-            if on_status: on_status("點菜未成功，可能需要重新校準座標")
+                return
+            # 點不到，關閉食譜再重試
+            if attempt < 2:
+                if on_status: on_status("點菜失敗，關閉食譜重試…")
+                self.close_recipe(sx, sy)
+                time.sleep(0.5)
+                # 重新開啟食譜
+                for retry in range(3):
+                    if self._stop.is_set(): return
+                    self.click(sx, sy, delay=0.3)
+                    if self.wait_for_pixel_change(*check, timeout=5.0):
+                        self.navigate_to_page(page)
+                        break
+                else:
+                    if on_status: on_status("無法重新開啟食譜，跳過此鍋爐")
+                    return
+
+        if on_status: on_status("點菜失敗，關閉食譜跳過此鍋爐（請重新校準座標）")
+        self.close_recipe(sx, sy)
 
     def run(self, page, dish, cook_minutes, restart_delay, antlag_minutes, on_status):
         self.hwnd = self.find_window()
