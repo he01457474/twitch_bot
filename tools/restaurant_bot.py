@@ -207,23 +207,28 @@ class RestaurantBot:
     def color_diff(self, c1, c2):
         return sum(abs(a - b) for a, b in zip(c1, c2))
 
-    def close_recipe(self, sx, sy):
+    def close_recipe(self, sx, sy, on_status=None):
         """點 X 按鈕關閉食譜"""
         close = self.recipe.get("close", (0, 0))
         if close != (0, 0):
+            if on_status: on_status(f"關閉食譜：點 X ({close[0]},{close[1]})")
             self.click(*close, delay=0.5)
+        else:
+            if on_status: on_status("警告：X 按鈕座標未校準 (0,0)，無法關閉食譜")
 
     def wait_for_pixel_change(self, mole_x, mole_y, timeout=5.0, threshold=40):
-        """等到指定點顏色發生明顯變化，回傳 True=有變 / False=超時"""
+        """等到指定點顏色發生明顯變化，回傳 (成功, 基準色, 最終色)"""
         baseline = self.get_pixel(mole_x, mole_y)
         deadline = time.time() + timeout
+        current = baseline
         while time.time() < deadline:
             if self._stop.is_set():
-                return False
+                return False, baseline, current
             time.sleep(0.15)
-            if self.color_diff(self.get_pixel(mole_x, mole_y), baseline) > threshold:
-                return True
-        return False
+            current = self.get_pixel(mole_x, mole_y)
+            if self.color_diff(current, baseline) > threshold:
+                return True, baseline, current
+        return False, baseline, current
 
     def click(self, mole_x, mole_y, delay=0.1):
         if not self.hwnd:
@@ -284,52 +289,63 @@ class RestaurantBot:
         time.sleep(0.3)
 
     def setup_stove(self, sx, sy, page, dish, on_status=None):
+        def log(msg):
+            if on_status: on_status(msg)
+
         check = self.recipe["check_pt"]
+        dish_pt = self.recipe["dishes"][dish - 1]
+
+        log(f"[鍋爐 ({sx},{sy})] 開始設定")
 
         # 步驟 1：點鍋爐，偵測食譜是否開啟（最多重試 3 次）
         for attempt in range(3):
             if self._stop.is_set(): return
-            if on_status: on_status(f"點擊鍋爐（第 {attempt+1} 次）…")
+            log(f"點鍋爐 ({sx},{sy})，等待食譜（偵測點 {check}）…")
             self.click(sx, sy, delay=0.3)
-            if self.wait_for_pixel_change(*check, timeout=5.0):
+            ok, c_before, c_after = self.wait_for_pixel_change(*check, timeout=5.0)
+            if ok:
+                log(f"食譜已開啟 ✓  偵測色 {c_before}→{c_after}")
                 break
-            if on_status: on_status("食譜未開啟，重試…")
+            log(f"食譜未開啟 ✗  偵測點 {check} 顏色未變（{c_before}），第 {attempt+1}/3 次")
         else:
-            if on_status: on_status("無法開啟食譜，跳過此鍋爐")
+            log(f"[錯誤] 3 次仍無法開啟食譜，跳過鍋爐 ({sx},{sy})")
             return
 
         if self._stop.is_set(): return
-        if on_status: on_status(f"切換到第 {page} 頁…")
+        log(f"切換到第 {page} 頁…")
         self.navigate_to_page(page)
 
         # 步驟 2：點菜，偵測食譜是否關閉（最多重試 3 次）
         for attempt in range(3):
             if self._stop.is_set():
-                self.close_recipe(sx, sy)
+                self.close_recipe(sx, sy, on_status)
                 return
-            if on_status: on_status(f"點選第 {dish} 個菜色…" + (f"（第 {attempt+1} 次）" if attempt else ""))
-            self.click(*self.recipe["dishes"][dish - 1], delay=0.3)
-            if self.wait_for_pixel_change(*check, timeout=3.0):
-                if on_status: on_status("烹飪開始！")
+            log(f"點菜色 {dish} ({dish_pt[0]},{dish_pt[1]})…" + (f"（第 {attempt+1} 次）" if attempt else ""))
+            self.click(*dish_pt, delay=0.3)
+            ok, c_before, c_after = self.wait_for_pixel_change(*check, timeout=3.0)
+            if ok:
+                log(f"烹飪開始 ✓  偵測色 {c_before}→{c_after}")
                 return
-            # 點不到，關閉食譜再重試
+            log(f"點菜失敗 ✗  偵測點 {check} 顏色未變（{c_before}）")
             if attempt < 2:
-                if on_status: on_status("點菜失敗，關閉食譜重試…")
-                self.close_recipe(sx, sy)
+                self.close_recipe(sx, sy, on_status)
                 time.sleep(0.5)
-                # 重新開啟食譜
+                log(f"重新開啟食譜…")
                 for retry in range(3):
                     if self._stop.is_set(): return
                     self.click(sx, sy, delay=0.3)
-                    if self.wait_for_pixel_change(*check, timeout=5.0):
+                    ok2, cb2, ca2 = self.wait_for_pixel_change(*check, timeout=5.0)
+                    if ok2:
+                        log(f"食譜重新開啟 ✓  偵測色 {cb2}→{ca2}")
                         self.navigate_to_page(page)
                         break
+                    log(f"重開食譜失敗 ✗（{cb2}），第 {retry+1}/3 次")
                 else:
-                    if on_status: on_status("無法重新開啟食譜，跳過此鍋爐")
+                    log(f"[錯誤] 無法重新開啟食譜，跳過鍋爐 ({sx},{sy})")
                     return
 
-        if on_status: on_status("點菜失敗，關閉食譜跳過此鍋爐（請重新校準座標）")
-        self.close_recipe(sx, sy)
+        log(f"[錯誤] 點菜 3 次失敗，菜格座標 ({dish_pt[0]},{dish_pt[1]}) 可能需要重新校準")
+        self.close_recipe(sx, sy, on_status)
 
     def run(self, page, dish, cook_minutes, restart_delay, antlag_minutes, on_status):
         self.hwnd = self.find_window()
