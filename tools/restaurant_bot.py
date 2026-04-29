@@ -247,24 +247,23 @@ class RestaurantBot:
             time.sleep(delay)
 
     def click_real(self, mole_x, mole_y, delay=0.1):
-        """真實滑鼠點擊（帶到前景），適合食譜彈出視窗等 SendMessage 無效的元素"""
+        """移動游標到位置後 SendMessage（不搶視窗焦點，但游標會移動）"""
         if not self.hwnd:
             return
         rect  = win32gui.GetClientRect(self.hwnd)
         w, h  = rect[2], rect[3]
         scale = max(w / MOLE_W, h / MOLE_H)
         cx, cy = int(mole_x * scale), int(mole_y * scale)
+        lp = (cy << 16) | (cx & 0xFFFF)
         try:
-            win32gui.SetForegroundWindow(self.hwnd)
-            time.sleep(0.1)
+            # 移動實體游標到對應的螢幕座標（不改變焦點）
             sx, sy = win32gui.ClientToScreen(self.hwnd, (cx, cy))
             win32api.SetCursorPos((sx, sy))
             time.sleep(0.05)
-            win32api.mouse_event(0x0002, 0, 0, 0, 0)  # MOUSEEVENTF_LEFTDOWN
-            time.sleep(0.08)
-            win32api.mouse_event(0x0004, 0, 0, 0, 0)  # MOUSEEVENTF_LEFTUP
-        except Exception as e:
+        except Exception:
             pass
+        win32api.SendMessage(self.hwnd, 0x201, 1, lp)  # wParam=1 (MK_LBUTTON)
+        win32api.SendMessage(self.hwnd, 0x202, 0, lp)
         if delay > 0:
             time.sleep(delay)
 
