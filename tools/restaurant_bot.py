@@ -34,7 +34,8 @@ DEFAULT_RECIPE = {
     "close":       (733, 110),
     "page_tabs":   [(345,480),(395,480),(445,480),(495,480),(545,480)],
     "dishes":      [(345,245),(490,245),(635,245),(345,385),(490,385),(635,385)],
-    "check_pt":    (550, 160),   # 食譜標題區偵測點（食譜標題欄位，開啟時顏色明顯不同）
+    "check_pt":    (550, 160),   # 食譜標題區偵測點
+    "cancel_btn":  (540, 415),   # 捐菜彈窗的「取消」按鈕
 }
 DEFAULT_SETTINGS = {
     "page": 6, "dish": 1, "cook_minutes": 20,
@@ -66,6 +67,7 @@ def load_config():
         "page_tabs":   [tuple(t) for t in r.get("page_tabs", DEFAULT_RECIPE["page_tabs"])],
         "dishes":      [tuple(d) for d in r.get("dishes",    DEFAULT_RECIPE["dishes"])],
         "check_pt":    tuple(r.get("check_pt",    DEFAULT_RECIPE["check_pt"])),
+        "cancel_btn":  tuple(r.get("cancel_btn",  DEFAULT_RECIPE["cancel_btn"])),
     }
 
     s = data.get("settings", {})
@@ -352,6 +354,7 @@ class RestaurantBot:
         dish_pt = self.recipe["dishes"][dish - 1]
 
         # 步驟 1：點鍋爐，偵測食譜開啟（最多 2 次，處理鍋爐上有菜的情況）
+        cancel_btn = self.recipe.get("cancel_btn", DEFAULT_RECIPE["cancel_btn"])
         recipe_opened = False
         for attempt in range(2):
             if self._stop.is_set(): return
@@ -363,13 +366,13 @@ class RestaurantBot:
                 log(f"食譜已開啟 ✓ ({c_before}→{c_after})")
                 recipe_opened = True
                 break
-            else:
-                log(f"偵測點無變化（{c_before}），嘗試關閉當前 UI…")
-                self.close_recipe(sx, sy, on_status)
-                time.sleep(0.5)
+            # 食譜沒開，可能出現「捐菜」彈窗或食物收菜動畫
+            # 點取消關閉彈窗，再試一次
+            log(f"未偵測到食譜，點取消按鈕 ({cancel_btn[0]},{cancel_btn[1]}) 關閉彈窗…")
+            self.click_real(*cancel_btn, delay=0.8)
 
         if not recipe_opened:
-            log(f"鍋爐 ({sx},{sy}) 無法開啟食譜（可能正在做菜），跳過")
+            log(f"鍋爐 ({sx},{sy}) 無法開啟食譜（正在做菜或腐壞），跳過")
             return
         if self._stop.is_set(): return
 
@@ -466,9 +469,10 @@ class App:
         self.stop_btn   = ttk.Button(btn_f, text="停止",     command=self._stop, state=tk.DISABLED)
         self.calib_s    = ttk.Button(btn_f, text="校準鍋爐", command=self._calib_stoves)
         self.calib_r    = ttk.Button(btn_f, text="校準食譜", command=self._calib_recipe)
+        self.calib_c    = ttk.Button(btn_f, text="校準取消鈕", command=self._calib_cancel)
         self.preview_btn= ttk.Button(btn_f, text="預覽座標", command=self._preview_coords)
 
-        for btn in (self.start_btn, self.stop_btn, self.calib_s, self.calib_r, self.preview_btn):
+        for btn in (self.start_btn, self.stop_btn, self.calib_s, self.calib_r, self.calib_c, self.preview_btn):
             btn.pack(side=tk.LEFT, padx=4)
 
     def _get_settings(self):
@@ -480,6 +484,7 @@ class App:
         self.start_btn.config(state=sa)
         self.calib_s.config(state=sa)
         self.calib_r.config(state=sa)
+        self.calib_c.config(state=sa)
         self.stop_btn.config(state=sb)
 
     def _save_all(self):
@@ -544,6 +549,7 @@ class App:
         for i, pt in enumerate(r["dishes"]):
             dot(*pt, "orange", f"菜{i+1}")
         dot(*r["check_pt"],    "white",  "偵測")
+        dot(*r["cancel_btn"],  "magenta","取消")
 
         # 顯示
         disp_scale = min(900/game_w, 600/game_h, 1.0)
@@ -554,6 +560,21 @@ class App:
         photo = ImageTk.PhotoImage(disp)
         tk.Label(win, image=photo).pack()
         win.photo = photo
+
+    def _calib_cancel(self):
+        hwnd = self._get_hwnd()
+        if not hwnd: return
+        messagebox.showinfo(
+            "校準取消按鈕",
+            "請先點鍋爐讓「捐菜給拉姆」彈窗出現，\n再回到這裡點「確定」開始校準。\n\n截圖後點一下彈窗的「取消」按鈕位置。"
+        )
+        CalibrationWindow(self.root, hwnd, ["取消按鈕"], self._done_cancel)
+
+    def _done_cancel(self, pts):
+        self.recipe["cancel_btn"] = pts[0]
+        self.bot.recipe = self.recipe
+        self._save_all()
+        messagebox.showinfo("完成", f"取消按鈕座標已儲存：{pts[0]}")
 
     def _calib_stoves(self):
         hwnd = self._get_hwnd()
