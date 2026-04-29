@@ -240,8 +240,11 @@ class RestaurantBot:
         scale = max(w / MOLE_W, h / MOLE_H)
         cx, cy = int(mole_x * scale), int(mole_y * scale)
         lp = (cy << 16) | (cx & 0xFFFF)
-        win32api.SendMessage(self.hwnd, 0x201, 0, lp)
-        win32api.SendMessage(self.hwnd, 0x202, 0, lp)
+        win32api.SendMessage(self.hwnd, win32con.WM_MOUSEMOVE,  0, lp)   # 先移到目標位置
+        time.sleep(0.05)
+        win32api.SendMessage(self.hwnd, win32con.WM_LBUTTONDOWN, 1, lp)
+        time.sleep(0.08)                                                   # 按住短暫停
+        win32api.SendMessage(self.hwnd, win32con.WM_LBUTTONUP,   0, lp)
         if delay > 0:
             time.sleep(delay)
 
