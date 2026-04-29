@@ -35,7 +35,7 @@ DEFAULT_RECIPE = {
     "page_tabs":   [(345,480),(395,480),(445,480),(495,480),(545,480)],
     "dishes":      [(345,245),(490,245),(635,245),(345,385),(490,385),(635,385)],
     "check_pt":    (550, 160),   # 食譜標題區偵測點
-    "cancel_btn":  (540, 415),   # 捐菜彈窗的「取消」按鈕
+    "confirm_btn": (395, 415),   # 捐菜彈窗的「確認」按鈕（清除腐壞食物）
 }
 DEFAULT_SETTINGS = {
     "page": 6, "dish": 1, "cook_minutes": 20,
@@ -67,7 +67,7 @@ def load_config():
         "page_tabs":   [tuple(t) for t in r.get("page_tabs", DEFAULT_RECIPE["page_tabs"])],
         "dishes":      [tuple(d) for d in r.get("dishes",    DEFAULT_RECIPE["dishes"])],
         "check_pt":    tuple(r.get("check_pt",    DEFAULT_RECIPE["check_pt"])),
-        "cancel_btn":  tuple(r.get("cancel_btn",  DEFAULT_RECIPE["cancel_btn"])),
+        "confirm_btn": tuple(r.get("confirm_btn", DEFAULT_RECIPE["confirm_btn"])),
     }
 
     s = data.get("settings", {})
@@ -354,11 +354,11 @@ class RestaurantBot:
         dish_pt = self.recipe["dishes"][dish - 1]
 
         # 步驟 1：點鍋爐，偵測食譜開啟（最多 2 次，處理鍋爐上有菜的情況）
-        cancel_btn = self.recipe.get("cancel_btn", DEFAULT_RECIPE["cancel_btn"])
+        confirm_btn = self.recipe.get("confirm_btn", DEFAULT_RECIPE["confirm_btn"])
         recipe_opened = False
-        for attempt in range(2):
+        for attempt in range(3):
             if self._stop.is_set(): return
-            log(f"點鍋爐 ({sx},{sy})" + ("（第 2 次）…" if attempt else "…"))
+            log(f"點鍋爐 ({sx},{sy})…" + (f"（第 {attempt+1} 次）" if attempt else ""))
             pre = self.get_pixel(*check)
             self.click(sx, sy, delay=0.3)
             ok, c_before, c_after = self.wait_for_pixel_change(*check, timeout=3.0, baseline=pre)
@@ -366,13 +366,13 @@ class RestaurantBot:
                 log(f"食譜已開啟 ✓ ({c_before}→{c_after})")
                 recipe_opened = True
                 break
-            # 食譜沒開，可能出現「捐菜」彈窗或食物收菜動畫
-            # 點取消關閉彈窗，再試一次
-            log(f"未偵測到食譜，點取消按鈕 ({cancel_btn[0]},{cancel_btn[1]}) 關閉彈窗…")
-            self.click_real(*cancel_btn, delay=0.8)
+            # 食譜沒開：可能是收菜動畫、做菜中、或腐壞彈窗
+            # 點確認清除（腐壞情況），或等動畫結束後重試
+            log(f"未偵測到食譜，點確認 ({confirm_btn[0]},{confirm_btn[1]}) 清除可能的腐壞/彈窗…")
+            self.click_real(*confirm_btn, delay=1.0)
 
         if not recipe_opened:
-            log(f"鍋爐 ({sx},{sy}) 無法開啟食譜（正在做菜或腐壞），跳過")
+            log(f"鍋爐 ({sx},{sy}) 3 次後仍無法開啟食譜（可能正在做菜），跳過")
             return
         if self._stop.is_set(): return
 
@@ -469,7 +469,7 @@ class App:
         self.stop_btn   = ttk.Button(btn_f, text="停止",     command=self._stop, state=tk.DISABLED)
         self.calib_s    = ttk.Button(btn_f, text="校準鍋爐", command=self._calib_stoves)
         self.calib_r    = ttk.Button(btn_f, text="校準食譜", command=self._calib_recipe)
-        self.calib_c    = ttk.Button(btn_f, text="校準取消鈕", command=self._calib_cancel)
+        self.calib_c    = ttk.Button(btn_f, text="校準確認鈕", command=self._calib_cancel)
         self.preview_btn= ttk.Button(btn_f, text="預覽座標", command=self._preview_coords)
 
         for btn in (self.start_btn, self.stop_btn, self.calib_s, self.calib_r, self.calib_c, self.preview_btn):
@@ -549,7 +549,7 @@ class App:
         for i, pt in enumerate(r["dishes"]):
             dot(*pt, "orange", f"菜{i+1}")
         dot(*r["check_pt"],    "white",  "偵測")
-        dot(*r["cancel_btn"],  "magenta","取消")
+        dot(*r.get("confirm_btn", DEFAULT_RECIPE["confirm_btn"]), "magenta", "確認")
 
         # 顯示
         disp_scale = min(900/game_w, 600/game_h, 1.0)
@@ -565,16 +565,16 @@ class App:
         hwnd = self._get_hwnd()
         if not hwnd: return
         messagebox.showinfo(
-            "校準取消按鈕",
-            "請先點鍋爐讓「捐菜給拉姆」彈窗出現，\n再回到這裡點「確定」開始校準。\n\n截圖後點一下彈窗的「取消」按鈕位置。"
+            "校準確認按鈕",
+            "請先點有腐壞食物的鍋爐，讓「捐菜給拉姆」彈窗出現，\n再回到這裡點「確定」開始校準。\n\n截圖後點一下彈窗的「確認」按鈕位置。"
         )
-        CalibrationWindow(self.root, hwnd, ["取消按鈕"], self._done_cancel)
+        CalibrationWindow(self.root, hwnd, ["確認按鈕"], self._done_cancel)
 
     def _done_cancel(self, pts):
-        self.recipe["cancel_btn"] = pts[0]
+        self.recipe["confirm_btn"] = pts[0]
         self.bot.recipe = self.recipe
         self._save_all()
-        messagebox.showinfo("完成", f"取消按鈕座標已儲存：{pts[0]}")
+        messagebox.showinfo("完成", f"確認按鈕座標已儲存：{pts[0]}")
 
     def _calib_stoves(self):
         hwnd = self._get_hwnd()
