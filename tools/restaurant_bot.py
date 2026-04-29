@@ -292,6 +292,10 @@ class RestaurantBot:
         def log(msg):
             if on_status: on_status(msg)
 
+        def err(msg):
+            self._stop.set()
+            if on_status: on_status(msg, error=True)
+
         check = self.recipe["check_pt"]
         dish_pt = self.recipe["dishes"][dish - 1]
 
@@ -308,7 +312,7 @@ class RestaurantBot:
                 break
             log(f"食譜未開啟 ✗  偵測點 {check} 顏色未變（{c_before}），第 {attempt+1}/3 次")
         else:
-            log(f"[錯誤] 3 次仍無法開啟食譜，跳過鍋爐 ({sx},{sy})")
+            err(f"3 次仍無法開啟食譜\n鍋爐座標 ({sx},{sy})，偵測點 {check} 顏色未變（{c_before}）\n請確認鍋爐座標或偵測點是否正確")
             return
 
         if self._stop.is_set(): return
@@ -341,10 +345,10 @@ class RestaurantBot:
                         break
                     log(f"重開食譜失敗 ✗（{cb2}），第 {retry+1}/3 次")
                 else:
-                    log(f"[錯誤] 無法重新開啟食譜，跳過鍋爐 ({sx},{sy})")
+                    err(f"關閉後 3 次仍無法重新開啟食譜\n鍋爐座標 ({sx},{sy})，偵測點 {check}")
                     return
 
-        log(f"[錯誤] 點菜 3 次失敗，菜格座標 ({dish_pt[0]},{dish_pt[1]}) 可能需要重新校準")
+        err(f"點菜 3 次失敗\n菜格座標 ({dish_pt[0]},{dish_pt[1]}) 可能不正確，請重新校準食譜")
         self.close_recipe(sx, sy, on_status)
 
     def run(self, page, dish, cook_minutes, restart_delay, antlag_minutes, on_status):
