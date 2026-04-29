@@ -41,8 +41,11 @@ DEFAULT_RECIPE = {
 DEFAULT_SETTINGS = {
     "page": 6, "dish": 1, "cook_minutes": 20,
     "restart_delay": 30, "antlag_minutes": 5,
-    "spoiled_color": None,       # 腐壞鍋爐的顏色樣本 [R,G,B]，None 表示未校準
-    "spoiled_threshold": 40,     # 顏色差異容許值
+    "cooking_color":  None,   # 烹飪中
+    "done_color":     None,   # 完成/可收菜
+    "utensils_color": None,   # 餐具/等放食材
+    "spoiled_color":  None,   # 腐壞
+    "state_threshold": 40,    # 顏色差異容許值
 }
 MAP_BTN        = (33,  505)
 HOME_BTN       = (880, 538)
@@ -193,13 +196,22 @@ class RestaurantBot:
         self.recipe   = recipe
         self.settings = settings
 
+    def detect_stove_state(self, sx, sy):
+        """
+        回傳鍋爐狀態字串：
+          "cooking" | "done" | "utensils" | "spoiled" | "unknown"
+        按顏色樣本比對，未校準的狀態會略過回傳 unknown
+        """
+        threshold = self.settings.get("state_threshold", 40)
+        pixel = self.get_pixel(sx, sy)
+        for state in ("cooking", "done", "utensils", "spoiled"):
+            color = self.settings.get(f"{state}_color")
+            if color and self.color_diff(pixel, tuple(color)) < threshold:
+                return state
+        return "unknown"
+
     def is_stove_spoiled(self, sx, sy):
-        """比對鍋爐像素與腐壞顏色樣本，回傳是否為腐壞狀態"""
-        sc = self.settings.get("spoiled_color")
-        if not sc:
-            return False  # 未校準，無法判斷
-        current = self.get_pixel(sx, sy)
-        return self.color_diff(current, tuple(sc)) < self.settings.get("spoiled_threshold", 40)
+        return self.detect_stove_state(sx, sy) == "spoiled"
 
     def find_window(self):
         found = []
@@ -363,42 +375,63 @@ class RestaurantBot:
         def log(msg):
             if on_status: on_status(msg)
 
-        check   = self.recipe["check_pt"]
-        dish_pt = self.recipe["dishes"][dish - 1]
-
-        # 步驟 1：點鍋爐，偵測食譜開啟（最多 2 次，處理鍋爐上有菜的情況）
         confirm_btn = self.recipe.get("confirm_btn", DEFAULT_RECIPE["confirm_btn"])
         cancel_btn  = self.recipe.get("cancel_btn",  DEFAULT_RECIPE["cancel_btn"])
+        check       = self.recipe["check_pt"]
+        dish_pt     = self.recipe["dishes"][dish - 1]
 
-        # 點擊前先偵測是否腐壞
-        spoiled = self.is_stove_spoiled(sx, sy)
-        if spoiled:
-            log(f"偵測到腐壞食物，點確認清除…")
-        else:
-            sc = self.settings.get("spoiled_color")
-            if not sc:
-                log(f"（未校準腐壞顏色，無法預判狀態）")
+        # ── 偵測鍋爐狀態 ──────────────────────────────
+        state = self.detect_stove_state(sx, sy)
+        log(f"鍋爐 ({sx},{sy}) 狀態：{state}")
 
+        if state == "cooking":
+            log("烹飪中，跳過")
+            return
+
+        if state == "done":
+            log("食物完成，收菜…")
+            self.click(sx, sy, delay=0.8)
+            if self._stop.is_set(): return
+            time.sleep(0.5)
+            state = "empty"   # 繼續開食譜
+
+        if state == "spoiled":
+            log("腐壞食物，清除…")
+            self.click(sx, sy, delay=0.3)   # 打開彈窗
+            time.sleep(0.5)
+            self.click_real(*confirm_btn, delay=1.0)
+            if self._stop.is_set(): return
+            time.sleep(0.3)
+            state = "empty"   # 繼續開食譜
+
+        if state == "utensils":
+            log("餐具狀態，放入食材…")
+            self.click(sx, sy, delay=1.2)
+            if self._stop.is_set(): return
+            log("開始烹飪…")
+            self.click(sx, sy, delay=0.5)
+            log(f"鍋爐 ({sx},{sy}) 烹飪中 ✓")
+            return
+
+        # ── state == "empty" 或 "unknown"：開食譜 ────
         recipe_opened = False
         for attempt in range(2):
             if self._stop.is_set(): return
-            log(f"點鍋爐 ({sx},{sy})…" + ("（重試）" if attempt else ""))
+            log(f"點鍋爐…" + ("（重試）" if attempt else ""))
             pre = self.get_pixel(*check)
             self.click(sx, sy, delay=0.3)
             ok, c_before, c_after = self.wait_for_pixel_change(*check, timeout=3.0, baseline=pre)
+
             if ok:
                 log(f"食譜已開啟 ✓  check_pt({check[0]},{check[1]}): {c_before}→{c_after}")
                 recipe_opened = True
                 break
 
-            # 食譜沒開，出現了彈窗或收菜動畫
-            if spoiled:
-                # 腐壞 → 點確認清除，再試一次開食譜
+            # 食譜沒開，彈窗出現
+            if self.is_stove_spoiled(sx, sy):
                 log(f"點確認清除腐壞 ({confirm_btn[0]},{confirm_btn[1]})…")
                 self.click_real(*confirm_btn, delay=1.0)
-                spoiled = False  # 清除後重試，不再判定為腐壞
             else:
-                # 做菜中 → 點取消，不打擾，跳過這個鍋爐
                 log(f"做菜中，點取消 ({cancel_btn[0]},{cancel_btn[1]})，跳過")
                 self.click_real(*cancel_btn, delay=0.5)
                 return
@@ -408,12 +441,12 @@ class RestaurantBot:
             return
         if self._stop.is_set(): return
 
-        # 步驟 2：切換頁面
+        # ── 切換頁面 ──────────────────────────────────
         log(f"切換到第 {page} 頁…")
         self.navigate_to_page(page)
         if self._stop.is_set(): return
 
-        # 步驟 3：點菜色，等食譜關閉
+        # ── 點菜色，等食譜關閉 ────────────────────────
         log(f"點菜色 {dish}，座標 ({dish_pt[0]},{dish_pt[1]})…")
         pre = self.get_pixel(*check)
         self.click_real(*dish_pt, delay=0.3)
@@ -424,14 +457,14 @@ class RestaurantBot:
         log(f"食譜已關閉 ✓ ({c_before}→{c_after})")
         if self._stop.is_set(): return
 
-        # 步驟 4：點鍋爐放入食材
+        # ── 放入食材 ──────────────────────────────────
         time.sleep(0.5)
-        log(f"放入食材…")
+        log("放入食材…")
         self.click(sx, sy, delay=1.2)
         if self._stop.is_set(): return
 
-        # 步驟 5：點鍋爐開始烹飪
-        log(f"開始烹飪…")
+        # ── 開始烹飪 ──────────────────────────────────
+        log("開始烹飪…")
         self.click(sx, sy, delay=0.5)
         log(f"鍋爐 ({sx},{sy}) 烹飪中 ✓")
 
@@ -482,7 +515,8 @@ class App:
         self.root.resizable(False, False)
 
         self.stoves, self.recipe, settings = load_config()
-        self._extra_settings = {k: settings[k] for k in ("spoiled_color", "spoiled_threshold")}
+        _extra_keys = ("cooking_color", "done_color", "utensils_color", "spoiled_color", "state_threshold")
+        self._extra_settings = {k: settings[k] for k in _extra_keys}
         self.bot = RestaurantBot(self.stoves, self.recipe, settings)
         self._build_ui(settings)
 
@@ -515,7 +549,7 @@ class App:
         self.calib_s    = ttk.Button(btn_f, text="校準鍋爐", command=self._calib_stoves)
         self.calib_r    = ttk.Button(btn_f, text="校準食譜", command=self._calib_recipe)
         self.calib_c    = ttk.Button(btn_f, text="校準彈窗按鈕", command=self._calib_cancel)
-        self.calib_sp   = ttk.Button(btn_f, text="校準腐壞色", command=self._calib_spoiled)
+        self.calib_sp   = ttk.Button(btn_f, text="校準狀態色", command=self._calib_state_colors)
         self.preview_btn= ttk.Button(btn_f, text="預覽座標", command=self._preview_coords)
 
         for btn in (self.start_btn, self.stop_btn, self.calib_s, self.calib_r,
@@ -630,58 +664,75 @@ class App:
         self._save_all()
         messagebox.showinfo("完成", f"確認：{pts[0]}　取消：{pts[1]}\n已儲存。")
 
-    def _calib_spoiled(self):
+    def _calib_state_colors(self):
+        """開啟鍋爐狀態顏色校準選擇器"""
+        states = [
+            ("cooking_color",  "烹飪中",       "鍋爐正在烹飪（點擊會出現彈窗）"),
+            ("done_color",     "完成/可收菜",   "食物做好、鍋爐發亮"),
+            ("utensils_color", "餐具/等放食材", "選完菜後，鍋爐顯示餐具圖示"),
+            ("spoiled_color",  "腐壞",         "食物變黑/腐壞"),
+        ]
+
+        win = tk.Toplevel(self.root)
+        win.title("校準鍋爐狀態顏色")
+        win.grab_set()
+        win.resizable(False, False)
+
+        ttk.Label(win, text="選擇要校準的鍋爐狀態：", padding=(12, 10, 12, 2)).pack()
+        ttk.Label(
+            win,
+            text="先讓對應鍋爐處於該狀態，再點下方按鈕截圖取色。",
+            foreground="gray", padding=(12, 0, 12, 8)
+        ).pack()
+
+        for key, label, hint in states:
+            color = self._extra_settings.get(key)
+            badge = f"✓ {tuple(color)}" if color else "未校準"
+            row = ttk.Frame(win)
+            row.pack(fill=tk.X, padx=12, pady=3)
+            ttk.Button(
+                row, text=f"校準「{label}」",
+                command=lambda k=key, l=label, w=win: (w.destroy(), self._calib_one_state(k, l))
+            ).pack(side=tk.LEFT)
+            ttk.Label(row, text=f"  {hint}  [{badge}]", foreground="gray").pack(side=tk.LEFT)
+
+        ttk.Button(win, text="關閉", command=win.destroy).pack(pady=8)
+
+    def _calib_one_state(self, color_key, label):
+        """截圖後讓使用者點鍋爐，取得顏色樣本"""
         hwnd = self._get_hwnd()
         if not hwnd: return
-        messagebox.showinfo(
-            "校準腐壞顏色",
-            "請先讓其中一個鍋爐出現「腐壞食物」狀態（深色鍋爐），\n"
-            "再點「確定」截圖，然後點在那個腐壞鍋爐上方取色。\n\n"
-            "（只需點一下，程式會記錄那個位置的顏色）"
-        )
         try:
             img, game_w, game_h = capture_window(hwnd)
         except Exception as e:
             messagebox.showerror("錯誤", f"截圖失敗：{e}")
             return
 
-        scale_game = max(game_w / MOLE_W, game_h / MOLE_H)
         disp_scale = min(900 / game_w, 580 / game_h, 1.0)
         disp = img.resize((int(game_w * disp_scale), int(game_h * disp_scale)))
         photo = ImageTk.PhotoImage(disp)
 
         win = tk.Toplevel(self.root)
-        win.title("點一下腐壞鍋爐取色")
+        win.title(f"校準「{label}」— 點一下鍋爐取色")
         win.grab_set()
-        ttk.Label(win, text="▶ 點一下腐壞鍋爐的位置（滑鼠游標變十字）", padding=8).pack()
+        ttk.Label(win, text=f"▶ 點一下【{label}】狀態的鍋爐位置", padding=8).pack()
         canvas = tk.Canvas(win,
                            width=int(game_w * disp_scale),
                            height=int(game_h * disp_scale),
                            cursor="crosshair")
         canvas.pack(padx=8, pady=8)
-        canvas.create_image(0, 0, anchor=tk.NW, image=canvas.photo if hasattr(canvas, "photo") else photo)
-        canvas.photo = photo  # 防止 GC
+        canvas.create_image(0, 0, anchor=tk.NW, image=photo)
+        canvas.photo = photo
 
         def on_pick(event):
-            # 還原到 client 畫素座標
-            px = int(event.x / disp_scale)
-            py = int(event.y / disp_scale)
-            px = min(px, game_w - 1)
-            py = min(py, game_h - 1)
+            px = min(int(event.x / disp_scale), game_w - 1)
+            py = min(int(event.y / disp_scale), game_h - 1)
             rgb = img.convert("RGB").getpixel((px, py))
-            # 轉回摩爾座標（給 is_stove_spoiled 用，雖然儲存的是 RGB）
-            mx = int(px / scale_game)
-            my = int(py / scale_game)
-            self._extra_settings["spoiled_color"] = list(rgb)
-            self.bot.settings["spoiled_color"] = list(rgb)
+            self._extra_settings[color_key] = list(rgb)
+            self.bot.settings[color_key] = list(rgb)
             self._save_all()
             win.destroy()
-            messagebox.showinfo(
-                "完成",
-                f"腐壞顏色已儲存：RGB{rgb}\n"
-                f"（摩爾座標 {mx},{my}）\n\n"
-                f"現在機器人可以分辨腐壞 vs 做菜中的鍋爐。"
-            )
+            messagebox.showinfo("完成", f"「{label}」顏色已儲存：RGB{rgb}")
 
         canvas.bind("<Button-1>", on_pick)
 
