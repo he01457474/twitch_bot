@@ -249,14 +249,15 @@ class RestaurantBot:
 
         time.sleep(0.3)
 
-    def setup_stove(self, sx, sy, page, dish):
-        self.click(sx, sy, delay=1.0)
+    def setup_stove(self, sx, sy, page, dish, on_status=None):
+        if on_status: on_status("點擊鍋爐，等待食譜開啟…")
+        self.click(sx, sy, delay=2.0)          # 等食譜視窗完全開啟
         if self._stop.is_set(): return
+        if on_status: on_status(f"切換到第 {page} 頁…")
         self.navigate_to_page(page)
         if self._stop.is_set(): return
-        self.click(*self.recipe["dishes"][dish - 1], delay=0.5)
-        self.click(*self.recipe["close"], delay=0.5)
-        self.click(sx, sy, delay=0.5)
+        if on_status: on_status(f"點選第 {dish} 個菜色，開始烹飪…")
+        self.click(*self.recipe["dishes"][dish - 1], delay=0.8)
 
     def run(self, page, dish, cook_minutes, restart_delay, antlag_minutes, on_status):
         self.hwnd = self.find_window()
@@ -387,14 +388,14 @@ class App:
         hwnd = self._get_hwnd()
         if not hwnd: return
         prompts = (
-            ["左箭頭 (←)", "右箭頭 (→)", "關閉按鈕 (X)"] +
+            ["左箭頭 (←)", "右箭頭 (→)"] +
             [f"頁碼 Tab {i+1}" for i in range(5)] +
             [f"菜格 {i+1}" for i in range(6)]
         )
         messagebox.showinfo(
             "校準食譜",
             "請先手動點鍋爐打開食譜，再來這裡截圖校準。\n\n"
-            "依序點擊：左箭頭、右箭頭、關閉(X)、\n"
+            "依序點擊：左箭頭、右箭頭、\n"
             "頁碼Tab 1~5、菜格 1~6（左到右、上到下）",
         )
         CalibrationWindow(self.root, hwnd, prompts, self._done_recipe)
@@ -403,9 +404,9 @@ class App:
         self.recipe = {
             "left_arrow":  pts[0],
             "right_arrow": pts[1],
-            "close":       pts[2],
-            "page_tabs":   pts[3:8],
-            "dishes":      pts[8:14],
+            "close":       (0, 0),   # 不再使用
+            "page_tabs":   pts[2:7],
+            "dishes":      pts[7:13],
         }
         self.bot.recipe = self.recipe
         self._save_all()
