@@ -11,6 +11,15 @@ import win32ui
 import win32con
 from PIL import Image, ImageTk
 
+# DPI 感知（確保 GetClientRect 拿到實體像素，不受 Windows 縮放影響）
+try:
+    ctypes.windll.shcore.SetProcessDpiAwareness(2)  # Per-Monitor DPI Aware
+except Exception:
+    try:
+        ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
+
 # 隱藏 CMD 視窗
 try:
     hwnd_con = ctypes.windll.kernel32.GetConsoleWindow()
@@ -425,12 +434,13 @@ class App:
         btn_f = ttk.Frame(f)
         btn_f.grid(row=len(rows)+1, column=0, columnspan=2, pady=(0, 4))
 
-        self.start_btn  = ttk.Button(btn_f, text="開始",   command=self._start)
-        self.stop_btn   = ttk.Button(btn_f, text="停止",   command=self._stop, state=tk.DISABLED)
+        self.start_btn  = ttk.Button(btn_f, text="開始",     command=self._start)
+        self.stop_btn   = ttk.Button(btn_f, text="停止",     command=self._stop, state=tk.DISABLED)
         self.calib_s    = ttk.Button(btn_f, text="校準鍋爐", command=self._calib_stoves)
         self.calib_r    = ttk.Button(btn_f, text="校準食譜", command=self._calib_recipe)
+        self.preview_btn= ttk.Button(btn_f, text="預覽座標", command=self._preview_coords)
 
-        for btn in (self.start_btn, self.stop_btn, self.calib_s, self.calib_r):
+        for btn in (self.start_btn, self.stop_btn, self.calib_s, self.calib_r, self.preview_btn):
             btn.pack(side=tk.LEFT, padx=4)
 
     def _get_settings(self):
@@ -467,6 +477,55 @@ class App:
         if not hwnd:
             messagebox.showerror("錯誤", "找不到 Flash Player 視窗\n請先開啟遊戲")
         return hwnd
+
+    def _preview_coords(self):
+        hwnd = self._get_hwnd()
+        if not hwnd: return
+        try:
+            img, game_w, game_h = capture_window(hwnd)
+        except Exception as e:
+            messagebox.showerror("錯誤", f"截圖失敗：{e}")
+            return
+
+        scale = max(game_w / MOLE_W, game_h / MOLE_H)
+
+        def to_px(mx, my):
+            return int(mx * scale), int(my * scale)
+
+        from PIL import ImageDraw, ImageFont
+        draw = ImageDraw.Draw(img)
+
+        def dot(mx, my, color, label=""):
+            x, y = to_px(mx, my)
+            r = 8
+            draw.ellipse([x-r, y-r, x+r, y+r], fill=color, outline="white")
+            if label:
+                draw.text((x+r+2, y-8), label, fill=color)
+
+        # 鍋爐
+        for i, (sx, sy) in enumerate(self.stoves):
+            dot(sx, sy, "lime", f"爐{i+1}")
+
+        # 食譜元素
+        r = self.recipe
+        dot(*r["left_arrow"],  "cyan",   "←")
+        dot(*r["right_arrow"], "cyan",   "→")
+        dot(*r["close"],       "red",    "X")
+        for i, pt in enumerate(r["page_tabs"]):
+            dot(*pt, "yellow", str(i+1))
+        for i, pt in enumerate(r["dishes"]):
+            dot(*pt, "orange", f"菜{i+1}")
+        dot(*r["check_pt"],    "white",  "偵測")
+
+        # 顯示
+        disp_scale = min(900/game_w, 600/game_h, 1.0)
+        disp = img.resize((int(game_w*disp_scale), int(game_h*disp_scale)), Image.LANCZOS)
+
+        win = tk.Toplevel(self.root)
+        win.title("座標預覽（綠=鍋爐 橙=菜色 黃=頁碼 青=箭頭 紅=X 白=偵測點）")
+        photo = ImageTk.PhotoImage(disp)
+        tk.Label(win, image=photo).pack()
+        win.photo = photo
 
     def _calib_stoves(self):
         hwnd = self._get_hwnd()
