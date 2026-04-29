@@ -472,14 +472,21 @@ class RestaurantBot:
         log("放入食材…")
         pre_stove = self.get_pixel(sx, sy)
         self.click(sx, sy, delay=0.3)
-        # 等鍋爐像素變化，確認食材確實放入（最多等 3s）
-        ok_food, _, _ = self.wait_for_pixel_change(sx, sy, timeout=3.0, baseline=pre_stove)
-        if not ok_food:
-            log("放入食材後鍋爐無變化，點擊可能未被接受，仍繼續嘗試開始烹飪")
+
+        # 等「製作中」讀條出現（第一次像素變化）
+        ok1, _, bar_color = self.wait_for_pixel_change(sx, sy, timeout=3.0, baseline=pre_stove)
+        if not ok1:
+            log("放入食材後無反應，仍繼續")
+        else:
+            # 等讀條跑完（第二次像素變化，讀條消失後才能點）
+            log("讀條中，等待製作完成…")
+            ok2, _, _ = self.wait_for_pixel_change(sx, sy, timeout=8.0, baseline=bar_color)
+            if not ok2:
+                log("讀條等待超時，仍繼續")
         if self._stop.is_set(): return
 
         # ── 開始烹飪 ──────────────────────────────────
-        time.sleep(0.5)
+        time.sleep(0.3)
         log("開始烹飪…")
         self.click(sx, sy, delay=0.5)
         log(f"鍋爐 ({sx},{sy}) 烹飪中 ✓")
