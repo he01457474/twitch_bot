@@ -208,12 +208,10 @@ class RestaurantBot:
         return sum(abs(a - b) for a, b in zip(c1, c2))
 
     def close_recipe(self, sx, sy):
-        """嘗試關閉食譜（ESC + 點鍋爐位置）"""
-        win32api.SendMessage(self.hwnd, win32con.WM_KEYDOWN, win32con.VK_ESCAPE, 0)
-        win32api.SendMessage(self.hwnd, win32con.WM_KEYUP,   win32con.VK_ESCAPE, 0)
-        time.sleep(0.4)
-        # 點鍋爐位置（在食譜範圍外），部分情況可關閉食譜
-        self.click(sx, sy, delay=0.5)
+        """點 X 按鈕關閉食譜"""
+        close = self.recipe.get("close", (0, 0))
+        if close != (0, 0):
+            self.click(*close, delay=0.5)
 
     def wait_for_pixel_change(self, mole_x, mole_y, timeout=5.0, threshold=40):
         """等到指定點顏色發生明顯變化，回傳 True=有變 / False=超時"""
@@ -462,7 +460,7 @@ class App:
         hwnd = self._get_hwnd()
         if not hwnd: return
         prompts = (
-            ["左箭頭 (←)", "右箭頭 (→)"] +
+            ["左箭頭 (←)", "右箭頭 (→)", "關閉按鈕 (X)"] +
             [f"頁碼 Tab {i+1}" for i in range(5)] +
             [f"菜格 {i+1}" for i in range(6)] +
             ["食譜中心偵測點（點食譜空白處任意一點）"]
@@ -470,7 +468,7 @@ class App:
         messagebox.showinfo(
             "校準食譜",
             "請先手動點鍋爐打開食譜，再來這裡截圖校準。\n\n"
-            "依序點擊：左箭頭、右箭頭、\n"
+            "依序點擊：左箭頭、右箭頭、關閉按鈕(X)、\n"
             "頁碼Tab 1~5、菜格 1~6（左到右、上到下）、\n"
             "最後點食譜內任意空白處作為偵測點",
         )
@@ -480,10 +478,10 @@ class App:
         self.recipe = {
             "left_arrow":  pts[0],
             "right_arrow": pts[1],
-            "close":       (0, 0),   # 不再使用
-            "page_tabs":   pts[2:7],
-            "dishes":      pts[7:13],
-            "check_pt":    pts[13],
+            "close":       pts[2],
+            "page_tabs":   pts[3:8],
+            "dishes":      pts[8:14],
+            "check_pt":    pts[14],
         }
         self.bot.recipe = self.recipe
         self._save_all()
