@@ -335,18 +335,21 @@ class RestaurantBot:
 
     def navigate_to_page(self, target_page):
         r = self.recipe
-        for _ in range(10):
+        # 先連按左箭頭確保回到第一頁（tabs 顯示 1~5）
+        for _ in range(15):
             if self._stop.is_set(): return
             self.click_real(*r["left_arrow"], delay=0.15)
 
         tabs = r["page_tabs"]
-        if target_page <= 5:
+        if target_page <= 3:
+            # 頁1~3：tabs 固定顯示 1~5，直接點對應位置
             self.click_real(*tabs[target_page - 1], delay=0.3)
         else:
-            for _ in range(target_page - 5):
+            # 頁4+：每按右一次 tabs 整體右移一格，目標頁會停在正中間 tabs[2]
+            for _ in range(target_page - 3):
                 if self._stop.is_set(): return
                 self.click_real(*r["right_arrow"], delay=0.15)
-            self.click_real(*tabs[4], delay=0.3)
+            self.click_real(*tabs[2], delay=0.3)
 
         time.sleep(0.3)
 
