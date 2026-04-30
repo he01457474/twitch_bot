@@ -246,32 +246,37 @@ class RestaurantBot:
 
     def _complete_to_cooking(self, sx, sy, log, max_steps=3, start_step=1):
         """
-        從 start_step 繼續完成剩餘讀條，直到進入烹飪狀態。
-          start_step=1 → 製作餐具 → 放入食材 → 開始烹飪（共 3 步）
-          start_step=2 → 放入食材 → 開始烹飪（共 2 步）
-          start_step=3 → 開始烹飪（共 1 步）
+        從 start_step 繼續點擊直到進入烹飪狀態。
+        每步點完立即確認讀條出現；若無反應回傳 False。
         """
         step_labels = {1: "製作餐具", 2: "放入食材", 3: "開始烹飪"}
         for i in range(max_steps):
-            if self._stop.is_set(): return
-            if self.detect_stove_state(sx, sy) == "cooking":
-                log(f"鍋爐 ({sx},{sy}) 烹飪中 ✓")
-                return
+            if self._stop.is_set(): return True
+            # 每步前先確認狀態，已烹飪就不用再點
+            state = self.detect_stove_state(sx, sy)
+            if state in ("cooking", "done"):
+                log(f"鍋爐 ({sx},{sy}) 已烹飪 ✓")
+                return True
             label = step_labels.get(start_step + i, f"步驟 {start_step + i}")
             log(f"{label}…")
             pre = self.get_pixel(sx, sy)
-            self.click(sx, sy, delay=1.0)
-            ok, _, bar_color = self.wait_for_pixel_change(sx, sy, timeout=4.0, baseline=pre)
+            self.click(sx, sy, delay=0.5)
+            # 點完馬上確認有沒有讀條（2 秒內）
+            ok, _, bar_color = self.wait_for_pixel_change(sx, sy, timeout=2.0, baseline=pre)
             if not ok:
-                log(f"{label}：沒有反應，跳過此鍋爐")
-                return
+                # 有可能剛好自動完成，再查一次狀態
+                if self.detect_stove_state(sx, sy) in ("cooking", "done"):
+                    log(f"鍋爐 ({sx},{sy}) 已烹飪 ✓")
+                    return True
+                log(f"{label}：點擊無反應")
+                return False
             log(f"{label}：讀條中…")
             self.wait_for_pixel_change(sx, sy, timeout=15.0, baseline=bar_color)
-            time.sleep(1.0)
-        if self.detect_stove_state(sx, sy) == "cooking":
-            log(f"鍋爐 ({sx},{sy}) 烹飪中 ✓")
-        else:
-            log(f"鍋爐 ({sx},{sy}) 完成（cooking_color 未校準，無法確認）")
+            time.sleep(0.5)
+        # 所有步驟跑完，最後確認
+        if self.detect_stove_state(sx, sy) in ("cooking", "done"):
+            log(f"鍋爐 ({sx},{sy}) 已烹飪 ✓")
+        return True
 
     def find_window(self):
         found = []
@@ -457,39 +462,45 @@ class RestaurantBot:
             log("食譜已開著，直接選菜…")
             if not self._select_dish(page, dish, check, log): return
             if self._stop.is_set(): return
-            time.sleep(1.5)
-            self._complete_to_cooking(sx, sy, log, max_steps=3)
+            time.sleep(1.0)
+            if not self._complete_to_cooking(sx, sy, log, max_steps=3):
+                log("步驟異常，返回鍋爐頁…")
+                self.leave_and_return(log)
             return
 
         # ── 行為偵測：點鍋爐，觀察反應 ───────────────
-        for attempt in range(5):
+        for attempt in range(3):
             if self._stop.is_set(): return
 
             pre_check = self.get_pixel(*check)
             pre_stove = self.get_pixel(sx, sy)
-            self.click(sx, sy, delay=0.4)
+            self.click(sx, sy, delay=0.3)
 
-            # 食譜開了？
-            ok, _, _ = self.wait_for_pixel_change(*check, timeout=2.0, baseline=pre_check)
+            # 食譜開了？（先判斷，timeout 短一點）
+            ok, _, _ = self.wait_for_pixel_change(*check, timeout=1.5, baseline=pre_check)
             if ok:
                 log("食譜已開啟 ✓")
                 if not self._select_dish(page, dish, check, log): return
                 if self._stop.is_set(): return
-                time.sleep(1.5)
-                self._complete_to_cooking(sx, sy, log, max_steps=3)
+                time.sleep(1.0)
+                if not self._complete_to_cooking(sx, sy, log, max_steps=3):
+                    log("步驟異常，返回鍋爐頁…")
+                    self.leave_and_return(log)
                 return
 
-            # 讀條出現？表示在中間步驟（餐具/食材/烹飪的某一步）
+            # 讀條出現？（已在餐具或放入食材的中間步驟）
             stove_now = self.get_pixel(sx, sy)
             if self.color_diff(stove_now, pre_stove) > threshold:
-                log("偵測到讀條（中間步驟），等待完成…")
+                log("偵測到讀條（中間步驟），等待完成再接續…")
                 self.wait_for_pixel_change(sx, sy, timeout=15.0, baseline=stove_now)
-                time.sleep(1.0)
-                # 已烹飪就結束，否則繼續剩餘步驟（最多再點 2 次）
-                if self.detect_stove_state(sx, sy) == "cooking":
-                    log(f"鍋爐 ({sx},{sy}) 烹飪中 ✓")
+                time.sleep(0.5)
+                if self.detect_stove_state(sx, sy) in ("cooking", "done"):
+                    log(f"鍋爐 ({sx},{sy}) 已烹飪 ✓")
                     return
-                self._complete_to_cooking(sx, sy, log, max_steps=2)
+                # 讀條結束但還沒烹飪，接續剩餘步驟
+                if not self._complete_to_cooking(sx, sy, log, max_steps=2):
+                    log("步驟異常，返回鍋爐頁…")
+                    self.leave_and_return(log)
                 return
 
             # 都沒變 → 可能是彈窗
@@ -501,7 +512,9 @@ class RestaurantBot:
                 self.click_real(*cancel_btn, delay=0.5)
                 return
 
-        log(f"鍋爐 ({sx},{sy}) 跳過（無法開啟食譜）")
+        # 3 次都無反應 → 可能跳到奇怪的頁面，導航回來
+        log(f"鍋爐 ({sx},{sy}) 持續無反應，返回鍋爐頁…")
+        self.leave_and_return(log)
 
     def run(self, page, dish, scan_interval, antlag_minutes, on_status):
         self.hwnd = self.find_window()
