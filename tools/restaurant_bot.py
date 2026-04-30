@@ -40,7 +40,7 @@ DEFAULT_RECIPE = {
 }
 DEFAULT_SETTINGS = {
     "page": 6, "dish": 1, "cook_minutes": 20,
-    "restart_delay": 30, "antlag_minutes": 5,
+    "antlag_minutes": 5,
     "cooking_color": None,    # 烹飪中（校準後直接跳過，不用點）
     "spoiled_color": None,    # 腐壞（校準後直接按確認清除）
     "state_threshold": 40,    # 顏色差異容許值
@@ -233,15 +233,6 @@ class RestaurantBot:
     def color_diff(self, c1, c2):
         return sum(abs(a - b) for a, b in zip(c1, c2))
 
-    def close_recipe(self, sx, sy, on_status=None):
-        """點 X 按鈕關閉食譜（用真實滑鼠）"""
-        close = self.recipe.get("close", (0, 0))
-        if close != (0, 0):
-            if on_status: on_status(f"關閉食譜：點 X ({close[0]},{close[1]})")
-            self.click_real(*close, delay=0.5)
-        else:
-            if on_status: on_status("警告：X 按鈕座標未校準 (0,0)，無法關閉食譜")
-
     def wait_for_pixel_change(self, mole_x, mole_y, timeout=5.0, threshold=40, baseline=None):
         """等到指定點顏色發生明顯變化，回傳 (成功, 基準色, 最終色)
         baseline 可在點擊前先傳入，避免 click delay 導致截到錯誤的基準色"""
@@ -352,31 +343,6 @@ class RestaurantBot:
             self.click_real(*tabs[2], delay=0.3)
 
         time.sleep(0.3)
-
-    def is_recipe_open(self, closed_color, threshold=40):
-        """比對 check_pt 目前顏色與「食譜關閉」基準色，判斷食譜是否開啟"""
-        current = self.get_pixel(*self.recipe["check_pt"])
-        return self.color_diff(current, closed_color) > threshold
-
-    def ensure_recipe_closed(self, closed_color, on_status=None):
-        """若食譜目前是開啟狀態，嘗試關閉它"""
-        if not self.is_recipe_open(closed_color):
-            return True
-        if on_status: on_status(f"偵測到食譜已開啟（check_pt 顏色與基準不符），先關閉…")
-        close = self.recipe.get("close", (0, 0))
-        if close == (0, 0):
-            if on_status: on_status("警告：X 按鈕未校準，無法自動關閉食譜")
-            return False
-        self.click(*close, delay=0.5)
-        deadline = time.time() + 3.0
-        while time.time() < deadline:
-            if self._stop.is_set(): return False
-            time.sleep(0.2)
-            if not self.is_recipe_open(closed_color):
-                if on_status: on_status("食譜已關閉 ✓")
-                return True
-        if on_status: on_status("警告：無法確認食譜是否關閉，繼續執行…")
-        return False
 
     def setup_stove(self, sx, sy, page, dish, on_status=None):
         def log(msg):
