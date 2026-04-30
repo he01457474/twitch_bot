@@ -41,6 +41,8 @@ DEFAULT_RECIPE = {
 DEFAULT_SETTINGS = {
     "page": 6, "dish": 1, "cook_minutes": 20, "cook_seconds": 0,
     "antlag_minutes": 5,
+    "door_out": None,         # 出門座標（餐廳內往外走的門口）
+    "door_in":  None,         # 進門座標（餐廳外往內走的門口）
     "spoiled_color": None,    # 腐壞 → 清除
     "clock_color":   None,    # 時鐘橙色圓圈（烹飪中或做完）
     "clock_offset":  None,    # 時鐘偏移 [dx, dy]（相對鍋爐校準點）
@@ -365,12 +367,21 @@ class RestaurantBot:
         return True
 
     def leave_and_return(self, on_status):
-        on_status("防卡頓：前往地圖…")
-        self.click(*MAP_BTN, delay=3.0)
-        if self._stop.is_set(): return
-        on_status("防卡頓：回到餐廳…")
-        self.click(*HOME_BTN, delay=1.0)
-        self.click(*RESTAURANT_BTN, delay=3.0)
+        door_out = self.settings.get("door_out")
+        door_in  = self.settings.get("door_in")
+        if door_out and door_in:
+            on_status("防卡頓：出門…")
+            self.click_real(*door_out, delay=2.5)
+            if self._stop.is_set(): return
+            on_status("防卡頓：進門…")
+            self.click_real(*door_in, delay=2.5)
+        else:
+            on_status("防卡頓：前往地圖…")
+            self.click(*MAP_BTN, delay=3.0)
+            if self._stop.is_set(): return
+            on_status("防卡頓：回到餐廳…")
+            self.click(*HOME_BTN, delay=1.0)
+            self.click(*RESTAURANT_BTN, delay=3.0)
 
     def wait_with_antlag(self, total_seconds, interval_seconds, on_status, msg):
         elapsed = 0.0
@@ -567,7 +578,8 @@ class App:
         self.root.resizable(False, False)
 
         self.stoves, self.recipe, settings = load_config()
-        _extra_keys = ("spoiled_color",
+        _extra_keys = ("door_out", "door_in",
+                       "spoiled_color",
                        "clock_color", "clock_offset",
                        "done_color",  "done_offset",
                        "state_threshold")
@@ -632,15 +644,23 @@ class App:
             btn.pack(side=tk.LEFT, padx=4)
         grid_row += 1
 
-        # 第二排：校準 / 工具按鈕
+        # 第二排：校準按鈕
         row_cal = ttk.Frame(f)
-        row_cal.grid(row=grid_row, column=0, columnspan=2, pady=(0, 4))
-        self.calib_s     = ttk.Button(row_cal, text="校準鍋爐",   command=self._calib_stoves)
-        self.calib_r     = ttk.Button(row_cal, text="校準食譜",   command=self._calib_recipe)
-        self.calib_c     = ttk.Button(row_cal, text="校準彈窗",   command=self._calib_cancel)
-        self.calib_sp    = ttk.Button(row_cal, text="校準狀態色", command=self._calib_state_colors)
-        self.preview_btn = ttk.Button(row_cal, text="預覽座標",   command=self._preview_coords)
-        for btn in (self.calib_s, self.calib_r, self.calib_c, self.calib_sp, self.preview_btn):
+        row_cal.grid(row=grid_row, column=0, columnspan=2, pady=(0, 2))
+        self.calib_s  = ttk.Button(row_cal, text="校準鍋爐",   command=self._calib_stoves)
+        self.calib_r  = ttk.Button(row_cal, text="校準食譜",   command=self._calib_recipe)
+        self.calib_c  = ttk.Button(row_cal, text="校準彈窗",   command=self._calib_cancel)
+        self.calib_sp = ttk.Button(row_cal, text="校準狀態色", command=self._calib_state_colors)
+        for btn in (self.calib_s, self.calib_r, self.calib_c, self.calib_sp):
+            btn.pack(side=tk.LEFT, padx=4)
+        grid_row += 1
+
+        # 第三排：工具按鈕
+        row_tool = ttk.Frame(f)
+        row_tool.grid(row=grid_row, column=0, columnspan=2, pady=(0, 4))
+        self.calib_door  = ttk.Button(row_tool, text="校準門口",  command=self._calib_door)
+        self.preview_btn = ttk.Button(row_tool, text="預覽座標",  command=self._preview_coords)
+        for btn in (self.calib_door, self.preview_btn):
             btn.pack(side=tk.LEFT, padx=4)
 
     def _get_settings(self):
@@ -652,7 +672,8 @@ class App:
         sa = tk.DISABLED if running else tk.NORMAL
         sb = tk.NORMAL   if running else tk.DISABLED
         for btn in (self.start_btn, self.calib_s, self.calib_r,
-                    self.calib_c, self.calib_sp, self.testnav_btn):
+                    self.calib_c, self.calib_sp, self.calib_door,
+                    self.testnav_btn, self.preview_btn):
             btn.config(state=sa)
         self.stop_btn.config(state=sb)
 
@@ -749,6 +770,34 @@ class App:
         self.bot.recipe = self.recipe
         self._save_all()
         messagebox.showinfo("完成", f"確認：{pts[0]}　取消：{pts[1]}\n已儲存。")
+
+    def _calib_door(self):
+        hwnd = self._get_hwnd()
+        if not hwnd: return
+        messagebox.showinfo(
+            "校準門口",
+            "步驟一：請先截圖校準「出口」（點餐廳內的上方門口）。\n"
+            "步驟二：手動走出去後，再按一次此按鈕校準「入口」。\n\n"
+            "現在先校準「出口」位置。"
+        )
+        CalibrationWindow(self.root, hwnd, ["出口（餐廳內的上方門口）"], self._done_door_out)
+
+    def _done_door_out(self, pts):
+        self._extra_settings["door_out"] = list(pts[0])
+        self.bot.settings["door_out"] = list(pts[0])
+        self._save_all()
+
+        # 接著馬上問要不要繼續校準入口
+        if messagebox.askyesno("繼續", f"出口已儲存：{pts[0]}\n\n請手動走出餐廳後，按「是」截圖校準入口。"):
+            hwnd = self._get_hwnd()
+            if hwnd:
+                CalibrationWindow(self.root, hwnd, ["入口（餐廳外往內的門口）"], self._done_door_in)
+
+    def _done_door_in(self, pts):
+        self._extra_settings["door_in"] = list(pts[0])
+        self.bot.settings["door_in"] = list(pts[0])
+        self._save_all()
+        messagebox.showinfo("完成", f"入口已儲存：{pts[0]}\n防卡頓將改用門口出入。")
 
     def _calib_state_colors(self):
         """開啟鍋爐狀態顏色校準選擇器"""
