@@ -262,9 +262,11 @@ class RestaurantBot:
             pre = self.get_pixel(sx, sy)
             self.click(sx, sy, delay=1.0)
             ok, _, bar_color = self.wait_for_pixel_change(sx, sy, timeout=4.0, baseline=pre)
-            if ok:
-                log(f"{label}：讀條中…")
-                self.wait_for_pixel_change(sx, sy, timeout=15.0, baseline=bar_color)
+            if not ok:
+                log(f"{label}：沒有反應，跳過此鍋爐")
+                return
+            log(f"{label}：讀條中…")
+            self.wait_for_pixel_change(sx, sy, timeout=15.0, baseline=bar_color)
             time.sleep(1.0)
         if self.detect_stove_state(sx, sy) == "cooking":
             log(f"鍋爐 ({sx},{sy}) 烹飪中 ✓")
