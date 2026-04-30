@@ -500,37 +500,28 @@ class RestaurantBot:
         self.click(sx, sy, delay=2.0)   # 等烹飪動畫啟動後再去下一個鍋爐
         log(f"鍋爐 ({sx},{sy}) 烹飪中 ✓")
 
-    def run(self, page, dish, cook_minutes, restart_delay, antlag_minutes, on_status):
+    def run(self, page, dish, scan_interval, antlag_minutes, on_status):
         self.hwnd = self.find_window()
         if not self.hwnd:
             on_status("找不到 Flash Player 視窗", error=True)
             return
 
         self._stop.clear()
-        antlag_sec = antlag_minutes * 60 if antlag_minutes > 0 else cook_minutes * 60
+        antlag_sec = antlag_minutes * 60 if antlag_minutes > 0 else scan_interval * 60
 
         while not self._stop.is_set():
-            # 設定所有鍋爐
+            # 掃描所有鍋爐：已完成→收菜並重新做，烹飪中→跳過
+            on_status("掃描所有鍋爐…")
             for i, (sx, sy) in enumerate(self.stoves):
                 if self._stop.is_set(): break
-                on_status(f"設定鍋爐 {i+1}/{len(self.stoves)}…")
+                on_status(f"鍋爐 {i+1}/{len(self.stoves)}…")
                 self.setup_stove(sx, sy, page, dish, on_status)
                 if not self.wait(0.5): break
 
             if self._stop.is_set(): break
 
-            # 等待烹飪完成（含防卡頓）
-            if not self.wait_with_antlag(cook_minutes * 60, antlag_sec, on_status, "烹飪中"): break
-
-            # 收菜
-            on_status("收菜中…")
-            for sx, sy in self.stoves:
-                if self._stop.is_set(): break
-                self.click(sx, sy, delay=0.8)
-
-            if self._stop.is_set(): break
-            on_status(f"等待 {restart_delay} 秒後重新開始…")
-            if not self.wait(restart_delay): break
+            # 等待下次掃描（含防卡頓）
+            if not self.wait_with_antlag(scan_interval * 60, antlag_sec, on_status, "等待掃描"): break
 
         on_status("已停止")
 
@@ -557,11 +548,10 @@ class App:
         f.pack()
 
         rows = [
-            ("食譜頁數 (1~9)",           "page",           1,   9),
-            ("菜的位置 (1~6)",           "dish",           1,   6),
-            ("烹飪時間（分鐘）",         "cook_minutes",   1,  99),
-            ("收菜後延遲（秒）",         "restart_delay",  0, 600),
-            ("防卡頓間隔（分鐘，0=關）", "antlag_minutes", 0,  99),
+            ("食譜頁數 (1~9)",           "page",           1,  9),
+            ("菜的位置 (1~6)",           "dish",           1,  6),
+            ("掃描間隔（分鐘）",         "cook_minutes",   1, 99),
+            ("防卡頓間隔（分鐘，0=關）", "antlag_minutes", 0, 99),
         ]
         self.vars = {}
         for i, (lbl, key, lo, hi) in enumerate(rows):
@@ -613,7 +603,7 @@ class App:
         threading.Thread(
             target=self.bot.run,
             args=(s["page"], s["dish"], s["cook_minutes"],
-                  s["restart_delay"], s["antlag_minutes"], self._on_status),
+                  s["antlag_minutes"], self._on_status),
             daemon=True
         ).start()
 
