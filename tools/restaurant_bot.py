@@ -39,7 +39,7 @@ DEFAULT_RECIPE = {
     "cancel_btn":  (540, 415),   # 捐菜彈窗的「取消」按鈕（做菜中，不打擾）
 }
 DEFAULT_SETTINGS = {
-    "page": 6, "dish": 1, "cook_minutes": 20,
+    "page": 6, "dish": 1, "cook_minutes": 20, "cook_seconds": 0,
     "antlag_minutes": 5,
     "spoiled_color": None,    # 腐壞 → 清除
     "clock_color":   None,    # 時鐘橙色圓圈（烹飪中或做完）
@@ -529,7 +529,8 @@ class RestaurantBot:
             on_status(f"請確認食譜已關閉，{i} 秒後開始…")
             self.wait(1)
         self._recipe_closed_baseline = list(self.get_pixel(*self.recipe["check_pt"]))
-        antlag_sec = antlag_minutes * 60 if antlag_minutes > 0 else scan_interval * 60
+        # scan_interval 單位已是秒
+        antlag_sec = antlag_minutes * 60 if antlag_minutes > 0 else scan_interval
 
         while not self._stop.is_set():
             # 只有偵測到食譜開著才按 X，避免誤點右上角按鈕
@@ -537,17 +538,19 @@ class RestaurantBot:
                 self.click_real(*self.recipe["close"], delay=0.5)
 
             # 掃描所有鍋爐：已完成→收菜並重新做，烹飪中→跳過
-            on_status("掃描所有鍋爐…")
+            n = len(self.stoves)
+            on_status(f"開始掃描（共 {n} 個鍋爐）…")
             for i, (sx, sy) in enumerate(self.stoves):
                 if self._stop.is_set(): break
-                on_status(f"鍋爐 {i+1}/{len(self.stoves)}…")
+                on_status(f"【鍋爐 {i+1}/{n}】掃描中…")
                 self.setup_stove(sx, sy, page, dish, on_status)
-                if not self.wait(0.5): break
+                on_status(f"【鍋爐 {i+1}/{n}】完成")
+                if not self.wait(1.0): break
 
             if self._stop.is_set(): break
 
             # 等待下次掃描（含防卡頓）
-            if not self.wait_with_antlag(scan_interval * 60, antlag_sec, on_status, "等待掃描"): break
+            if not self.wait_with_antlag(scan_interval, antlag_sec, on_status, "等待掃描"): break
 
         on_status("已停止")
 
@@ -576,34 +579,62 @@ class App:
         f = ttk.Frame(self.root, padding=15)
         f.pack()
 
-        rows = [
-            ("食譜頁數 (1~10)",     "page",           1, 10),
-            ("菜的位置 (1~6)",      "dish",           1,  6),
-            ("掃描間隔（分）",      "cook_minutes",   1, 99),
-            ("防卡頓間隔（分，0=關）", "antlag_minutes", 0, 99),
-        ]
         self.vars = {}
-        for i, (lbl, key, lo, hi) in enumerate(rows):
-            ttk.Label(f, text=lbl).grid(row=i, column=0, sticky=tk.W, pady=4, padx=(0,8))
+        grid_row = 0
+
+        # 一般單欄 spinbox 的欄位
+        simple_rows = [
+            ("食譜頁數 (1~10)",       "page",           1, 10),
+            ("菜的位置 (1~6)",         "dish",           1,  6),
+        ]
+        for lbl, key, lo, hi in simple_rows:
+            ttk.Label(f, text=lbl).grid(row=grid_row, column=0, sticky=tk.W, pady=4, padx=(0,8))
             v = tk.IntVar(value=settings[key])
-            ttk.Spinbox(f, from_=lo, to=hi, textvariable=v, width=6).grid(row=i, column=1, pady=4, sticky=tk.W)
+            ttk.Spinbox(f, from_=lo, to=hi, textvariable=v, width=6).grid(
+                row=grid_row, column=1, pady=4, sticky=tk.W)
             self.vars[key] = v
+            grid_row += 1
+
+        # 掃描間隔：分 + 秒合一行
+        ttk.Label(f, text="掃描間隔").grid(row=grid_row, column=0, sticky=tk.W, pady=4, padx=(0,8))
+        sf = ttk.Frame(f)
+        sf.grid(row=grid_row, column=1, pady=4, sticky=tk.W)
+        v_min = tk.IntVar(value=settings.get("cook_minutes", 20))
+        v_sec = tk.IntVar(value=settings.get("cook_seconds", 0))
+        ttk.Spinbox(sf, from_=0, to=99, textvariable=v_min, width=4).pack(side=tk.LEFT)
+        ttk.Label(sf, text=" 分 ").pack(side=tk.LEFT)
+        ttk.Spinbox(sf, from_=0, to=59, textvariable=v_sec, width=4).pack(side=tk.LEFT)
+        ttk.Label(sf, text=" 秒").pack(side=tk.LEFT)
+        self.vars["cook_minutes"] = v_min
+        self.vars["cook_seconds"] = v_sec
+        grid_row += 1
+
+        # 防卡頓
+        ttk.Label(f, text="防卡頓間隔（分，0=關）").grid(
+            row=grid_row, column=0, sticky=tk.W, pady=4, padx=(0,8))
+        v_al = tk.IntVar(value=settings.get("antlag_minutes", 5))
+        ttk.Spinbox(f, from_=0, to=99, textvariable=v_al, width=6).grid(
+            row=grid_row, column=1, pady=4, sticky=tk.W)
+        self.vars["antlag_minutes"] = v_al
+        grid_row += 1
 
         self.status = ttk.Label(f, text="狀態：待機", foreground="gray")
-        self.status.grid(row=len(rows), column=0, columnspan=2, pady=(10, 4))
+        self.status.grid(row=grid_row, column=0, columnspan=2, pady=(10, 4))
+        grid_row += 1
 
         # 第一排：操作按鈕
         row_op = ttk.Frame(f)
-        row_op.grid(row=len(rows)+1, column=0, columnspan=2, pady=(0, 3))
+        row_op.grid(row=grid_row, column=0, columnspan=2, pady=(0, 3))
         self.start_btn   = ttk.Button(row_op, text="開始",    command=self._start)
         self.stop_btn    = ttk.Button(row_op, text="停止",    command=self._stop, state=tk.DISABLED)
         self.testnav_btn = ttk.Button(row_op, text="測試換頁", command=self._test_navigate)
         for btn in (self.start_btn, self.stop_btn, self.testnav_btn):
             btn.pack(side=tk.LEFT, padx=4)
+        grid_row += 1
 
         # 第二排：校準 / 工具按鈕
         row_cal = ttk.Frame(f)
-        row_cal.grid(row=len(rows)+2, column=0, columnspan=2, pady=(0, 4))
+        row_cal.grid(row=grid_row, column=0, columnspan=2, pady=(0, 4))
         self.calib_s     = ttk.Button(row_cal, text="校準鍋爐",   command=self._calib_stoves)
         self.calib_r     = ttk.Button(row_cal, text="校準食譜",   command=self._calib_recipe)
         self.calib_c     = ttk.Button(row_cal, text="校準彈窗",   command=self._calib_cancel)
@@ -631,10 +662,11 @@ class App:
     def _start(self):
         self._save_all()
         s = self._get_settings()
+        scan_secs = s["cook_minutes"] * 60 + s["cook_seconds"]
         self._set_running(True)
         threading.Thread(
             target=self.bot.run,
-            args=(s["page"], s["dish"], s["cook_minutes"],
+            args=(s["page"], s["dish"], scan_secs,
                   s["antlag_minutes"], self._on_status),
             daemon=True
         ).start()
