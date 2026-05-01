@@ -199,7 +199,8 @@ class CalibrationWindow:
 
 # ── 機器人邏輯 ────────────────────────────────────────
 
-DEBUG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "debug")
+DEBUG_DIR  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "debug")
+DESKTOP_LIVE = os.path.join(os.path.expanduser("~"), "Desktop", "bot_live.png")
 
 class RestaurantBot:
     def __init__(self, stoves, recipe, settings):
@@ -232,6 +233,78 @@ class RestaurantBot:
             fname = f"{time.strftime('%H%M%S')}_{label}.png"
             img.save(os.path.join(DEBUG_DIR, fname))
         except Exception:
+            pass
+
+    def save_live_snapshot(self, label=""):
+        """
+        把目前遊戲畫面 + 所有鍋爐的偵測結果存到桌面 bot_live.png，
+        讓外部工具（Claude）即時讀取，不需 Debug 模式也能呼叫。
+        標記內容：
+          - 鍋爐位置（白圈），旁邊顯示偵測到的狀態
+          - 各偵測點位置：黃=done, 橙=clock, 紅=spoiled
+          - 每個偵測點顯示最小 Δ 值
+        """
+        if not self.hwnd:
+            return
+        try:
+            from PIL import ImageDraw
+            raw_img, w, h = capture_window(self.hwnd)
+            img   = raw_img.convert("RGB")
+            scale = max(w / MOLE_W, h / MOLE_H)
+            draw  = ImageDraw.Draw(img)
+
+            def px(mx, my):
+                return int(mx * scale), int(my * scale)
+
+            # 標題列
+            ts = time.strftime("%H:%M:%S")
+            draw.rectangle([0, 0, img.width, 26], fill=(0, 0, 0))
+            draw.text((4, 5), f"{ts}  {label}", fill="white")
+
+            threshold = self.settings.get("state_threshold", 40)
+            state_fill = {"cooking": (255,140,0), "done": (255,220,0),
+                          "spoiled": (220,50,50), "unknown": (160,160,160)}
+
+            for i, (sx2, sy2) in enumerate(self.stoves):
+                state = self.detect_stove_state(sx2, sy2)
+                col   = state_fill.get(state, (160,160,160))
+                spx, spy = px(sx2, sy2)
+                r = 13
+                draw.ellipse([spx-r, spy-r, spx+r, spy+r], outline=col, width=3)
+                draw.text((spx-6, spy-8),  str(i+1), fill=col)
+                draw.text((spx-r, spy+r+2), state[:4], fill=col)
+
+                # 畫出各偵測點及 Δ 值
+                checks = [
+                    ("done_points",    "done_color",    "done_offset",    "yellow", 4),
+                    ("clock_points",   "clock_color",   "clock_offset",   "orange", 4),
+                    ("spoiled_points", "spoiled_color", "spoiled_offset", "red",    6),
+                ]
+                for pts_key, col_key, off_key, dot_col, spread in checks:
+                    pts   = self.settings.get(pts_key) or []
+                    color = self.settings.get(col_key)
+                    off   = self.settings.get(off_key) or [0, 0]
+                    if pts:
+                        entries = [(sx2+e[0], sy2+e[1], (e[2],e[3],e[4])) for e in pts]
+                    elif color:
+                        entries = [(sx2+off[0], sy2+off[1], tuple(color))]
+                    else:
+                        continue
+                    for (mx, my, ref) in entries:
+                        best = 999
+                        for ddx, ddy in ((0,0),(spread,0),(-spread,0),(0,spread),(0,-spread)):
+                            d = sum(abs(a-b) for a,b in zip(img.getpixel(
+                                (min(max(int((mx+ddx)*scale),0),w-1),
+                                 min(max(int((my+ddy)*scale),0),h-1))), ref))
+                            if d < best:
+                                best = d
+                        dpx, dpy = px(mx, my)
+                        mark = "✓" if best < threshold else f"Δ{best}"
+                        draw.ellipse([dpx-5, dpy-5, dpx+5, dpy+5], outline=dot_col, width=2)
+                        draw.text((dpx+7, dpy-7), mark, fill=dot_col)
+
+            img.save(DESKTOP_LIVE)
+        except Exception as e:
             pass
 
     def detect_stove_state(self, sx, sy):
@@ -719,6 +792,7 @@ class RestaurantBot:
             # 掃描所有鍋爐：已完成→收菜並重新做，烹飪中→跳過
             n = len(self.stoves)
             on_status(f"開始掃描（共 {n} 個鍋爐）…")
+            self.save_live_snapshot("掃描前")   # 存桌面快照供除錯
             for i, (sx, sy) in enumerate(self.stoves):
                 if self._stop.is_set(): break
                 on_status(f"【鍋爐 {i+1}/{n}】掃描中…")
@@ -832,11 +906,12 @@ class App:
         self.calib_door  = ttk.Button(row_tool, text="校準門口",  command=self._calib_door)
         self.calib_rest  = ttk.Button(row_tool, text="校準餐廳",  command=self._calib_restaurant)
         self.preview_btn = ttk.Button(row_tool, text="預覽座標",  command=self._preview_coords)
+        self.snap_btn    = ttk.Button(row_tool, text="立即截圖",  command=self._take_live_snap)
         self._debug_var  = tk.BooleanVar(value=False)
         self.debug_btn   = ttk.Checkbutton(row_tool, text="Debug 截圖",
                                            variable=self._debug_var,
                                            command=self._toggle_debug)
-        for btn in (self.calib_door, self.calib_rest, self.preview_btn, self.debug_btn):
+        for btn in (self.calib_door, self.calib_rest, self.preview_btn, self.snap_btn, self.debug_btn):
             btn.pack(side=tk.LEFT, padx=4)
 
     def _toggle_debug(self):
@@ -858,7 +933,7 @@ class App:
         sb = tk.NORMAL   if running else tk.DISABLED
         for btn in (self.start_btn, self.calib_s, self.calib_r,
                     self.calib_c, self.calib_sp, self.calib_door, self.calib_rest,
-                    self.testnav_btn, self.preview_btn):
+                    self.testnav_btn, self.preview_btn, self.snap_btn):
             btn.config(state=sa)
         self.stop_btn.config(state=sb)
 
@@ -1321,6 +1396,13 @@ class App:
             self.bot.navigate_to_page(page)
             self._on_status(f"換頁完成，請確認遊戲目前是否在第 {page} 頁")
         threading.Thread(target=_run, daemon=True).start()
+
+    def _take_live_snap(self):
+        hwnd = self._get_hwnd()
+        if not hwnd: return
+        self.bot.hwnd = hwnd
+        self.bot.save_live_snapshot("手動截圖")
+        self._on_status(f"截圖已存到桌面 bot_live.png")
 
     def _open_detect_test(self):
         """
