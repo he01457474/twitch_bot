@@ -385,9 +385,30 @@ class RestaurantBot:
             return "done"
 
         # 時鐘 → 烹飪中
-        hit, diff, (cx, cy) = check_state("clock_points", "clock_color", "clock_offset")
-        markers.append((cx, cy, "orange", f"clock Δ{diff}"))
-        if hit:
+        # 時鐘圓圈是旋轉動畫，單次截圖可能剛好截到深色幀導致 Δ 偏高，
+        # 改為最多取樣 3 次（每次重新截圖），任一次符合就算偵測到。
+        clock_calibrated = bool(
+            self.settings.get("clock_points") or self.settings.get("clock_color")
+        )
+        clock_hit, clock_diff, clock_pt = False, 999, (sx, sy)
+        if clock_calibrated:
+            for _sample in range(3):
+                if _sample > 0:
+                    time.sleep(0.15)
+                    try:
+                        raw_img, w, h = capture_window(self.hwnd)
+                        img   = raw_img.convert("RGB")
+                        scale = max(w / MOLE_W, h / MOLE_H)
+                    except Exception:
+                        break
+                h_t, d_t, p_t = check_state("clock_points", "clock_color", "clock_offset")
+                if d_t < clock_diff:
+                    clock_diff, clock_pt = d_t, p_t
+                if h_t:
+                    clock_hit = True
+                    break
+        markers.append((*clock_pt, "orange", f"clock Δ{clock_diff}"))
+        if clock_hit:
             return "cooking"
 
         return "unknown"
