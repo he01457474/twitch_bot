@@ -437,55 +437,209 @@ class RestaurantBot:
         threshold = self.settings.get("state_threshold", 40)
         return self.color_diff(current, tuple(self._recipe_closed_baseline)) > threshold
 
-    def _complete_to_cooking(self, sx, sy, log, max_steps=3, start_step=1):
+    # ── 鍋爐動作：收菜 / 清除腐壞 / 做菜步驟 ────────────
+
+    def _collect_food(self, sx, sy, log):
+        """收菜（食物做好時點鍋爐）"""
+        log("收菜…")
+        self.click(sx, sy, delay=0.5)
+        self.wait(1.5)
+
+    def _clear_spoiled(self, sx, sy, log):
         """
-        從 start_step 繼續點擊直到進入烹飪狀態。
-        每步點完立即確認讀條出現；若無反應回傳 False。
+        清除腐壞食物。最多試 2 次，成功回傳 True。
+        流程：點鍋爐 → 等彈窗出現 → 點確認 → 確認是否清除成功。
         """
-        step_labels = {1: "製作餐具", 2: "放入食材", 3: "開始烹飪"}
-        for i in range(max_steps):
-            if self._stop.is_set(): return True
-            # 每步前先確認狀態
+        confirm_btn = self.recipe.get("confirm_btn", DEFAULT_RECIPE["confirm_btn"])
+        for _try in range(2):
+            log("腐壞，清除…")
+            self.click(sx, sy, delay=0.5)
+            self.wait(0.8)
+            self.click_real(*confirm_btn, delay=0.5)
+            if self._stop.is_set(): return False
+            self.wait(1.5)
+            if self.detect_stove_state(sx, sy) != "spoiled":
+                return True
+            log("清除後仍偵測到腐壞，重試…")
+        return False
+
+    def _do_steps(self, sx, sy, log):
+        """
+        執行最多 3 個烹飪步驟（製作餐具、放食材、開始烹飪）。
+
+        每步點完觀察反應：
+          有讀條 → 等結束 → 繼續下一步
+          已烹飪 → 直接結束
+          無讀條 → 點取消關掉可能的彈窗，結束（讓下輪重試，不跑防卡頓）
+        """
+        cancel_btn = self.recipe.get("cancel_btn", DEFAULT_RECIPE["cancel_btn"])
+        labels = ["製作餐具", "放食材", "開始烹飪"]
+
+        for step in range(3):
+            if self._stop.is_set(): return
+
             state = self.detect_stove_state(sx, sy)
             if state in ("cooking", "done"):
-                log(f"鍋爐 ({sx},{sy}) 已烹飪 ✓")
-                return True
+                log("已進入烹飪 ✓")
+                return
             if state == "spoiled":
-                log("偵測到腐壞，停止接續步驟")
-                return False
-            label = step_labels.get(start_step + i, f"步驟 {start_step + i}")
-            log(f"{label}…")
+                log("偵測到腐壞，停止")
+                return
+
+            log(f"{labels[step]}…")
             pre = self.get_pixel(sx, sy)
-            self.click(sx, sy, delay=0.1)
-            # 點完馬上確認有沒有讀條（1 秒內）
-            ok, _, bar_color = self.wait_for_pixel_change(sx, sy, timeout=1.0, baseline=pre)
-            if not ok:
-                if self.detect_stove_state(sx, sy) in ("cooking", "done"):
-                    log(f"鍋爐 ({sx},{sy}) 已烹飪 ✓")
-                    return True
-                log(f"{label}：點擊無反應")
-                self._debug_capture(f"no_bar_{sx}_{sy}_step{start_step+i}")
-                return False
-            # 讀條出現，先排除腐壞提示（腐壞時點擊也會有短暫像素變化）
+            self.click(sx, sy, delay=0.2)
+
+            # 等讀條出現（最多 2 秒）
+            bar_ok, _, bar_color = self.wait_for_pixel_change(
+                sx, sy, timeout=2.0, baseline=pre)
+
+            if not bar_ok:
+                # 沒讀條，再確認一次狀態
+                state = self.detect_stove_state(sx, sy)
+                if state in ("cooking", "done"):
+                    log("已進入烹飪 ✓")
+                    return
+                # 可能有彈窗，點取消保底，等下輪處理
+                log(f"{labels[step]}：無讀條，關彈窗等下輪")
+                self._debug_capture(f"no_bar_{sx}_{sy}_step{step+1}")
+                self.click_real(*cancel_btn, delay=0.5)
+                return
+
+            # 讀條出現，排除腐壞誤觸
             if self.detect_stove_state(sx, sy) == "spoiled":
-                log("偵測到腐壞提示（非製作讀條），停止接續步驟")
-                return False
-            log(f"{label}：讀條中…")
-            # 等讀條結束，同時監控烹飪狀態 — 一出現時鐘就立刻離開
-            deadline = time.time() + 15.0
+                log("腐壞誤觸，停止")
+                return
+
+            log(f"{labels[step]}：讀條中…")
+
+            # 等讀條結束（最多 20 秒），偵測到烹飪就立刻離開
+            deadline = time.time() + 20.0
             while time.time() < deadline and not self._stop.is_set():
-                st = self.detect_stove_state(sx, sy)
-                if st in ("cooking", "done"):
-                    log(f"鍋爐 ({sx},{sy}) 已烹飪 ✓")
-                    return True
+                state = self.detect_stove_state(sx, sy)
+                if state in ("cooking", "done"):
+                    log("已進入烹飪 ✓")
+                    return
+                if state == "spoiled":
+                    return
                 if self.color_diff(self.get_pixel(sx, sy), bar_color) > 40:
-                    break  # 讀條結束
+                    break   # 讀條結束，繼續下一步
                 time.sleep(0.2)
-            time.sleep(0.3)
-        # 所有步驟跑完，最後確認
-        if self.detect_stove_state(sx, sy) in ("cooking", "done"):
-            log(f"鍋爐 ({sx},{sy}) 已烹飪 ✓")
-        return True
+
+            time.sleep(0.3)   # 步驟間緩衝
+
+    def _open_recipe_and_cook(self, sx, sy, page, dish, log):
+        """
+        點鍋爐開食譜 → 選菜 → 做步驟。
+
+        若食譜沒開，觀察其他反應：
+          - 已在讀條中 → 等結束再接續步驟
+          - 狀態改變（烹飪/完成/腐壞）→ 對應處理
+          - 完全無反應 → 點取消保底，跳過
+        兩次都失敗直接跳過（不跑防卡頓）。
+        """
+        check      = self.recipe["check_pt"]
+        cancel_btn = self.recipe.get("cancel_btn", DEFAULT_RECIPE["cancel_btn"])
+        threshold  = self.settings.get("state_threshold", 40)
+
+        # 食譜已開著（例如上輪未關），直接選菜
+        if self.is_recipe_open():
+            log("食譜已開著，直接選菜…")
+            if self._select_dish(page, dish, check, log):
+                self.wait(0.8)
+                self._do_steps(sx, sy, log)
+            return
+
+        for attempt in range(2):
+            if self._stop.is_set(): return
+
+            pre_check = self.get_pixel(*check)
+            pre_stove = self.get_pixel(sx, sy)
+            self.click(sx, sy, delay=0.3)
+
+            # 等食譜開啟（1.5 秒）
+            recipe_ok, _, _ = self.wait_for_pixel_change(
+                *check, timeout=1.5, baseline=pre_check)
+
+            if recipe_ok:
+                log("食譜已開啟 ✓")
+                if self._select_dish(page, dish, check, log):
+                    self.wait(0.8)
+                    self._do_steps(sx, sy, log)
+                return
+
+            # 食譜沒開，重新確認狀態
+            state = self.detect_stove_state(sx, sy)
+            if state == "cooking":
+                log("烹飪中（之前未偵測到），跳過")
+                return
+            if state == "done":
+                log("食物做好（之前未偵測到），收菜")
+                self._collect_food(sx, sy, log)
+                return
+            if state == "spoiled":
+                log("腐壞（之前未偵測到），清除")
+                self._clear_spoiled(sx, sy, log)
+                return
+
+            # 鍋爐像素有沒有持續變化（已在讀條中）
+            stove_now = self.get_pixel(sx, sy)
+            if self.color_diff(stove_now, pre_stove) > threshold:
+                time.sleep(0.4)
+                if self.color_diff(self.get_pixel(sx, sy), pre_stove) > threshold:
+                    log("偵測到讀條（中間步驟），等結束…")
+                    self.wait_for_pixel_change(sx, sy, timeout=15.0, baseline=stove_now)
+                    self.wait(0.5)
+                    state = self.detect_stove_state(sx, sy)
+                    if state not in ("cooking", "done"):
+                        self._do_steps(sx, sy, log)
+                    return
+
+            # 完全無反應，點取消關掉可能的彈窗
+            log(f"無反應（第 {attempt+1} 次），關彈窗…")
+            self.click_real(*cancel_btn, delay=0.5)
+
+        log(f"鍋爐 ({sx},{sy}) 兩次都無法開食譜，跳過")
+
+    def setup_stove(self, sx, sy, page, dish, on_status=None):
+        """
+        處理單個鍋爐，流程：
+          1. 偵測狀態
+          2. cooking → 跳過
+             done    → 收菜
+             spoiled → 清除（失敗就跳過）
+             unknown → 直接嘗試開始做菜
+          3. 做菜（開食譜 → 選菜 → 三步驟）
+
+        遇到問題只跳過，不跑 leave_and_return。
+        """
+        def log(msg):
+            if on_status: on_status(msg)
+
+        state = self.detect_stove_state(sx, sy)
+        log(f"鍋爐 ({sx},{sy})：{state}")
+
+        if state == "cooking":
+            return
+
+        if state == "done":
+            self._collect_food(sx, sy, log)
+            state = self.detect_stove_state(sx, sy)
+            if state not in ("unknown",):
+                return   # 還有東西，下輪再處理
+
+        if state == "spoiled":
+            if not self._clear_spoiled(sx, sy, log):
+                log("清除失敗，跳過")
+                return
+            state = self.detect_stove_state(sx, sy)
+            if state == "done":
+                self._collect_food(sx, sy, log)
+            elif state not in ("unknown",):
+                return
+
+        # 空鍋爐，開始做菜
+        self._open_recipe_and_cook(sx, sy, page, dish, log)
 
     def find_window(self):
         found = []
