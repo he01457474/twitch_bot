@@ -416,6 +416,23 @@ class RestaurantBot:
     def is_stove_spoiled(self, sx, sy):
         return self.detect_stove_state(sx, sy) == "spoiled"
 
+    def _detect_safe(self, sx, sy):
+        """
+        嚴謹版狀態偵測：連偵測兩次（間隔 0.3 秒），採保守判斷。
+        任一次偵測到 cooking 或 spoiled，即回傳該結果，
+        防止烹飪中或腐壞的鍋爐被誤判為 unknown 而浪費食材。
+        """
+        s1 = self.detect_stove_state(sx, sy)
+        if s1 in ("cooking", "spoiled"):
+            return s1
+        time.sleep(0.3)
+        s2 = self.detect_stove_state(sx, sy)
+        if s2 in ("cooking", "spoiled"):
+            return s2
+        if s1 == "done" or s2 == "done":
+            return "done"
+        return "unknown"
+
     def _is_in_restaurant(self):
         """
         確認目前是否在餐廳畫面。
@@ -448,11 +465,17 @@ class RestaurantBot:
     def _clear_spoiled(self, sx, sy, log):
         """
         清除腐壞食物。最多試 2 次，成功回傳 True。
-        流程：點鍋爐 → 等彈窗出現 → 點確認 → 確認是否清除成功。
+        流程：確認腐壞 → 點鍋爐 → 等彈窗 → 點確認 → 確認是否清除成功。
+        點確認前會再偵測一次，避免狀態已改變時誤觸確認鈕浪費食材。
         """
         confirm_btn = self.recipe.get("confirm_btn", DEFAULT_RECIPE["confirm_btn"])
         for _try in range(2):
-            log("腐壞，清除…")
+            # 點確認前再確認一次腐壞狀態，偵測失準時不誤按
+            time.sleep(0.2)
+            if self.detect_stove_state(sx, sy) != "spoiled":
+                log("腐壞狀態已消失，不需清除")
+                return True
+            log("腐壞確認，清除…")
             self.click(sx, sy, delay=0.5)
             self.wait(0.8)
             self.click_real(*confirm_btn, delay=0.5)
@@ -478,7 +501,9 @@ class RestaurantBot:
         for step in range(3):
             if self._stop.is_set(): return
 
-            state = self.detect_stove_state(sx, sy)
+            # 前兩步（製作餐具、放食材）用嚴謹雙重偵測，
+            # 確保不在烹飪中才繼續，避免誤操作浪費食材
+            state = self._detect_safe(sx, sy) if step <= 1 else self.detect_stove_state(sx, sy)
             if state in ("cooking", "done"):
                 log("已進入烹飪 ✓")
                 return
@@ -568,8 +593,8 @@ class RestaurantBot:
                     self._do_steps(sx, sy, log)
                 return
 
-            # 食譜沒開，重新確認狀態
-            state = self.detect_stove_state(sx, sy)
+            # 食譜沒開，用嚴謹偵測確認狀態，避免誤把烹飪中當作 unknown
+            state = self._detect_safe(sx, sy)
             if state == "cooking":
                 log("烹飪中（之前未偵測到），跳過")
                 return
@@ -616,7 +641,7 @@ class RestaurantBot:
         def log(msg):
             if on_status: on_status(msg)
 
-        state = self.detect_stove_state(sx, sy)
+        state = self._detect_safe(sx, sy)
         log(f"鍋爐 ({sx},{sy})：{state}")
 
         if state == "cooking":
@@ -624,7 +649,7 @@ class RestaurantBot:
 
         if state == "done":
             self._collect_food(sx, sy, log)
-            state = self.detect_stove_state(sx, sy)
+            state = self._detect_safe(sx, sy)
             if state not in ("unknown",):
                 return   # 還有東西，下輪再處理
 
@@ -632,7 +657,7 @@ class RestaurantBot:
             if not self._clear_spoiled(sx, sy, log):
                 log("清除失敗，跳過")
                 return
-            state = self.detect_stove_state(sx, sy)
+            state = self._detect_safe(sx, sy)
             if state == "done":
                 self._collect_food(sx, sy, log)
             elif state not in ("unknown",):
@@ -815,119 +840,6 @@ class RestaurantBot:
         self._recipe_closed_baseline = list(self.get_pixel(*check))
         return True
 
-    def setup_stove(self, sx, sy, page, dish, on_status=None):
-        def log(msg):
-            if on_status: on_status(msg)
-
-        confirm_btn = self.recipe.get("confirm_btn", DEFAULT_RECIPE["confirm_btn"])
-        cancel_btn  = self.recipe.get("cancel_btn",  DEFAULT_RECIPE["cancel_btn"])
-        check       = self.recipe["check_pt"]
-        threshold   = self.settings.get("state_threshold", 40)
-
-        # ── 顏色預判：直接跳到對應步驟 ──────────────
-        state = self.detect_stove_state(sx, sy)
-        log(f"鍋爐 ({sx},{sy}) 狀態：{state}")
-
-        if state == "cooking":
-            log("烹飪中，跳過")
-            return
-
-        if state == "done":
-            log("食物做好，收菜…")
-            self.click(sx, sy, delay=1.0)
-            time.sleep(1.5)
-            # 收完後繼續往下重新下菜
-
-        if state == "spoiled":
-            cleared = False
-            for _try in range(2):   # 最多嘗試清除兩次
-                log("腐壞，清除…")
-                self.click(sx, sy, delay=0.5)   # 等彈窗完全出現
-                time.sleep(0.8)
-                self.click_real(*confirm_btn, delay=1.5)
-                if self._stop.is_set(): return
-                time.sleep(1.5)
-                if self.detect_stove_state(sx, sy) != "spoiled":
-                    cleared = True
-                    break   # 清除成功
-                log("清除後仍偵測到腐壞，再試一次…")
-            if not cleared:
-                # 兩次都失敗 → 跳過此鍋爐，不進入行為偵測，避免誤觸 leave_and_return
-                log(f"鍋爐 ({sx},{sy}) 腐壞清除失敗，跳過")
-                return
-            # 清除成功，繼續往下重新下菜
-
-        # ── 食譜是否已開著（例如使用者手動開了，或上輪未關） ──
-        if self.is_recipe_open():
-            log("食譜已開著，直接選菜…")
-            if not self._select_dish(page, dish, check, log): return
-            if self._stop.is_set(): return
-            time.sleep(1.0)
-            if not self._complete_to_cooking(sx, sy, log, max_steps=3):
-                self._debug_capture(f"anomaly_{sx}_{sy}")
-                log("步驟異常，返回鍋爐頁…")
-                self.leave_and_return(log)
-            return
-
-        # ── 行為偵測：點鍋爐，觀察反應 ───────────────
-        for attempt in range(3):
-            if self._stop.is_set(): return
-
-            pre_check = self.get_pixel(*check)
-            pre_stove = self.get_pixel(sx, sy)
-            self.click(sx, sy, delay=0.3)
-
-            # 食譜開了？（先判斷，timeout 短一點）
-            ok, _, _ = self.wait_for_pixel_change(*check, timeout=1.5, baseline=pre_check)
-            if ok:
-                log("食譜已開啟 ✓")
-                if not self._select_dish(page, dish, check, log): return
-                if self._stop.is_set(): return
-                time.sleep(1.0)
-                if not self._complete_to_cooking(sx, sy, log, max_steps=3):
-                    log("步驟異常，返回鍋爐頁…")
-                    self.leave_and_return(log)
-                return
-
-            # 讀條出現？（已在餐具或放入食材的中間步驟）
-            stove_now = self.get_pixel(sx, sy)
-            if self.color_diff(stove_now, pre_stove) > threshold:
-                # 等 0.4 秒確認是持續讀條（腐壞提示是短暫的，真實讀條會持續幾秒）
-                time.sleep(0.4)
-                stove_persist = self.get_pixel(sx, sy)
-                if self.color_diff(stove_persist, pre_stove) < threshold:
-                    # 變化已消失 → 是短暫提示（腐壞 or 其他），不是真實讀條
-                    if self.is_stove_spoiled(sx, sy):
-                        log("腐壞，清除…")
-                        self.click_real(*confirm_btn, delay=1.0)
-                        time.sleep(0.5)
-                    continue
-                log("偵測到讀條（中間步驟），等待完成再接續…")
-                self.wait_for_pixel_change(sx, sy, timeout=15.0, baseline=stove_now)
-                time.sleep(0.5)
-                if self.detect_stove_state(sx, sy) in ("cooking", "done"):
-                    log(f"鍋爐 ({sx},{sy}) 已烹飪 ✓")
-                    return
-                # 讀條結束但還沒烹飪，接續剩餘步驟
-                if not self._complete_to_cooking(sx, sy, log, max_steps=2):
-                    log("步驟異常，返回鍋爐頁…")
-                    self.leave_and_return(log)
-                return
-
-            # 都沒變 → 可能是彈窗
-            if self.is_stove_spoiled(sx, sy):
-                log("腐壞彈窗，清除…")
-                self.click_real(*confirm_btn, delay=1.0)
-            else:
-                log("做菜中彈窗，取消，跳過")
-                self.click_real(*cancel_btn, delay=0.5)
-                return
-
-        # 3 次都無反應 → 可能跳到奇怪的頁面，導航回來
-        self._debug_capture(f"no_response_{sx}_{sy}")
-        log(f"鍋爐 ({sx},{sy}) 持續無反應，返回鍋爐頁…")
-        self.leave_and_return(log)
-
     def run(self, page, dish, scan_interval, antlag_minutes, on_status):
         self.hwnd = self.find_window()
         if not self.hwnd:
@@ -1008,87 +920,124 @@ class App:
         self._build_ui(settings)
 
     def _build_ui(self, settings):
-        f = ttk.Frame(self.root, padding=15)
-        f.pack()
+        f = ttk.Frame(self.root, padding=12)
+        f.pack(fill=tk.BOTH)
 
         self.vars = {}
-        grid_row = 0
 
-        # 一般單欄 spinbox 的欄位
-        simple_rows = [
-            ("食譜頁數 (1~10)",       "page",           1, 10),
-            ("菜的位置 (1~6)",         "dish",           1,  6),
-        ]
-        for lbl, key, lo, hi in simple_rows:
-            ttk.Label(f, text=lbl).grid(row=grid_row, column=0, sticky=tk.W, pady=4, padx=(0,8))
-            v = tk.IntVar(value=settings[key])
-            ttk.Spinbox(f, from_=lo, to=hi, textvariable=v, width=6).grid(
-                row=grid_row, column=1, pady=4, sticky=tk.W)
-            self.vars[key] = v
-            grid_row += 1
+        # ── 設定 ─────────────────────────────────────────
+        grp_set = ttk.LabelFrame(f, text="設定", padding=(10, 4))
+        grp_set.pack(fill=tk.X, pady=(0, 6))
 
-        # 掃描間隔：分 + 秒合一行
-        ttk.Label(f, text="掃描間隔").grid(row=grid_row, column=0, sticky=tk.W, pady=4, padx=(0,8))
-        sf = ttk.Frame(f)
-        sf.grid(row=grid_row, column=1, pady=4, sticky=tk.W)
+        row1 = ttk.Frame(grp_set)
+        row1.pack(fill=tk.X, pady=2)
+        ttk.Label(row1, text="食譜頁數 (1~10)", width=17, anchor=tk.W).pack(side=tk.LEFT)
+        v_page = tk.IntVar(value=settings["page"])
+        ttk.Spinbox(row1, from_=1, to=10, textvariable=v_page, width=5).pack(side=tk.LEFT)
+        ttk.Label(row1, text="   菜的位置 (1~6)").pack(side=tk.LEFT)
+        v_dish = tk.IntVar(value=settings["dish"])
+        ttk.Spinbox(row1, from_=1, to=6, textvariable=v_dish, width=5).pack(side=tk.LEFT)
+        self.vars["page"] = v_page
+        self.vars["dish"] = v_dish
+
+        row2 = ttk.Frame(grp_set)
+        row2.pack(fill=tk.X, pady=2)
+        ttk.Label(row2, text="掃描間隔", width=17, anchor=tk.W).pack(side=tk.LEFT)
         v_min = tk.IntVar(value=settings.get("cook_minutes", 20))
         v_sec = tk.IntVar(value=settings.get("cook_seconds", 0))
-        ttk.Spinbox(sf, from_=0, to=99, textvariable=v_min, width=4).pack(side=tk.LEFT)
-        ttk.Label(sf, text=" 分 ").pack(side=tk.LEFT)
-        ttk.Spinbox(sf, from_=0, to=59, textvariable=v_sec, width=4).pack(side=tk.LEFT)
-        ttk.Label(sf, text=" 秒").pack(side=tk.LEFT)
-        self.vars["cook_minutes"] = v_min
-        self.vars["cook_seconds"] = v_sec
-        grid_row += 1
-
-        # 防卡頓
-        ttk.Label(f, text="防卡頓間隔（分，0=關）").grid(
-            row=grid_row, column=0, sticky=tk.W, pady=4, padx=(0,8))
+        ttk.Spinbox(row2, from_=0, to=99, textvariable=v_min, width=4).pack(side=tk.LEFT)
+        ttk.Label(row2, text=" 分 ").pack(side=tk.LEFT)
+        ttk.Spinbox(row2, from_=0, to=59, textvariable=v_sec, width=4).pack(side=tk.LEFT)
+        ttk.Label(row2, text=" 秒   防卡頓 ").pack(side=tk.LEFT)
         v_al = tk.IntVar(value=settings.get("antlag_minutes", 5))
-        ttk.Spinbox(f, from_=0, to=99, textvariable=v_al, width=6).grid(
-            row=grid_row, column=1, pady=4, sticky=tk.W)
+        ttk.Spinbox(row2, from_=0, to=99, textvariable=v_al, width=4).pack(side=tk.LEFT)
+        ttk.Label(row2, text=" 分（0=關）").pack(side=tk.LEFT)
+        self.vars["cook_minutes"]  = v_min
+        self.vars["cook_seconds"]  = v_sec
         self.vars["antlag_minutes"] = v_al
-        grid_row += 1
 
-        self.status = ttk.Label(f, text="狀態：待機", foreground="gray")
-        self.status.grid(row=grid_row, column=0, columnspan=2, pady=(10, 4))
-        grid_row += 1
+        # ── 校準 ─────────────────────────────────────────
+        grp_cal = ttk.LabelFrame(f, text="校準", padding=(10, 4))
+        grp_cal.pack(fill=tk.X, pady=(0, 6))
 
-        # 第一排：操作按鈕
-        row_op = ttk.Frame(f)
-        row_op.grid(row=grid_row, column=0, columnspan=2, pady=(0, 3))
-        self.start_btn   = ttk.Button(row_op, text="開始",    command=self._start)
-        self.stop_btn    = ttk.Button(row_op, text="停止",    command=self._stop, state=tk.DISABLED)
-        self.testnav_btn = ttk.Button(row_op, text="測試換頁", command=self._test_navigate)
-        self.testdet_btn = ttk.Button(row_op, text="偵測測試", command=self._open_detect_test)
-        for btn in (self.start_btn, self.stop_btn, self.testnav_btn, self.testdet_btn):
-            btn.pack(side=tk.LEFT, padx=4)
-        grid_row += 1
+        row_c = ttk.Frame(grp_cal)
+        row_c.pack(fill=tk.X, pady=(2, 0))
+        self.calib_s    = ttk.Button(row_c, text="鍋爐",   command=self._calib_stoves)
+        self.calib_r    = ttk.Button(row_c, text="食譜",   command=self._calib_recipe)
+        self.calib_c    = ttk.Button(row_c, text="彈窗",   command=self._calib_cancel)
+        self.calib_sp   = ttk.Button(row_c, text="狀態色", command=self._calib_state_colors)
+        self.calib_door = ttk.Button(row_c, text="門口",   command=self._calib_door)
+        self.calib_rest = ttk.Button(row_c, text="餐廳",   command=self._calib_restaurant)
+        for btn in (self.calib_s, self.calib_r, self.calib_c,
+                    self.calib_sp, self.calib_door, self.calib_rest):
+            btn.pack(side=tk.LEFT, padx=3)
 
-        # 第二排：校準按鈕
-        row_cal = ttk.Frame(f)
-        row_cal.grid(row=grid_row, column=0, columnspan=2, pady=(0, 2))
-        self.calib_s  = ttk.Button(row_cal, text="校準鍋爐",   command=self._calib_stoves)
-        self.calib_r  = ttk.Button(row_cal, text="校準食譜",   command=self._calib_recipe)
-        self.calib_c  = ttk.Button(row_cal, text="校準彈窗",   command=self._calib_cancel)
-        self.calib_sp = ttk.Button(row_cal, text="校準狀態色", command=self._calib_state_colors)
-        for btn in (self.calib_s, self.calib_r, self.calib_c, self.calib_sp):
-            btn.pack(side=tk.LEFT, padx=4)
-        grid_row += 1
+        # 校準狀態指示列
+        self._calib_lbl = {}
+        row_cs = ttk.Frame(grp_cal)
+        row_cs.pack(fill=tk.X, pady=(2, 4))
+        for key, title in (("stoves", "鍋爐"), ("recipe", "食譜"), ("cancel", "彈窗"),
+                            ("state",  "狀態色"), ("door",  "門口"), ("restaurant", "餐廳")):
+            lbl = ttk.Label(row_cs, text=f"▸{title}", font=("", 8))
+            lbl.pack(side=tk.LEFT, padx=(4, 10))
+            self._calib_lbl[key] = lbl
+        self._refresh_calib_status()
 
-        # 第三排：工具按鈕
-        row_tool = ttk.Frame(f)
-        row_tool.grid(row=grid_row, column=0, columnspan=2, pady=(0, 4))
-        self.calib_door  = ttk.Button(row_tool, text="校準門口",  command=self._calib_door)
-        self.calib_rest  = ttk.Button(row_tool, text="校準餐廳",  command=self._calib_restaurant)
-        self.preview_btn = ttk.Button(row_tool, text="預覽座標",  command=self._preview_coords)
-        self.snap_btn    = ttk.Button(row_tool, text="立即截圖",  command=self._take_live_snap)
+        # ── 狀態 ─────────────────────────────────────────
+        self.status = ttk.Label(f, text="狀態：待機", foreground="gray",
+                                font=("", 10, "bold"), anchor=tk.W)
+        self.status.pack(fill=tk.X, pady=(2, 6))
+
+        # ── 執行 ─────────────────────────────────────────
+        grp_run = ttk.LabelFrame(f, text="執行", padding=(10, 4))
+        grp_run.pack(fill=tk.X, pady=(0, 6))
+        self.start_btn = ttk.Button(grp_run, text="▶ 開始", command=self._start, width=10)
+        self.stop_btn  = ttk.Button(grp_run, text="■ 停止", command=self._stop,  width=10,
+                                    state=tk.DISABLED)
+        self.start_btn.pack(side=tk.LEFT, padx=(0, 6), pady=4)
+        self.stop_btn.pack(side=tk.LEFT, pady=4)
+
+        # ── 工具 ─────────────────────────────────────────
+        grp_tool = ttk.LabelFrame(f, text="工具", padding=(10, 4))
+        grp_tool.pack(fill=tk.X)
+        self.testdet_btn = ttk.Button(grp_tool, text="偵測測試", command=self._open_detect_test)
+        self.preview_btn = ttk.Button(grp_tool, text="預覽座標", command=self._preview_coords)
+        self.snap_btn    = ttk.Button(grp_tool, text="立即截圖", command=self._take_live_snap)
+        self.testnav_btn = ttk.Button(grp_tool, text="測試換頁", command=self._test_navigate)
         self._debug_var  = tk.BooleanVar(value=False)
-        self.debug_btn   = ttk.Checkbutton(row_tool, text="Debug 截圖",
+        self.debug_btn   = ttk.Checkbutton(grp_tool, text="Debug 截圖",
                                            variable=self._debug_var,
                                            command=self._toggle_debug)
-        for btn in (self.calib_door, self.calib_rest, self.preview_btn, self.snap_btn, self.debug_btn):
-            btn.pack(side=tk.LEFT, padx=4)
+        for btn in (self.testdet_btn, self.preview_btn, self.snap_btn,
+                    self.testnav_btn, self.debug_btn):
+            btn.pack(side=tk.LEFT, padx=3, pady=4)
+
+    def _refresh_calib_status(self):
+        """更新校準區域下方的 ✓/✗ 狀態指示"""
+        s = self._extra_settings
+        checks = {
+            "stoves":     self.stoves != DEFAULT_STOVES,
+            "recipe":     os.path.exists(CONFIG_FILE),
+            "cancel":     (tuple(self.recipe.get("confirm_btn", ())) !=
+                           tuple(DEFAULT_RECIPE["confirm_btn"]) or
+                           tuple(self.recipe.get("cancel_btn", ())) !=
+                           tuple(DEFAULT_RECIPE["cancel_btn"])),
+            "state":      bool(s.get("done_points") or s.get("clock_points") or
+                               s.get("spoiled_points") or s.get("done_color") or
+                               s.get("clock_color") or s.get("spoiled_color")),
+            "door":       bool(s.get("door_out") and s.get("door_in")),
+            "restaurant": bool(s.get("restaurant_pt") and s.get("restaurant_color")),
+        }
+        titles = {"stoves": "鍋爐", "recipe": "食譜", "cancel": "彈窗",
+                  "state": "狀態色", "door": "門口", "restaurant": "餐廳"}
+        for key, done in checks.items():
+            lbl = self._calib_lbl.get(key)
+            if not lbl:
+                continue
+            if done:
+                lbl.config(text=f"✓{titles[key]}", foreground="#27ae60")
+            else:
+                lbl.config(text=f"✗{titles[key]}", foreground="#cc4444")
 
     def _toggle_debug(self):
         on = self._debug_var.get()
@@ -1109,7 +1058,7 @@ class App:
         sb = tk.NORMAL   if running else tk.DISABLED
         for btn in (self.start_btn, self.calib_s, self.calib_r,
                     self.calib_c, self.calib_sp, self.calib_door, self.calib_rest,
-                    self.testnav_btn, self.preview_btn, self.snap_btn):
+                    self.testnav_btn, self.testdet_btn, self.preview_btn, self.snap_btn):
             btn.config(state=sa)
         self.stop_btn.config(state=sb)
 
@@ -1205,6 +1154,7 @@ class App:
         self.recipe["cancel_btn"]  = pts[1]
         self.bot.recipe = self.recipe
         self._save_all()
+        self._refresh_calib_status()
         messagebox.showinfo("完成", f"確認：{pts[0]}　取消：{pts[1]}\n已儲存。")
 
     def _calib_door(self):
@@ -1265,6 +1215,7 @@ class App:
         self._extra_settings["door_in"] = list(pts[0])
         self.bot.settings["door_in"] = list(pts[0])
         self._save_all()
+        self._refresh_calib_status()
         wp = self._extra_settings.get("door_waypoint")
         extra = f"\n中途走動點：{wp}" if wp else ""
         messagebox.showinfo("完成", f"入口已儲存：{pts[0]}{extra}\n防卡頓將改用門口出入。")
@@ -1325,6 +1276,7 @@ class App:
             self.bot.settings["restaurant_pt"]    = [mx, my]
             self.bot.settings["restaurant_color"] = list(rgb)
             self._save_all()
+            self._refresh_calib_status()
             win.destroy()
             messagebox.showinfo("完成",
                 f"餐廳確認點：({mx}, {my})  RGB{rgb}\n已儲存。\n\n"
@@ -1489,6 +1441,7 @@ class App:
                 self._extra_settings[offset_key] = [dx, dy]
                 self.bot.settings[offset_key]    = [dx, dy]
             self._save_all()
+            self._refresh_calib_status()
             win.destroy()
             messagebox.showinfo("完成",
                 f"「{label}」已儲存 {len(merged)} 個校準點。\n"
@@ -1513,8 +1466,6 @@ class App:
 
         canvas.bind("<Button-1>", on_pick)
 
-        canvas.bind("<Button-1>", on_pick)
-
     def _calib_stoves(self):
         hwnd = self._get_hwnd()
         if not hwnd: return
@@ -1525,6 +1476,7 @@ class App:
         self.stoves = pts
         self.bot.stoves = pts
         self._save_all()
+        self._refresh_calib_status()
         messagebox.showinfo("完成", "鍋爐座標已儲存！")
 
     def _calib_recipe(self):
@@ -1559,6 +1511,7 @@ class App:
         }
         self.bot.recipe = self.recipe
         self._save_all()
+        self._refresh_calib_status()
         messagebox.showinfo("完成", "食譜座標已儲存！")
 
     def _test_navigate(self):
@@ -1627,33 +1580,40 @@ class App:
             s = self.bot.settings
             threshold = s.get("state_threshold", 40)
 
-            done_color    = s.get("done_color")
-            done_off      = s.get("done_offset")    or [0, 0]
-            clock_color   = s.get("clock_color")
-            clock_off     = s.get("clock_offset")   or [0, 0]
-            spoiled_color = s.get("spoiled_color")
-            spoiled_off   = s.get("spoiled_offset") or [0, 0]
-
             for i, (sx, sy) in enumerate(self.bot.stoves):
                 state = self.bot.detect_stove_state(sx, sy)
 
-                def delta_str(color, off, spread=4):
-                    if not color:
+                def delta_str(pts_key, color_key, off_key, spread=4, _sx=sx, _sy=sy):
+                    """用多點格式計算最佳 Δ，若無多點則退回舊單點格式"""
+                    pts   = s.get(pts_key) or []
+                    color = s.get(color_key)
+                    off   = s.get(off_key) or [0, 0]
+                    if not pts and not color:
                         return "未校準"
-                    ox, oy = off
-                    mx, my = sx + ox, sy + oy
                     best = 999
-                    for ddx, ddy in ((0,0),(spread,0),(-spread,0),(0,spread),(0,-spread)):
-                        d = self.bot.color_diff(
-                            self.bot.get_pixel(mx+ddx, my+ddy), tuple(color))
-                        if d < best:
-                            best = d
+                    if pts:
+                        for entry in pts:
+                            dx, dy, r, g, b = entry
+                            mx, my = _sx + dx, _sy + dy
+                            for ddx, ddy in ((0,0),(spread,0),(-spread,0),(0,spread),(0,-spread)):
+                                d = self.bot.color_diff(
+                                    self.bot.get_pixel(mx+ddx, my+ddy), (r, g, b))
+                                if d < best:
+                                    best = d
+                    else:
+                        ox, oy = off
+                        mx, my = _sx + ox, _sy + oy
+                        for ddx, ddy in ((0,0),(spread,0),(-spread,0),(0,spread),(0,-spread)):
+                            d = self.bot.color_diff(
+                                self.bot.get_pixel(mx+ddx, my+ddy), tuple(color))
+                            if d < best:
+                                best = d
                     mark = " ✓" if best < threshold else ""
                     return f"{best}{mark}"
 
-                done_d    = delta_str(done_color,    done_off)
-                clock_d   = delta_str(clock_color,   clock_off)
-                spoiled_d = delta_str(spoiled_color, spoiled_off, spread=6)
+                done_d    = delta_str("done_points",    "done_color",    "done_offset")
+                clock_d   = delta_str("clock_points",   "clock_color",   "clock_offset")
+                spoiled_d = delta_str("spoiled_points", "spoiled_color", "spoiled_offset", spread=6)
 
                 state_color = {"cooking": "blue", "done": "orange",
                                "spoiled": "red",  "unknown": "gray"}.get(state, "gray")
