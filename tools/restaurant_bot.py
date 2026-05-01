@@ -502,7 +502,11 @@ class RestaurantBot:
             # 到防卡頓間隔就出去繞一圈
             if since_antlag >= interval_seconds and elapsed < total_seconds:
                 self.leave_and_return(on_status)
-                since_antlag = 0.0
+                if not self._is_in_restaurant():
+                    on_status("防卡頓後未偵測到餐廳畫面，30 秒後重試…")
+                    since_antlag = interval_seconds - 30  # 30 秒後再試一次
+                else:
+                    since_antlag = 0.0
         return not self._stop.is_set()
 
     def navigate_to_page(self, target_page):
@@ -661,6 +665,11 @@ class RestaurantBot:
         self._recipe_closed_baseline = list(self.get_pixel(*self.recipe["check_pt"]))
         # scan_interval 單位已是秒
         antlag_sec = antlag_minutes * 60 if antlag_minutes > 0 else scan_interval
+
+        # 若未校準餐廳確認點，提醒但不阻擋
+        if not self.settings.get("restaurant_pt") or not self.settings.get("restaurant_color"):
+            on_status("提示：未校準餐廳確認點，建議校準以防止在餐廳外誤觸做菜")
+            self.wait(3.0)
 
         while not self._stop.is_set():
             # 確認在餐廳內，否則嘗試導航回來
