@@ -286,7 +286,16 @@ class RestaurantBot:
                     color = self.settings.get(col_key)
                     off   = self.settings.get(off_key) or [0, 0]
                     if pts:
-                        entries = [(sx2+e[0], sy2+e[1], (e[2],e[3],e[4])) for e in pts]
+                        # 個別校準模式：只顯示該鍋爐自己的點
+                        if len(pts) == len(self.stoves):
+                            try:
+                                si = list(self.stoves).index((sx2, sy2))
+                                e = pts[si]
+                                entries = [(sx2+e[0], sy2+e[1], (e[2],e[3],e[4]))]
+                            except (ValueError, IndexError):
+                                entries = [(sx2+e[0], sy2+e[1], (e[2],e[3],e[4])) for e in pts]
+                        else:
+                            entries = [(sx2+e[0], sy2+e[1], (e[2],e[3],e[4])) for e in pts]
                     elif color:
                         entries = [(sx2+off[0], sy2+off[1], tuple(color))]
                     else:
@@ -346,12 +355,26 @@ class RestaurantBot:
             """
             先檢查多點清單，再 fallback 舊格式。
             回傳 (偵測到: bool, 最佳 Δ: int, 第一個點的 mole 座標 for debug)
+
+            「個別校準模式」：若 points 的數量 == 鍋爐數，每個鍋爐只取對應位置的點，
+            避免其他鍋爐的偵測點互相干擾。
+            「共用模式」：points 數量 < 鍋爐數，所有鍋爐共用同一批點（舊行為）。
             """
             points = self.settings.get(points_key) or []
             if points:
+                # 個別校準模式：找出這個鍋爐對應的點
+                if len(points) == len(self.stoves):
+                    try:
+                        idx = list(self.stoves).index((sx, sy))
+                        relevant = [points[idx]]
+                    except ValueError:
+                        relevant = points   # 找不到就退回共用
+                else:
+                    relevant = points       # 共用模式
+
                 best_overall = 999
-                first_xy = (sx + points[0][0], sy + points[0][1])
-                for entry in points:
+                first_xy = (sx + relevant[0][0], sy + relevant[0][1])
+                for entry in relevant:
                     dx, dy, r, g, b = entry
                     d = best_match(sx + dx, sy + dy, (r, g, b), spread)
                     if d < best_overall:
@@ -477,9 +500,10 @@ class RestaurantBot:
         """
         清除腐壞食物。最多試 2 次，成功回傳 True。
         流程：確認腐壞 → 點鍋爐 → 等彈窗 → 點確認 → 確認是否清除成功。
-        點確認前會再偵測一次，避免狀態已改變時誤觸確認鈕浪費食材。
+        點確認前會先偵測有沒有意外開食譜，避免 confirm_btn 座標點到食譜菜色。
         """
         confirm_btn = self.recipe.get("confirm_btn", DEFAULT_RECIPE["confirm_btn"])
+        close_btn   = self.recipe.get("close",       DEFAULT_RECIPE["close"])
         for _try in range(2):
             # 點確認前再確認一次腐壞狀態，偵測失準時不誤按
             time.sleep(0.2)
@@ -489,6 +513,12 @@ class RestaurantBot:
             log("腐壞確認，清除…")
             self.click(sx, sy, delay=0.5)
             self.wait(0.8)
+            # 若意外開了食譜（stove 實際非腐壞），先關掉食譜再跳過
+            # 避免 confirm_btn 座標誤點到食譜裡的菜色
+            if self.is_recipe_open():
+                log("意外開啟食譜（非腐壞彈窗），關閉並跳過")
+                self.click_real(*close_btn, delay=0.5)
+                return False
             self.click_real(*confirm_btn, delay=0.5)
             if self._stop.is_set(): return False
             self.wait(1.5)
@@ -1695,17 +1725,33 @@ class App:
 
         stop_event = threading.Event()
 
-        def refresh():
-            if stop_event.is_set() or not win.winfo_exists():
-                return
-            s = self.bot.settings
-            threshold = s.get("state_threshold", 40)
+        def refresh_loop():
+            """
+            整個迴圈留在背景執行緒，UI 更新用 win.after(0, ...) 拋回主執行緒。
+            每輪只截一張圖，所有鍋爐共用，避免重複截圖造成卡頓。
+            """
+            while not stop_event.is_set():
+                if not win.winfo_exists():
+                    break
 
-            for i, (sx, sy) in enumerate(self.bot.stoves):
-                state = self.bot.detect_stove_state(sx, sy)
+                s         = self.bot.settings
+                threshold = s.get("state_threshold", 40)
 
-                def delta_str(pts_key, color_key, off_key, spread=4, _sx=sx, _sy=sy):
-                    """用多點格式計算最佳 Δ，若無多點則退回舊單點格式"""
+                # 截一張圖供本輪所有鍋爐共用
+                try:
+                    raw_img, gw, gh = capture_window(self.bot.hwnd)
+                    img   = raw_img.convert("RGB")
+                    scale = max(gw / MOLE_W, gh / MOLE_H)
+                except Exception:
+                    time.sleep(1.0)
+                    continue
+
+                def get_px(mx, my):
+                    px = min(max(int(mx * scale), 0), gw - 1)
+                    py = min(max(int(my * scale), 0), gh - 1)
+                    return img.getpixel((px, py))
+
+                def best_delta(pts_key, color_key, off_key, spread, _sx, _sy, _idx):
                     pts   = s.get(pts_key) or []
                     color = s.get(color_key)
                     off   = s.get(off_key) or [0, 0]
@@ -1713,52 +1759,58 @@ class App:
                         return "未校準"
                     best = 999
                     if pts:
-                        for entry in pts:
-                            dx, dy, r, g, b = entry
-                            mx, my = _sx + dx, _sy + dy
-                            for ddx, ddy in ((0,0),(spread,0),(-spread,0),(0,spread),(0,-spread)):
-                                d = self.bot.color_diff(
-                                    self.bot.get_pixel(mx+ddx, my+ddy), (r, g, b))
-                                if d < best:
-                                    best = d
+                        # 個別校準模式：只看這個鍋爐自己的點
+                        if len(pts) == len(self.bot.stoves):
+                            relevant = [pts[_idx]] if _idx < len(pts) else pts
+                        else:
+                            relevant = pts
+                        entries = [(e[0], e[1], (e[2], e[3], e[4])) for e in relevant]
                     else:
-                        ox, oy = off
-                        mx, my = _sx + ox, _sy + oy
+                        entries = [(off[0], off[1], tuple(color))]
+                    for dx, dy, ref in entries:
+                        mx, my = _sx + dx, _sy + dy
                         for ddx, ddy in ((0,0),(spread,0),(-spread,0),(0,spread),(0,-spread)):
-                            d = self.bot.color_diff(
-                                self.bot.get_pixel(mx+ddx, my+ddy), tuple(color))
+                            d = self.bot.color_diff(get_px(mx+ddx, my+ddy), ref)
                             if d < best:
                                 best = d
                     mark = " ✓" if best < threshold else ""
                     return f"{best}{mark}"
 
-                done_d    = delta_str("done_points",    "done_color",    "done_offset")
-                clock_d   = delta_str("clock_points",   "clock_color",   "clock_offset")
-                spoiled_d = delta_str("spoiled_points", "spoiled_color", "spoiled_offset", spread=6)
+                for i, (sx, sy) in enumerate(self.bot.stoves):
+                    if stop_event.is_set():
+                        break
 
-                state_color = {"cooking": "blue", "done": "orange",
-                               "spoiled": "red",  "unknown": "gray"}.get(state, "gray")
+                    # 偵測狀態（用同一張截圖，不重新截圖）
+                    state = self.bot.detect_stove_state(sx, sy)
 
-                def update_row(idx=i, st=state, sc=state_color,
-                               dd=done_d, cd=clock_d, sd=spoiled_d):
-                    if not win.winfo_exists(): return
-                    row_labels[idx][0].config(text=str(idx+1))
-                    row_labels[idx][1].config(text=f"{self.bot.stoves[idx]}")
-                    row_labels[idx][2].config(text=st, foreground=sc)
-                    row_labels[idx][3].config(text=dd)
-                    row_labels[idx][4].config(text=cd)
-                    row_labels[idx][5].config(text=sd)
+                    done_d    = best_delta("done_points",    "done_color",    "done_offset",    4, sx, sy, i)
+                    clock_d   = best_delta("clock_points",   "clock_color",   "clock_offset",   4, sx, sy, i)
+                    spoiled_d = best_delta("spoiled_points", "spoiled_color", "spoiled_offset", 6, sx, sy, i)
 
-                win.after(0, update_row)
+                    sc = {"cooking": "blue", "done": "orange",
+                          "spoiled": "red",  "unknown": "gray"}.get(state, "gray")
 
-            win.after(500, refresh)
+                    def update_row(idx=i, st=state, fg=sc,
+                                   dd=done_d, cd=clock_d, sd=spoiled_d):
+                        if not win.winfo_exists():
+                            return
+                        row_labels[idx][0].config(text=str(idx+1))
+                        row_labels[idx][1].config(text=str(self.bot.stoves[idx]))
+                        row_labels[idx][2].config(text=st, foreground=fg)
+                        row_labels[idx][3].config(text=dd)
+                        row_labels[idx][4].config(text=cd)
+                        row_labels[idx][5].config(text=sd)
+
+                    win.after(0, update_row)
+
+                time.sleep(0.8)   # 背景執行緒等待，不佔用 UI
 
         def on_close():
             stop_event.set()
             win.destroy()
 
         win.protocol("WM_DELETE_WINDOW", on_close)
-        threading.Thread(target=refresh, daemon=True).start()
+        threading.Thread(target=refresh_loop, daemon=True).start()
 
     def _on_status(self, msg, error=False):
         color = "red" if error else ("gray" if msg == "已停止" else "green")
