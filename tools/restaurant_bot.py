@@ -236,41 +236,66 @@ class RestaurantBot:
           "cooking" : 烹飪中（橙色時鐘圓圈）→ 跳過
           "spoiled" : 腐壞 → 清除
           "unknown" : 未知 → 行為偵測
-        Debug 模式下會在 done/spoiled/unknown 存標記截圖。
+
+        改進：一次截圖複用，並在目標點周邊取樣 5 個點（十字），
+        取最小色差，任一個點符合就算到 → 對煙霧、光暈等動態效果更穩定。
         """
         threshold = self.settings.get("state_threshold", 40)
-        markers   = [(sx, sy, "white", "stove")]
+
+        # 一次截圖，全部狀態共用（同一幀，且減少截圖次數）
+        try:
+            raw_img, w, h = capture_window(self.hwnd)
+            img   = raw_img.convert("RGB")
+            scale = max(w / MOLE_W, h / MOLE_H)
+        except Exception:
+            return "unknown"
+
+        def get_px(mx, my):
+            px = min(max(int(mx * scale), 0), w - 1)
+            py = min(max(int(my * scale), 0), h - 1)
+            return img.getpixel((px, py))
+
+        def best_match(mx, my, ref_color, spread=4):
+            """
+            在中心點及上下左右各 spread 個 mole 單位共 5 個點取樣，
+            回傳最小色差（越小代表越接近目標顏色）。
+            """
+            best = 999
+            for ddx, ddy in ((0, 0), (spread, 0), (-spread, 0), (0, spread), (0, -spread)):
+                d = self.color_diff(get_px(mx + ddx, my + ddy), ref_color)
+                if d < best:
+                    best = d
+            return best
+
+        markers = [(sx, sy, "white", "stove")]
 
         # done 優先（黃光蓋在時鐘上面）
         done_color = self.settings.get("done_color")
         done_off   = self.settings.get("done_offset") or [0, 0]
         if done_color:
             dx, dy = sx + done_off[0], sy + done_off[1]
-            pixel  = self.get_pixel(dx, dy)
-            diff   = self.color_diff(pixel, tuple(done_color))
+            diff   = best_match(dx, dy, tuple(done_color))
             markers.append((dx, dy, "yellow", f"done Δ{diff}"))
             if diff < threshold:
                 self._debug_capture(f"done_{sx}_{sy}", markers)
                 return "done"
 
-        # 橙色時鐘圓圈 → 烹飪中（不存圖，正常情況太頻繁）
+        # 橙色時鐘圓圈 → 烹飪中
         clock_color = self.settings.get("clock_color")
         clock_off   = self.settings.get("clock_offset") or [0, 0]
         if clock_color:
             cx, cy = sx + clock_off[0], sy + clock_off[1]
-            pixel  = self.get_pixel(cx, cy)
-            diff   = self.color_diff(pixel, tuple(clock_color))
+            diff   = best_match(cx, cy, tuple(clock_color))
             markers.append((cx, cy, "orange", f"clock Δ{diff}"))
             if diff < threshold:
                 return "cooking"
 
-        # 腐壞（黑煙特徵點）
+        # 腐壞（黑煙）：煙的位置會漂移，取樣範圍用 spread=6
         spoiled_color = self.settings.get("spoiled_color")
         spoiled_off   = self.settings.get("spoiled_offset") or [0, 0]
         if spoiled_color:
             spx, spy = sx + spoiled_off[0], sy + spoiled_off[1]
-            pixel    = self.get_pixel(spx, spy)
-            diff     = self.color_diff(pixel, tuple(spoiled_color))
+            diff     = best_match(spx, spy, tuple(spoiled_color), spread=6)
             markers.append((spx, spy, "red", f"spoiled Δ{diff}"))
             if diff < threshold:
                 self._debug_capture(f"spoiled_{sx}_{sy}", markers)
