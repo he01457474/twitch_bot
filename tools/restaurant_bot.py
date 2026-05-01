@@ -295,7 +295,15 @@ class RestaurantBot:
 
         markers = [(sx, sy, "white", "stove")]
 
-        # done 優先（黃光蓋在時鐘上面）
+        # 腐壞優先偵測（黑煙，spread 較大因為煙會漂移）
+        # 放最前面防止腐壞鍋爐被誤判成 done / cooking
+        hit, diff, (spx, spy) = check_state("spoiled_points", "spoiled_color", "spoiled_offset", spread=6)
+        markers.append((spx, spy, "red", f"spoiled Δ{diff}"))
+        if hit:
+            self._debug_capture(f"spoiled_{sx}_{sy}", markers)
+            return "spoiled"
+
+        # done（黃光蓋在時鐘上面，需在 clock 之前判斷）
         hit, diff, (dx, dy) = check_state("done_points", "done_color", "done_offset")
         markers.append((dx, dy, "yellow", f"done Δ{diff}"))
         if hit:
@@ -307,13 +315,6 @@ class RestaurantBot:
         markers.append((cx, cy, "orange", f"clock Δ{diff}"))
         if hit:
             return "cooking"
-
-        # 腐壞黑煙（spread 較大，煙會漂移）
-        hit, diff, (spx, spy) = check_state("spoiled_points", "spoiled_color", "spoiled_offset", spread=6)
-        markers.append((spx, spy, "red", f"spoiled Δ{diff}"))
-        if hit:
-            self._debug_capture(f"spoiled_{sx}_{sy}", markers)
-            return "spoiled"
 
         return "unknown"
 
@@ -589,17 +590,23 @@ class RestaurantBot:
             # 收完後繼續往下重新下菜
 
         if state == "spoiled":
+            cleared = False
             for _try in range(2):   # 最多嘗試清除兩次
                 log("腐壞，清除…")
                 self.click(sx, sy, delay=0.5)   # 等彈窗完全出現
                 time.sleep(0.8)
                 self.click_real(*confirm_btn, delay=1.5)
                 if self._stop.is_set(): return
-                time.sleep(1.0)
+                time.sleep(1.5)
                 if self.detect_stove_state(sx, sy) != "spoiled":
+                    cleared = True
                     break   # 清除成功
                 log("清除後仍偵測到腐壞，再試一次…")
-            # 清除後繼續往下重新下菜
+            if not cleared:
+                # 兩次都失敗 → 跳過此鍋爐，不進入行為偵測，避免誤觸 leave_and_return
+                log(f"鍋爐 ({sx},{sy}) 腐壞清除失敗，跳過")
+                return
+            # 清除成功，繼續往下重新下菜
 
         # ── 食譜是否已開著（例如使用者手動開了，或上輪未關） ──
         if self.is_recipe_open():
