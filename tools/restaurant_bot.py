@@ -211,6 +211,7 @@ class RestaurantBot:
         self.settings = settings
         self._recipe_closed_baseline = None   # 食譜關閉時的 check_pt 顏色基準
         self._debug   = False                 # Debug 模式：存標記截圖
+        self._last_antlag = 0.0               # 上次執行防卡頓的時間戳記
 
     def _debug_capture(self, label, markers=None):
         """
@@ -369,24 +370,14 @@ class RestaurantBot:
 
         markers = [(sx, sy, "white", "stove")]
 
-        # 腐壞優先偵測（黑煙，spread 較大因為煙會漂移）
-        # 放最前面防止腐壞鍋爐被誤判成 done / cooking
-        hit, diff, (spx, spy) = check_state("spoiled_points", "spoiled_color", "spoiled_offset", spread=6)
-        markers.append((spx, spy, "red", f"spoiled Δ{diff}"))
-        if hit:
-            self._debug_capture(f"spoiled_{sx}_{sy}", markers)
-            return "spoiled"
+        # 先收集三種狀態的命中結果，最後用 best-match 決定
+        hit_sp, diff_sp, (spx, spy) = check_state("spoiled_points", "spoiled_color", "spoiled_offset", spread=6)
+        markers.append((spx, spy, "red", f"spoiled Δ{diff_sp}"))
 
-        # done（黃光蓋在時鐘上面，需在 clock 之前判斷）
-        hit, diff, (dx, dy) = check_state("done_points", "done_color", "done_offset")
-        markers.append((dx, dy, "yellow", f"done Δ{diff}"))
-        if hit:
-            self._debug_capture(f"done_{sx}_{sy}", markers)
-            return "done"
+        hit_d, diff_d, (dx, dy) = check_state("done_points", "done_color", "done_offset")
+        markers.append((dx, dy, "yellow", f"done Δ{diff_d}"))
 
-        # 時鐘 → 烹飪中
-        # 時鐘圓圈是旋轉動畫，單次截圖可能剛好截到深色幀導致 Δ 偏高，
-        # 改為最多取樣 3 次（每次重新截圖），任一次符合就算偵測到。
+        # 時鐘 → 烹飪中（動畫，時序重試）
         clock_calibrated = bool(
             self.settings.get("clock_points") or self.settings.get("clock_color")
         )
@@ -408,10 +399,27 @@ class RestaurantBot:
                     clock_hit = True
                     break
         markers.append((*clock_pt, "orange", f"clock Δ{clock_diff}"))
-        if clock_hit:
+
+        # 建立候選集，選出最佳匹配
+        candidates = {}
+        if hit_sp:   candidates["spoiled"] = diff_sp
+        if hit_d:    candidates["done"]    = diff_d
+        if clock_hit: candidates["cooking"] = clock_diff
+
+        if not candidates:
+            return "unknown"
+
+        # cooking 和 spoiled 同時命中時，優先採用 cooking：
+        # 烹飪動畫偶爾觸發 spoiled 閾值，但此時 cooking 也必定命中，
+        # 誤清除正在烹飪的食物的代價遠大於漏掉一次腐壞偵測。
+        if "cooking" in candidates and "spoiled" in candidates:
+            self._debug_capture(f"cooking_beats_spoiled_{sx}_{sy}", markers)
             return "cooking"
 
-        return "unknown"
+        best = min(candidates, key=candidates.get)
+        if best in ("spoiled", "done"):
+            self._debug_capture(f"{best}_{sx}_{sy}", markers)
+        return best
 
     def is_stove_spoiled(self, sx, sy):
         return self.detect_stove_state(sx, sy) == "spoiled"
@@ -423,14 +431,17 @@ class RestaurantBot:
         防止烹飪中或腐壞的鍋爐被誤判為 unknown 而浪費食材。
         """
         s1 = self.detect_stove_state(sx, sy)
-        if s1 in ("cooking", "spoiled"):
-            return s1
+        if s1 == "cooking":
+            return "cooking"
         time.sleep(0.3)
         s2 = self.detect_stove_state(sx, sy)
-        if s2 in ("cooking", "spoiled"):
-            return s2
+        if s2 == "cooking":
+            return "cooking"
         if s1 == "done" or s2 == "done":
             return "done"
+        # spoiled 需兩次都確認，避免烹飪動畫觸發偶發假陽性後就直接清除食材
+        if s1 == "spoiled" and s2 == "spoiled":
+            return "spoiled"
         return "unknown"
 
     def _is_in_restaurant(self):
@@ -782,28 +793,28 @@ class RestaurantBot:
             on_status("防卡頓：回到餐廳…")
             self.click(*HOME_BTN, delay=1.0)
             self.click(*RESTAURANT_BTN, delay=3.0)
+        self._last_antlag = time.time()   # 記錄完成時間，供全局計時使用
 
     def wait_with_antlag(self, total_seconds, interval_seconds, on_status, msg):
+        """
+        等待 total_seconds 秒，期間每隔 interval_seconds 執行一次防卡頓。
+        使用 _last_antlag 全局計時，掃描前若已做過防卡頓，等待期間不會重複太快觸發。
+        """
         elapsed = 0.0
-        since_antlag = 0.0   # 距上次防卡頓已過幾秒
         while elapsed < total_seconds and not self._stop.is_set():
             rem = total_seconds - elapsed
             on_status(f"{msg}（剩餘 {int(rem//60)} 分 {int(rem%60)} 秒）")
-            # 每秒一格，0.1s 檢查一次 stop
             for _ in range(10):
                 if self._stop.is_set():
                     return False
                 time.sleep(0.1)
-            elapsed     += 1.0
-            since_antlag += 1.0
-            # 到防卡頓間隔就出去繞一圈
-            if since_antlag >= interval_seconds and elapsed < total_seconds:
+            elapsed += 1.0
+            # 以 _last_antlag 判斷，和掃描前的防卡頓共用同一個計時器，不會重複觸發
+            if (interval_seconds > 0 and elapsed < total_seconds and
+                    time.time() - self._last_antlag >= interval_seconds):
                 self.leave_and_return(on_status)
                 if not self._is_in_restaurant():
-                    on_status("防卡頓後未偵測到餐廳畫面，30 秒後重試…")
-                    since_antlag = interval_seconds - 30  # 30 秒後再試一次
-                else:
-                    since_antlag = 0.0
+                    on_status("防卡頓後未偵測到餐廳，30 秒後重試…")
         return not self._stop.is_set()
 
     def navigate_to_page(self, target_page):
@@ -862,6 +873,13 @@ class RestaurantBot:
             self.wait(3.0)
 
         while not self._stop.is_set():
+            # 掃描前防卡頓：若距上次防卡頓已超過設定間隔，先出去繞一圈再掃
+            # 這樣即使掃描本身耗時，Flash Player 也不會在掃描前就已經積累太久
+            if antlag_sec > 0 and time.time() - self._last_antlag >= antlag_sec:
+                on_status("掃描前防卡頓…")
+                self.leave_and_return(on_status)
+                if self._stop.is_set(): break
+
             # 確認在餐廳內，否則嘗試導航回來
             if not self._is_in_restaurant():
                 on_status("不在餐廳，嘗試返回…")
