@@ -41,6 +41,8 @@ DEFAULT_RECIPE = {
 DEFAULT_SETTINGS = {
     "page": 6, "dish": 1, "cook_minutes": 20, "cook_seconds": 0,
     "antlag_minutes": 5,
+    "restaurant_pt":    None,  # 餐廳確認點座標（靜態固定顏色，用來判斷是否在餐廳內）
+    "restaurant_color": None,  # 餐廳確認點顏色
     "door_out": None,         # 出門座標（餐廳內往外走的門口）
     "door_in":  None,         # 進門座標（餐廳外往內走的門口）
     "spoiled_color":  None,   # 腐壞 → 清除
@@ -278,6 +280,19 @@ class RestaurantBot:
 
     def is_stove_spoiled(self, sx, sy):
         return self.detect_stove_state(sx, sy) == "spoiled"
+
+    def _is_in_restaurant(self):
+        """
+        確認目前是否在餐廳畫面。
+        若尚未校準確認點，預設視為在餐廳（不阻擋流程）。
+        """
+        pt    = self.settings.get("restaurant_pt")
+        color = self.settings.get("restaurant_color")
+        if not pt or not color:
+            return True
+        threshold = self.settings.get("state_threshold", 40)
+        current = self.get_pixel(*pt)
+        return self.color_diff(current, tuple(color)) < threshold
 
     def is_recipe_open(self):
         """根據 check_pt 和記錄的關閉基準色，判斷食譜是否開著"""
@@ -617,6 +632,17 @@ class RestaurantBot:
         antlag_sec = antlag_minutes * 60 if antlag_minutes > 0 else scan_interval
 
         while not self._stop.is_set():
+            # 確認在餐廳內，否則嘗試導航回來
+            if not self._is_in_restaurant():
+                on_status("不在餐廳，嘗試返回…")
+                self.leave_and_return(on_status)
+                if self._stop.is_set(): break
+                self.wait(2.0)
+                if not self._is_in_restaurant():
+                    on_status("無法確認在餐廳，跳過本輪掃描")
+                    if not self.wait_with_antlag(scan_interval, antlag_sec, on_status, "等待重試"): break
+                    continue
+
             # 只有偵測到食譜開著才按 X，避免誤點右上角按鈕
             if self.is_recipe_open():
                 self.click_real(*self.recipe["close"], delay=0.5)
@@ -651,7 +677,8 @@ class App:
         self.root.resizable(False, False)
 
         self.stoves, self.recipe, settings = load_config()
-        _extra_keys = ("door_out", "door_in",
+        _extra_keys = ("restaurant_pt", "restaurant_color",
+                       "door_out", "door_in",
                        "spoiled_color", "spoiled_offset",
                        "clock_color", "clock_offset",
                        "done_color",  "done_offset",
@@ -732,12 +759,13 @@ class App:
         row_tool = ttk.Frame(f)
         row_tool.grid(row=grid_row, column=0, columnspan=2, pady=(0, 4))
         self.calib_door  = ttk.Button(row_tool, text="校準門口",  command=self._calib_door)
+        self.calib_rest  = ttk.Button(row_tool, text="校準餐廳",  command=self._calib_restaurant)
         self.preview_btn = ttk.Button(row_tool, text="預覽座標",  command=self._preview_coords)
         self._debug_var  = tk.BooleanVar(value=False)
         self.debug_btn   = ttk.Checkbutton(row_tool, text="Debug 截圖",
                                            variable=self._debug_var,
                                            command=self._toggle_debug)
-        for btn in (self.calib_door, self.preview_btn, self.debug_btn):
+        for btn in (self.calib_door, self.calib_rest, self.preview_btn, self.debug_btn):
             btn.pack(side=tk.LEFT, padx=4)
 
     def _toggle_debug(self):
@@ -758,7 +786,7 @@ class App:
         sa = tk.DISABLED if running else tk.NORMAL
         sb = tk.NORMAL   if running else tk.DISABLED
         for btn in (self.start_btn, self.calib_s, self.calib_r,
-                    self.calib_c, self.calib_sp, self.calib_door,
+                    self.calib_c, self.calib_sp, self.calib_door, self.calib_rest,
                     self.testnav_btn, self.preview_btn):
             btn.config(state=sa)
         self.stop_btn.config(state=sb)
@@ -884,6 +912,69 @@ class App:
         self.bot.settings["door_in"] = list(pts[0])
         self._save_all()
         messagebox.showinfo("完成", f"入口已儲存：{pts[0]}\n防卡頓將改用門口出入。")
+
+    def _calib_restaurant(self):
+        """
+        校準「在餐廳內」的判斷點：讓使用者在餐廳內截圖並點一個
+        靜態固定顏色的位置（例如固定背景牆、地板）作為基準。
+        """
+        hwnd = self._get_hwnd()
+        if not hwnd: return
+
+        # 說明目前校準狀態
+        pt    = self._extra_settings.get("restaurant_pt")
+        color = self._extra_settings.get("restaurant_color")
+        current = f"目前：{pt}  RGB{tuple(color)}" if pt and color else "目前：未校準"
+
+        messagebox.showinfo(
+            "校準餐廳確認點",
+            f"{current}\n\n"
+            "請先確認現在在餐廳內，再點「確定」截圖。\n\n"
+            "截圖後，點一個畫面中【固定不變的背景點】\n"
+            "（例如固定的牆壁、地板顏色，不要點鍋爐或角色）。\n\n"
+            "機器人會用這個點的顏色判斷是否在餐廳。"
+        )
+        try:
+            img, game_w, game_h = capture_window(hwnd)
+        except Exception as e:
+            messagebox.showerror("錯誤", f"截圖失敗：{e}")
+            return
+
+        sg = max(game_w / MOLE_W, game_h / MOLE_H)
+        disp_scale = min(900 / game_w, 580 / game_h, 1.0)
+        disp  = img.resize((int(game_w * disp_scale), int(game_h * disp_scale)))
+        photo = ImageTk.PhotoImage(disp)
+
+        win = tk.Toplevel(self.root)
+        win.title("校準餐廳確認點")
+        win.grab_set()
+        ttk.Label(win, text="▶ 點一個餐廳內的固定背景點（牆壁/地板等靜態位置）",
+                  padding=8).pack()
+        canvas = tk.Canvas(win,
+                           width=int(game_w * disp_scale),
+                           height=int(game_h * disp_scale),
+                           cursor="crosshair")
+        canvas.pack(padx=8, pady=8)
+        canvas.create_image(0, 0, anchor=tk.NW, image=photo)
+        canvas.photo = photo
+
+        def on_pick(event):
+            px  = min(int(event.x / disp_scale), game_w - 1)
+            py  = min(int(event.y / disp_scale), game_h - 1)
+            mx  = int(px / sg)
+            my  = int(py / sg)
+            rgb = img.convert("RGB").getpixel((px, py))
+            self._extra_settings["restaurant_pt"]    = [mx, my]
+            self._extra_settings["restaurant_color"] = list(rgb)
+            self.bot.settings["restaurant_pt"]    = [mx, my]
+            self.bot.settings["restaurant_color"] = list(rgb)
+            self._save_all()
+            win.destroy()
+            messagebox.showinfo("完成",
+                f"餐廳確認點：({mx}, {my})  RGB{rgb}\n已儲存。\n\n"
+                "機器人每輪掃描前會確認這個顏色，\n不在餐廳時會自動嘗試回去。")
+
+        canvas.bind("<Button-1>", on_pick)
 
     def _calib_state_colors(self):
         """開啟鍋爐狀態顏色校準選擇器"""
