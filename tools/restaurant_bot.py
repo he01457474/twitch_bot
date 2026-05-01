@@ -1808,16 +1808,36 @@ class App:
                     mark = " ✓" if best < threshold else ""
                     return f"{best}{mark}"
 
+                def parse_d(d_str):
+                    """把 best_delta 回傳的字串（如 '25 ✓' 或 '未校準'）轉成整數 Δ"""
+                    try:
+                        return int(d_str.split()[0])
+                    except (ValueError, IndexError):
+                        return 999
+
                 for i, (sx, sy) in enumerate(self.bot.stoves):
                     if stop_event.is_set():
                         break
 
-                    # 偵測狀態（用同一張截圖，不重新截圖）
-                    state = self.bot.detect_stove_state(sx, sy)
-
                     done_d    = best_delta("done_points",    "done_color",    "done_offset",    4, sx, sy, i)
                     clock_d   = best_delta("clock_points",   "clock_color",   "clock_offset",   4, sx, sy, i)
                     spoiled_d = best_delta("spoiled_points", "spoiled_color", "spoiled_offset", 6, sx, sy, i)
+
+                    # 從 Δ 值直接推斷狀態（與 detect_stove_state 邏輯一致）
+                    # 好處：共用同一張截圖，不重新截圖也不等時鐘重試
+                    d_done    = parse_d(done_d)
+                    d_clock   = parse_d(clock_d)
+                    d_spoiled = parse_d(spoiled_d)
+                    hits = {}
+                    if d_done    < threshold: hits["done"]    = d_done
+                    if d_clock   < threshold: hits["cooking"] = d_clock
+                    if d_spoiled < threshold: hits["spoiled"] = d_spoiled
+                    if "cooking" in hits and "spoiled" in hits:
+                        state = "cooking"   # 兩者同時命中，採 cooking
+                    elif hits:
+                        state = min(hits, key=hits.get)
+                    else:
+                        state = "unknown"
 
                     sc = {"cooking": "blue", "done": "orange",
                           "spoiled": "red",  "unknown": "gray"}.get(state, "gray")
@@ -1835,7 +1855,7 @@ class App:
 
                     win.after(0, update_row)
 
-                time.sleep(0.8)   # 背景執行緒等待，不佔用 UI
+                time.sleep(0.2)   # 快速刷新，讓動畫造成的 Δ 變化即時可見
 
         def on_close():
             stop_event.set()
