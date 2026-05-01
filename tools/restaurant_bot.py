@@ -1740,7 +1740,7 @@ class App:
         frame.pack(fill=tk.BOTH)
 
         # 表頭
-        headers = ["鍋爐", "座標", "狀態", "done Δ", "clock Δ", "spoiled Δ"]
+        headers = ["鍋爐", "座標", "狀態", "做完 Δ", "時鐘 Δ", "腐壞 Δ"]
         for col, h in enumerate(headers):
             ttk.Label(frame, text=h, font=("", 9, "bold"),
                       padding=(6, 2)).grid(row=0, column=col, sticky=tk.W)
