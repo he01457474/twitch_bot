@@ -1461,8 +1461,12 @@ class App:
             points = self._extra_settings.get(f"{state_name}_points") or []
             color  = self._extra_settings.get(color_key)
             offset = self._extra_settings.get(offset_key) if offset_key else None
+            n_stoves = len(self.stoves)
             if points:
-                badge = f"✓ {len(points)} 個校準點"
+                if len(points) == n_stoves:
+                    badge = f"✓ 各鍋爐獨立（{len(points)} 點）"
+                else:
+                    badge = f"✓ 共用模式（{len(points)} 點）"
             elif color:
                 badge = f"✓ RGB{tuple(color)}"
                 if offset:
@@ -1485,13 +1489,16 @@ class App:
 
     def _calib_offset_color(self, color_key, offset_key, label):
         """
-        多點校準：使用者可在截圖上點多個備用點（最多 4 個），
-        儲存為 <state>_points 格式 [dx, dy, r, g, b]，
-        偵測時任一點符合即算偵測到，可避免 NPC 對話框或坐騎遮擋時失準。
+        個別校準：依序點擊 N 個鍋爐各自的偵測位置（一格一點）。
+        儲存為 <state>_points 格式 [[dx,dy,r,g,b], ...]，元素數量等於鍋爐數。
+        偵測時每個鍋爐只取自己那個點，不會互相干擾。
         """
-        # points_key = "done_points" / "clock_points" / "spoiled_points"
-        state_name = color_key.replace("_color", "")          # done / clock / spoiled
+        state_name = color_key.replace("_color", "")   # done / clock / spoiled
         points_key = f"{state_name}_points"
+        n = len(self.stoves)
+        if n == 0:
+            messagebox.showwarning("提示", "請先校準鍋爐座標。")
+            return
 
         hwnd = self._get_hwnd()
         if not hwnd: return
@@ -1501,31 +1508,29 @@ class App:
             messagebox.showerror("錯誤", f"截圖失敗：{e}")
             return
 
-        sg = max(game_w / MOLE_W, game_h / MOLE_H)
+        sg         = max(game_w / MOLE_W, game_h / MOLE_H)
         disp_scale = min(900 / game_w, 580 / game_h, 1.0)
         img_rgb = img.convert("RGB")
-        disp  = img.resize((int(game_w * disp_scale), int(game_h * disp_scale)))
-        photo = ImageTk.PhotoImage(disp)
+        disp    = img.resize((int(game_w * disp_scale), int(game_h * disp_scale)))
+        photo   = ImageTk.PhotoImage(disp)
 
-        hints = {
-            "clock_offset":   "點 1~4 個橙色時鐘圓圈上的位置",
-            "done_offset":    "點 1~4 個食物做好黃光的位置",
-            "spoiled_offset": "點 1~4 個鍋爐正上方黑煙的位置（不同高度都可以點）",
+        point_hints = {
+            "clock_offset":   "橙色時鐘圓圈",
+            "done_offset":    "食物做好的黃光",
+            "spoiled_offset": "鍋爐上方的黑煙",
         }
-        hint = hints.get(offset_key, "點 1~4 個目標位置，點完按「完成」")
-
-        # 載入已有的校準點，顯示在畫面上
-        existing = list(self._extra_settings.get(points_key) or [])
-        pending  = []   # 新點擊的點
+        pt_hint = point_hints.get(offset_key, label)
 
         win = tk.Toplevel(self.root)
-        win.title(f"校準「{label}」（多點）")
+        win.title(f"校準「{label}」（各鍋爐獨立）")
         win.grab_set()
 
-        ttk.Label(win, text=f"▶ {hint}\n最多可加 4 個點，NPC 擋住其中一個時其他點還能偵測到。",
-                  padding=8, wraplength=500).pack()
-        count_lbl = ttk.Label(win, text="", foreground="blue", padding=(8, 0))
-        count_lbl.pack()
+        instr_lbl = ttk.Label(win, text="", padding=8, font=("", 11, "bold"))
+        instr_lbl.pack()
+        sub_lbl = ttk.Label(win,
+            text=f"點擊對應鍋爐的「{pt_hint}」位置。按「上一步」可撤回，按「重新來過」清空全部。",
+            foreground="gray", padding=(8, 0, 8, 4), wraplength=600)
+        sub_lbl.pack()
 
         canvas = tk.Canvas(win,
                            width=int(game_w * disp_scale),
@@ -1535,85 +1540,112 @@ class App:
         canvas.create_image(0, 0, anchor=tk.NW, image=photo)
         canvas.photo = photo
 
-        dot_colors = ["red", "blue", "green", "purple"]
+        # ── 鍋爐位置標記（空心圓 + 序號） ──
+        stove_ovals = []   # (oval_id, text_id) per stove
+        for i, (sx, sy) in enumerate(self.stoves):
+            ex = int(sx * sg * disp_scale)
+            ey = int(sy * sg * disp_scale)
+            ov = canvas.create_oval(ex-14, ey-14, ex+14, ey+14,
+                                    outline="gray", width=2)
+            tx = canvas.create_text(ex, ey, text=str(i+1),
+                                    fill="gray", font=("Arial", 10, "bold"))
+            stove_ovals.append((ov, tx))
 
-        def draw_dot(ex, ey, idx, is_existing=False):
-            r = 7
-            col = dot_colors[idx % len(dot_colors)]
-            style = "dashed" if is_existing else "solid"
-            canvas.create_oval(ex-r, ey-r, ex+r, ey+r,
-                               outline=col, width=3, dash=(4,2) if is_existing else ())
-            canvas.create_text(ex, ey, text=str(idx+1), fill=col,
-                               font=("Arial", 9, "bold"))
+        collected   = []    # [[dx,dy,r,g,b], ...]
+        dot_canvas_items = []   # (dot_id, lbl_id) 已畫的偵測點
 
-        def update_count():
-            total = len(existing) + len(pending)
-            count_lbl.config(text=f"目前 {total} 個點（灰圈=已存，彩圈=本次新增）")
+        def refresh_ui():
+            idx = len(collected)
+            if idx < n:
+                instr_lbl.config(
+                    text=f"第 {idx+1} / {n} 個鍋爐　→　請點鍋爐 {idx+1} 的偵測位置",
+                    foreground="black")
+                for i, (ov, tx) in enumerate(stove_ovals):
+                    if i < idx:
+                        col = "#27ae60"    # 已完成：深綠
+                    elif i == idx:
+                        col = "green"      # 目前目標：亮綠
+                    else:
+                        col = "gray"       # 未到：灰
+                    canvas.itemconfig(ov, outline=col, width=3 if i == idx else 2)
+                    canvas.itemconfig(tx, fill=col)
+            else:
+                instr_lbl.config(
+                    text=f"全部 {n} 個鍋爐校準完成！按「儲存」確認。",
+                    foreground="#27ae60")
+                for ov, tx in stove_ovals:
+                    canvas.itemconfig(ov, outline="#27ae60", width=2)
+                    canvas.itemconfig(tx, fill="#27ae60")
 
-        # 畫出既有的點
-        if existing and self.stoves:
-            ref = self.stoves[0]
-            for i, (dx, dy, r, g, b) in enumerate(existing):
-                ex = (ref[0] + dx) * sg * disp_scale
-                ey = (ref[1] + dy) * sg * disp_scale
-                draw_dot(int(ex), int(ey), i, is_existing=True)
-        update_count()
+        refresh_ui()
 
         def on_pick(event):
-            total = len(existing) + len(pending)
-            if total >= 4:
-                count_lbl.config(text="已達 4 個上限，請按完成或先清除", foreground="red")
+            idx = len(collected)
+            if idx >= n:
                 return
             px  = min(int(event.x / disp_scale), game_w - 1)
             py  = min(int(event.y / disp_scale), game_h - 1)
             mx  = int(px / sg)
             my  = int(py / sg)
             rgb = img_rgb.getpixel((px, py))
-            if not self.stoves:
+            sx, sy = self.stoves[idx]
+            dx, dy = mx - sx, my - sy
+            collected.append([dx, dy, rgb[0], rgb[1], rgb[2]])
+            # 畫偵測點（小實心圓）
+            r = 6
+            d = canvas.create_oval(event.x-r, event.y-r, event.x+r, event.y+r,
+                                   fill="lime", outline="green", width=2)
+            t = canvas.create_text(event.x + 12, event.y, text=str(idx+1),
+                                   fill="green", font=("Arial", 9, "bold"))
+            dot_canvas_items.append((d, t))
+            refresh_ui()
+
+        def on_undo():
+            if not collected:
                 return
-            nearest = min(self.stoves, key=lambda s: abs(s[0]-mx) + abs(s[1]-my))
-            dx, dy  = mx - nearest[0], my - nearest[1]
-            pending.append([dx, dy, rgb[0], rgb[1], rgb[2]])
-            draw_dot(int(event.x), int(event.y), len(existing) + len(pending) - 1)
-            update_count()
+            collected.pop()
+            if dot_canvas_items:
+                d, t = dot_canvas_items.pop()
+                canvas.delete(d)
+                canvas.delete(t)
+            refresh_ui()
+
+        def on_clear():
+            collected.clear()
+            for d, t in dot_canvas_items:
+                canvas.delete(d)
+                canvas.delete(t)
+            dot_canvas_items.clear()
+            self._extra_settings[points_key] = []
+            self.bot.settings[points_key]    = []
+            self._save_all()
+            refresh_ui()
 
         def on_save():
-            merged = existing + pending
-            if not merged:
-                messagebox.showwarning("提示", "還沒有點任何位置。")
+            if len(collected) < n:
+                messagebox.showwarning("提示",
+                    f"還差 {n - len(collected)} 個鍋爐沒校準。")
                 return
-            self._extra_settings[points_key] = merged
-            self.bot.settings[points_key]    = merged
-            # 同步舊格式（取第一個點，保持舊版偵測測試 Δ 顯示正確）
-            if merged:
-                dx, dy, r, g, b = merged[0]
-                self._extra_settings[color_key]  = [r, g, b]
-                self.bot.settings[color_key]     = [r, g, b]
-                self._extra_settings[offset_key] = [dx, dy]
-                self.bot.settings[offset_key]    = [dx, dy]
+            self._extra_settings[points_key] = collected[:]
+            self.bot.settings[points_key]    = collected[:]
+            # 清除舊格式（改用個別 points，舊格式已無作用）
+            for k in (color_key, offset_key):
+                if k:
+                    self._extra_settings[k] = None
+                    self.bot.settings[k]    = None
             self._save_all()
             self._refresh_calib_status()
             win.destroy()
             messagebox.showinfo("完成",
-                f"「{label}」已儲存 {len(merged)} 個校準點。\n"
-                "偵測時任一個符合即算偵測到。")
-
-        def on_clear():
-            existing.clear()
-            pending.clear()
-            self._extra_settings[points_key] = []
-            self.bot.settings[points_key]    = []
-            self._save_all()
-            canvas.delete("all")
-            canvas.create_image(0, 0, anchor=tk.NW, image=photo)
-            update_count()
-            count_lbl.config(foreground="blue")
+                f"「{label}」已儲存 {n} 個個別校準點。\n"
+                "每個鍋爐只用自己那個點偵測，不互相干擾。")
 
         btn_frame = ttk.Frame(win)
         btn_frame.pack(pady=6)
-        ttk.Button(btn_frame, text="完成",    command=on_save).pack(side=tk.LEFT, padx=6)
-        ttk.Button(btn_frame, text="清除全部", command=on_clear).pack(side=tk.LEFT, padx=6)
-        ttk.Button(btn_frame, text="取消",    command=win.destroy).pack(side=tk.LEFT, padx=6)
+        ttk.Button(btn_frame, text="儲存",      command=on_save ).pack(side=tk.LEFT, padx=6)
+        ttk.Button(btn_frame, text="上一步",    command=on_undo ).pack(side=tk.LEFT, padx=6)
+        ttk.Button(btn_frame, text="重新來過",  command=on_clear).pack(side=tk.LEFT, padx=6)
+        ttk.Button(btn_frame, text="取消",      command=win.destroy).pack(side=tk.LEFT, padx=6)
 
         canvas.bind("<Button-1>", on_pick)
 
