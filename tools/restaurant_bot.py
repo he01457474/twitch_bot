@@ -1090,52 +1090,155 @@ class App:
     def _preview_coords(self):
         hwnd = self._get_hwnd()
         if not hwnd: return
-        try:
-            img, game_w, game_h = capture_window(hwnd)
-        except Exception as e:
-            messagebox.showerror("錯誤", f"截圖失敗：{e}")
-            return
-
-        scale = max(game_w / MOLE_W, game_h / MOLE_H)
-
-        def to_px(mx, my):
-            return int(mx * scale), int(my * scale)
-
-        from PIL import ImageDraw, ImageFont
-        draw = ImageDraw.Draw(img)
-
-        def dot(mx, my, color, label=""):
-            x, y = to_px(mx, my)
-            r = 8
-            draw.ellipse([x-r, y-r, x+r, y+r], fill=color, outline="white")
-            if label:
-                draw.text((x+r+2, y-8), label, fill=color)
-
-        # 鍋爐
-        for i, (sx, sy) in enumerate(self.stoves):
-            dot(sx, sy, "lime", f"爐{i+1}")
-
-        # 食譜元素
-        r = self.recipe
-        dot(*r["left_arrow"],  "cyan",   "←")
-        dot(*r["right_arrow"], "cyan",   "→")
-        dot(*r["close"],       "red",    "X")
-        for i, pt in enumerate(r["page_tabs"]):
-            dot(*pt, "yellow", str(i+1))
-        for i, pt in enumerate(r["dishes"]):
-            dot(*pt, "orange", f"菜{i+1}")
-        dot(*r["check_pt"],    "white",  "偵測")
-        dot(*r.get("confirm_btn", DEFAULT_RECIPE["confirm_btn"]), "magenta", "確認")
-
-        # 顯示
-        disp_scale = min(900/game_w, 600/game_h, 1.0)
-        disp = img.resize((int(game_w*disp_scale), int(game_h*disp_scale)), Image.LANCZOS)
 
         win = tk.Toplevel(self.root)
-        win.title("座標預覽（綠=鍋爐 橙=菜色 黃=頁碼 青=箭頭 紅=X 白=偵測點）")
-        photo = ImageTk.PhotoImage(disp)
-        tk.Label(win, image=photo).pack()
-        win.photo = photo
+        win.title("座標預覽")
+        win.resizable(False, False)
+
+        coord_var = tk.StringVar(value="移動滑鼠查看座標")
+        canvas_holder = [None]   # 用 list 讓內層函式可以更新
+
+        def build_preview(hwnd=hwnd):
+            try:
+                img, game_w, game_h = capture_window(hwnd)
+            except Exception as e:
+                messagebox.showerror("錯誤", f"截圖失敗：{e}", parent=win)
+                return
+
+            from PIL import ImageDraw
+            draw  = ImageDraw.Draw(img)
+            scale = max(game_w / MOLE_W, game_h / MOLE_H)
+            s     = self._extra_settings
+
+            def to_px(mx, my):
+                return int(mx * scale), int(my * scale)
+
+            def outlined_text(x, y, text, color):
+                """文字加黑邊，讓深淺背景都清楚"""
+                for dx, dy in ((-1,-1),(1,-1),(-1,1),(1,1),(0,-1),(0,1),(-1,0),(1,0)):
+                    draw.text((x+dx, y+dy), text, fill="black")
+                draw.text((x, y), text, fill=color)
+
+            def dot(mx, my, color, label="", r=9):
+                x, y = to_px(mx, my)
+                draw.ellipse([x-r, y-r, x+r, y+r], fill=color, outline="white", width=2)
+                if label:
+                    outlined_text(x+r+3, y-8, label, color)
+
+            def square(mx, my, color, label="", r=6):
+                x, y = to_px(mx, my)
+                draw.rectangle([x-r, y-r, x+r, y+r], fill=color, outline="white", width=2)
+                if label:
+                    outlined_text(x+r+3, y-8, label, color)
+
+            def diamond(mx, my, color, label="", r=9):
+                x, y = to_px(mx, my)
+                draw.polygon([(x, y-r),(x+r, y),(x, y+r),(x-r, y)],
+                             fill=color, outline="white")
+                if label:
+                    outlined_text(x+r+3, y-8, label, color)
+
+            # 狀態偵測點（小方塊，畫在鍋爐下層避免遮擋）
+            state_cfgs = [
+                ("done_points",    "done_color",    "done_offset",    "#f0c040"),
+                ("clock_points",   "clock_color",   "clock_offset",   "#e07820"),
+                ("spoiled_points", "spoiled_color", "spoiled_offset", "#c04040"),
+            ]
+            for pts_key, col_key, off_key, color in state_cfgs:
+                pts = s.get(pts_key) or []
+                off = s.get(off_key) or [0, 0]
+                for stx, sty in self.stoves:
+                    if pts:
+                        for entry in pts:
+                            dx, dy = entry[0], entry[1]
+                            square(stx+dx, sty+dy, color, r=5)
+                    elif s.get(col_key):
+                        square(stx+off[0], sty+off[1], color, r=5)
+
+            # 鍋爐（綠圓）
+            for i, (stx, sty) in enumerate(self.stoves):
+                dot(stx, sty, "#50e050", f"爐{i+1}")
+
+            # 食譜元素
+            rc = self.recipe
+            dot(*rc["left_arrow"],  "#40d0d0", "←")
+            dot(*rc["right_arrow"], "#40d0d0", "→")
+            dot(*rc["close"],       "#e04040", "X")
+            for i, pt in enumerate(rc["page_tabs"]):
+                dot(*pt, "#e0e040", str(i+1))
+            for i, pt in enumerate(rc["dishes"]):
+                dot(*pt, "#e08040", f"菜{i+1}")
+            dot(*rc["check_pt"],                                    "#f0f0f0", "偵測")
+            dot(*rc.get("confirm_btn", DEFAULT_RECIPE["confirm_btn"]), "#d060d0", "確認")
+            dot(*rc.get("cancel_btn",  DEFAULT_RECIPE["cancel_btn"]),  "#9060d0", "取消")
+
+            # 門口（菱形）
+            if s.get("door_out"):
+                diamond(*s["door_out"],      "#7090ff", "出門")
+            if s.get("door_waypoint"):
+                diamond(*s["door_waypoint"], "#7090ff", "中途")
+            if s.get("door_in"):
+                diamond(*s["door_in"],       "#7090ff", "入門")
+
+            # 餐廳確認點（橘紅方塊）
+            if s.get("restaurant_pt"):
+                square(*s["restaurant_pt"],  "#ff6090", "餐廳", r=8)
+
+            # 縮放顯示
+            disp_scale = min(900/game_w, 580/game_h, 1.0)
+            disp_w = int(game_w * disp_scale)
+            disp_h = int(game_h * disp_scale)
+            disp   = img.resize((disp_w, disp_h), Image.LANCZOS)
+            photo  = ImageTk.PhotoImage(disp)
+
+            # 更新或建立 Canvas
+            old = canvas_holder[0]
+            if old:
+                old.destroy()
+            canvas = tk.Canvas(win, width=disp_w, height=disp_h, cursor="crosshair")
+            canvas.pack(side=tk.TOP, padx=8, pady=(8, 4))
+            canvas.create_image(0, 0, anchor=tk.NW, image=photo)
+            canvas.photo = photo
+            canvas_holder[0] = canvas
+
+            # 滑鼠移動顯示摩爾座標
+            total_scale = scale * disp_scale
+            def on_move(event, _ts=total_scale):
+                mx = int(event.x / _ts)
+                my = int(event.y / _ts)
+                coord_var.set(f"摩爾座標：({mx}, {my})")
+            canvas.bind("<Motion>", on_move)
+            canvas.bind("<Leave>",  lambda e: coord_var.set("移動滑鼠查看座標"))
+
+        # ── 圖例 ──────────────────────────────────────────────
+        legend_items = [
+            ("#50e050", "● 鍋爐"),
+            ("#f0c040", "■ 做完"),
+            ("#e07820", "■ 時鐘"),
+            ("#c04040", "■ 腐壞"),
+            ("#40d0d0", "● 食譜/偵測"),
+            ("#e0e040", "● 頁碼"),
+            ("#e08040", "● 菜格"),
+            ("#d060d0", "● 確認"),
+            ("#9060d0", "● 取消"),
+            ("#7090ff", "◆ 門口"),
+            ("#ff6090", "■ 餐廳"),
+        ]
+        legend_frame = ttk.Frame(win)
+        legend_frame.pack(side=tk.TOP, fill=tk.X, padx=8, pady=(0, 2))
+        for color, text in legend_items:
+            tk.Label(legend_frame, text=text, fg=color,
+                     font=("", 8), bg=win.cget("bg")).pack(side=tk.LEFT, padx=3)
+
+        # 座標顯示 + 重新截圖按鈕
+        bottom = ttk.Frame(win)
+        bottom.pack(side=tk.TOP, fill=tk.X, padx=8, pady=(0, 8))
+        ttk.Label(bottom, textvariable=coord_var,
+                  font=("Courier", 9), foreground="gray").pack(side=tk.LEFT)
+        ttk.Button(bottom, text="重新截圖",
+                   command=lambda: build_preview()).pack(side=tk.RIGHT)
+
+        build_preview()
 
     def _calib_cancel(self):
         hwnd = self._get_hwnd()
