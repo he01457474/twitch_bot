@@ -306,9 +306,9 @@ class RestaurantBot:
             label = step_labels.get(start_step + i, f"步驟 {start_step + i}")
             log(f"{label}…")
             pre = self.get_pixel(sx, sy)
-            self.click(sx, sy, delay=0.5)
-            # 點完馬上確認有沒有讀條（2 秒內）
-            ok, _, bar_color = self.wait_for_pixel_change(sx, sy, timeout=2.0, baseline=pre)
+            self.click(sx, sy, delay=0.1)
+            # 點完馬上確認有沒有讀條（1 秒內）
+            ok, _, bar_color = self.wait_for_pixel_change(sx, sy, timeout=1.0, baseline=pre)
             if not ok:
                 if self.detect_stove_state(sx, sy) in ("cooking", "done"):
                     log(f"鍋爐 ({sx},{sy}) 已烹飪 ✓")
@@ -321,8 +321,17 @@ class RestaurantBot:
                 log("偵測到腐壞提示（非製作讀條），停止接續步驟")
                 return False
             log(f"{label}：讀條中…")
-            self.wait_for_pixel_change(sx, sy, timeout=15.0, baseline=bar_color)
-            time.sleep(0.5)
+            # 等讀條結束，同時監控烹飪狀態 — 一出現時鐘就立刻離開
+            deadline = time.time() + 15.0
+            while time.time() < deadline and not self._stop.is_set():
+                st = self.detect_stove_state(sx, sy)
+                if st in ("cooking", "done"):
+                    log(f"鍋爐 ({sx},{sy}) 已烹飪 ✓")
+                    return True
+                if self.color_diff(self.get_pixel(sx, sy), bar_color) > 40:
+                    break  # 讀條結束
+                time.sleep(0.2)
+            time.sleep(0.3)
         # 所有步驟跑完，最後確認
         if self.detect_stove_state(sx, sy) in ("cooking", "done"):
             log(f"鍋爐 ({sx},{sy}) 已烹飪 ✓")
@@ -508,13 +517,17 @@ class RestaurantBot:
             # 收完後繼續往下重新下菜
 
         if state == "spoiled":
-            log("腐壞，清除…")
-            self.click(sx, sy, delay=0.3)
-            time.sleep(0.5)
-            self.click_real(*confirm_btn, delay=1.0)
-            if self._stop.is_set(): return
-            time.sleep(0.5)
-            # 清除後重新偵測，走下方完整流程
+            for _try in range(2):   # 最多嘗試清除兩次
+                log("腐壞，清除…")
+                self.click(sx, sy, delay=0.5)   # 等彈窗完全出現
+                time.sleep(0.8)
+                self.click_real(*confirm_btn, delay=1.5)
+                if self._stop.is_set(): return
+                time.sleep(1.0)
+                if self.detect_stove_state(sx, sy) != "spoiled":
+                    break   # 清除成功
+                log("清除後仍偵測到腐壞，再試一次…")
+            # 清除後繼續往下重新下菜
 
         # ── 食譜是否已開著（例如使用者手動開了，或上輪未關） ──
         if self.is_recipe_open():
@@ -551,11 +564,15 @@ class RestaurantBot:
             # 讀條出現？（已在餐具或放入食材的中間步驟）
             stove_now = self.get_pixel(sx, sy)
             if self.color_diff(stove_now, pre_stove) > threshold:
-                # 先排除腐壞提示（腐壞時點擊也會有短暫像素變化）
-                if self.detect_stove_state(sx, sy) == "spoiled":
-                    log("腐壞，清除…")
-                    self.click_real(*confirm_btn, delay=1.0)
-                    time.sleep(0.5)
+                # 等 0.4 秒確認是持續讀條（腐壞提示是短暫的，真實讀條會持續幾秒）
+                time.sleep(0.4)
+                stove_persist = self.get_pixel(sx, sy)
+                if self.color_diff(stove_persist, pre_stove) < threshold:
+                    # 變化已消失 → 是短暫提示（腐壞 or 其他），不是真實讀條
+                    if self.is_stove_spoiled(sx, sy):
+                        log("腐壞，清除…")
+                        self.click_real(*confirm_btn, delay=1.0)
+                        time.sleep(0.5)
                     continue
                 log("偵測到讀條（中間步驟），等待完成再接續…")
                 self.wait_for_pixel_change(sx, sy, timeout=15.0, baseline=stove_now)
