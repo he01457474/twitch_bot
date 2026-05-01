@@ -200,7 +200,7 @@ class CalibrationWindow:
 # ── 機器人邏輯 ────────────────────────────────────────
 
 DEBUG_DIR  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "debug")
-DESKTOP_LIVE = os.path.join(os.path.expanduser("~"), "Desktop", "bot_live.png")
+LIVE_SNAP = os.path.join(os.path.dirname(os.path.abspath(__file__)), "debug", "bot_live.png")
 
 class RestaurantBot:
     def __init__(self, stoves, recipe, settings):
@@ -303,7 +303,8 @@ class RestaurantBot:
                         draw.ellipse([dpx-5, dpy-5, dpx+5, dpy+5], outline=dot_col, width=2)
                         draw.text((dpx+7, dpy-7), mark, fill=dot_col)
 
-            img.save(DESKTOP_LIVE)
+            os.makedirs(os.path.dirname(LIVE_SNAP), exist_ok=True)
+            img.save(LIVE_SNAP)
         except Exception as e:
             pass
 
@@ -1402,7 +1403,7 @@ class App:
         if not hwnd: return
         self.bot.hwnd = hwnd
         self.bot.save_live_snapshot("手動截圖")
-        self._on_status(f"截圖已存到桌面 bot_live.png")
+        self._on_status(f"截圖已存到 tools/debug/bot_live.png")
 
     def _open_detect_test(self):
         """
