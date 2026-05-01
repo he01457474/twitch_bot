@@ -46,12 +46,16 @@ DEFAULT_SETTINGS = {
     "door_out":      None,  # 出門座標（餐廳內往外走的門口）
     "door_waypoint": None,  # 出門後走到入口前的中途路徑點（選填）
     "door_in":       None,  # 進門座標（餐廳外往內走的門口）
-    "spoiled_color":  None,   # 腐壞 → 清除
-    "spoiled_offset": None,   # 腐壞特徵點偏移 [dx, dy]（相對鍋爐校準點）
-    "clock_color":   None,    # 時鐘橙色圓圈（烹飪中或做完）
-    "clock_offset":  None,    # 時鐘偏移 [dx, dy]（相對鍋爐校準點）
-    "done_color":    None,    # 食物完成黃光
-    "done_offset":   None,    # 黃光偏移 [dx, dy]
+    "spoiled_color":  None,   # 腐壞（舊格式，單點）
+    "spoiled_offset": None,
+    "clock_color":   None,    # 時鐘（舊格式，單點）
+    "clock_offset":  None,
+    "done_color":    None,    # 做完（舊格式，單點）
+    "done_offset":   None,
+    # 多點格式（新，優先使用）：每個元素 = [dx, dy, r, g, b]
+    "done_points":    [],
+    "clock_points":   [],
+    "spoiled_points": [],
     "state_threshold": 40,    # 顏色差異容許值
 }
 MAP_BTN        = (33,  505)
@@ -232,18 +236,17 @@ class RestaurantBot:
 
     def detect_stove_state(self, sx, sy):
         """
-        比對鍋爐狀態，回傳：
-          "done"    : 食物做好（黃光）→ 收菜再重做
-          "cooking" : 烹飪中（橙色時鐘圓圈）→ 跳過
-          "spoiled" : 腐壞 → 清除
-          "unknown" : 未知 → 行為偵測
+        比對鍋爐狀態，回傳 "done" / "cooking" / "spoiled" / "unknown"。
 
-        改進：一次截圖複用，並在目標點周邊取樣 5 個點（十字），
-        取最小色差，任一個點符合就算到 → 對煙霧、光暈等動態效果更穩定。
+        優先使用多點格式（done_points / clock_points / spoiled_points），
+        每個校準點格式為 [dx, dy, r, g, b]，任一符合即視為偵測到該狀態。
+        若多點列表為空，則 fallback 至舊的單點格式（*_color + *_offset）。
+
+        每個校準點還會在周邊十字取樣 5 個點取最小色差，
+        對 NPC 對話框或坐騎遮擋一部分時有更強的容錯。
         """
         threshold = self.settings.get("state_threshold", 40)
 
-        # 一次截圖，全部狀態共用（同一幀，且減少截圖次數）
         try:
             raw_img, w, h = capture_window(self.hwnd)
             img   = raw_img.convert("RGB")
@@ -257,10 +260,6 @@ class RestaurantBot:
             return img.getpixel((px, py))
 
         def best_match(mx, my, ref_color, spread=4):
-            """
-            在中心點及上下左右各 spread 個 mole 單位共 5 個點取樣，
-            回傳最小色差（越小代表越接近目標顏色）。
-            """
             best = 999
             for ddx, ddy in ((0, 0), (spread, 0), (-spread, 0), (0, spread), (0, -spread)):
                 d = self.color_diff(get_px(mx + ddx, my + ddy), ref_color)
@@ -268,39 +267,53 @@ class RestaurantBot:
                     best = d
             return best
 
+        def check_state(points_key, old_color_key, old_offset_key, spread=4):
+            """
+            先檢查多點清單，再 fallback 舊格式。
+            回傳 (偵測到: bool, 最佳 Δ: int, 第一個點的 mole 座標 for debug)
+            """
+            points = self.settings.get(points_key) or []
+            if points:
+                best_overall = 999
+                first_xy = (sx + points[0][0], sy + points[0][1])
+                for entry in points:
+                    dx, dy, r, g, b = entry
+                    d = best_match(sx + dx, sy + dy, (r, g, b), spread)
+                    if d < best_overall:
+                        best_overall = d
+                    if d < threshold:
+                        return True, d, first_xy
+                return False, best_overall, first_xy
+            # fallback 舊格式
+            color = self.settings.get(old_color_key)
+            off   = self.settings.get(old_offset_key) or [0, 0]
+            if not color:
+                return False, 999, (sx, sy)
+            mx, my = sx + off[0], sy + off[1]
+            d = best_match(mx, my, tuple(color), spread)
+            return d < threshold, d, (mx, my)
+
         markers = [(sx, sy, "white", "stove")]
 
         # done 優先（黃光蓋在時鐘上面）
-        done_color = self.settings.get("done_color")
-        done_off   = self.settings.get("done_offset") or [0, 0]
-        if done_color:
-            dx, dy = sx + done_off[0], sy + done_off[1]
-            diff   = best_match(dx, dy, tuple(done_color))
-            markers.append((dx, dy, "yellow", f"done Δ{diff}"))
-            if diff < threshold:
-                self._debug_capture(f"done_{sx}_{sy}", markers)
-                return "done"
+        hit, diff, (dx, dy) = check_state("done_points", "done_color", "done_offset")
+        markers.append((dx, dy, "yellow", f"done Δ{diff}"))
+        if hit:
+            self._debug_capture(f"done_{sx}_{sy}", markers)
+            return "done"
 
-        # 橙色時鐘圓圈 → 烹飪中
-        clock_color = self.settings.get("clock_color")
-        clock_off   = self.settings.get("clock_offset") or [0, 0]
-        if clock_color:
-            cx, cy = sx + clock_off[0], sy + clock_off[1]
-            diff   = best_match(cx, cy, tuple(clock_color))
-            markers.append((cx, cy, "orange", f"clock Δ{diff}"))
-            if diff < threshold:
-                return "cooking"
+        # 時鐘 → 烹飪中
+        hit, diff, (cx, cy) = check_state("clock_points", "clock_color", "clock_offset")
+        markers.append((cx, cy, "orange", f"clock Δ{diff}"))
+        if hit:
+            return "cooking"
 
-        # 腐壞（黑煙）：煙的位置會漂移，取樣範圍用 spread=6
-        spoiled_color = self.settings.get("spoiled_color")
-        spoiled_off   = self.settings.get("spoiled_offset") or [0, 0]
-        if spoiled_color:
-            spx, spy = sx + spoiled_off[0], sy + spoiled_off[1]
-            diff     = best_match(spx, spy, tuple(spoiled_color), spread=6)
-            markers.append((spx, spy, "red", f"spoiled Δ{diff}"))
-            if diff < threshold:
-                self._debug_capture(f"spoiled_{sx}_{sy}", markers)
-                return "spoiled"
+        # 腐壞黑煙（spread 較大，煙會漂移）
+        hit, diff, (spx, spy) = check_state("spoiled_points", "spoiled_color", "spoiled_offset", spread=6)
+        markers.append((spx, spy, "red", f"spoiled Δ{diff}"))
+        if hit:
+            self._debug_capture(f"spoiled_{sx}_{sy}", markers)
+            return "spoiled"
 
         return "unknown"
 
@@ -729,8 +742,9 @@ class App:
         _extra_keys = ("restaurant_pt", "restaurant_color",
                        "door_out", "door_waypoint", "door_in",
                        "spoiled_color", "spoiled_offset",
-                       "clock_color", "clock_offset",
-                       "done_color",  "done_offset",
+                       "clock_color",   "clock_offset",
+                       "done_color",    "done_offset",
+                       "done_points", "clock_points", "spoiled_points",
                        "state_threshold")
         self._extra_settings = {k: settings[k] for k in _extra_keys}
         self.bot = RestaurantBot(self.stoves, self.recipe, settings)
@@ -1082,9 +1096,13 @@ class App:
         ]
 
         for label, hint, color_key, offset_key in states:
+            state_name = color_key.replace("_color", "")
+            points = self._extra_settings.get(f"{state_name}_points") or []
             color  = self._extra_settings.get(color_key)
             offset = self._extra_settings.get(offset_key) if offset_key else None
-            if color:
+            if points:
+                badge = f"✓ {len(points)} 個校準點"
+            elif color:
                 badge = f"✓ RGB{tuple(color)}"
                 if offset:
                     badge += f"  偏移{tuple(offset)}"
@@ -1106,9 +1124,14 @@ class App:
 
     def _calib_offset_color(self, color_key, offset_key, label):
         """
-        截圖後讓使用者點目標位置，取得顏色樣本。
-        若 offset_key 不為 None，同時計算相對最近鍋爐的偏移。
+        多點校準：使用者可在截圖上點多個備用點（最多 4 個），
+        儲存為 <state>_points 格式 [dx, dy, r, g, b]，
+        偵測時任一點符合即算偵測到，可避免 NPC 對話框或坐騎遮擋時失準。
         """
+        # points_key = "done_points" / "clock_points" / "spoiled_points"
+        state_name = color_key.replace("_color", "")          # done / clock / spoiled
+        points_key = f"{state_name}_points"
+
         hwnd = self._get_hwnd()
         if not hwnd: return
         try:
@@ -1117,52 +1140,120 @@ class App:
             messagebox.showerror("錯誤", f"截圖失敗：{e}")
             return
 
-        sg = max(game_w / MOLE_W, game_h / MOLE_H)   # mole→pixel 比例
+        sg = max(game_w / MOLE_W, game_h / MOLE_H)
         disp_scale = min(900 / game_w, 580 / game_h, 1.0)
-        disp = img.resize((int(game_w * disp_scale), int(game_h * disp_scale)))
+        img_rgb = img.convert("RGB")
+        disp  = img.resize((int(game_w * disp_scale), int(game_h * disp_scale)))
         photo = ImageTk.PhotoImage(disp)
 
-        win = tk.Toplevel(self.root)
         hints = {
-            "clock_offset":   "點一下鍋爐上的【橙色時鐘圓圈】",
-            "done_offset":    "點一下食物做好時的【黃色光暈區域】",
-            "spoiled_offset": "點一下鍋爐正上方的【黑煙區域】（不是食物本身，煙的顏色不隨菜色改變）",
+            "clock_offset":   "點 1~4 個橙色時鐘圓圈上的位置",
+            "done_offset":    "點 1~4 個食物做好黃光的位置",
+            "spoiled_offset": "點 1~4 個鍋爐正上方黑煙的位置（不同高度都可以點）",
         }
-        hint = hints.get(offset_key, "點一下目標位置")
-        win.title(f"校準「{label}」")
+        hint = hints.get(offset_key, "點 1~4 個目標位置，點完按「完成」")
+
+        # 載入已有的校準點，顯示在畫面上
+        existing = list(self._extra_settings.get(points_key) or [])
+        pending  = []   # 新點擊的點
+
+        win = tk.Toplevel(self.root)
+        win.title(f"校準「{label}」（多點）")
         win.grab_set()
-        ttk.Label(win, text=f"▶ {hint}", padding=8).pack()
+
+        ttk.Label(win, text=f"▶ {hint}\n最多可加 4 個點，NPC 擋住其中一個時其他點還能偵測到。",
+                  padding=8, wraplength=500).pack()
+        count_lbl = ttk.Label(win, text="", foreground="blue", padding=(8, 0))
+        count_lbl.pack()
+
         canvas = tk.Canvas(win,
                            width=int(game_w * disp_scale),
                            height=int(game_h * disp_scale),
                            cursor="crosshair")
-        canvas.pack(padx=8, pady=8)
+        canvas.pack(padx=8, pady=4)
         canvas.create_image(0, 0, anchor=tk.NW, image=photo)
         canvas.photo = photo
 
+        dot_colors = ["red", "blue", "green", "purple"]
+
+        def draw_dot(ex, ey, idx, is_existing=False):
+            r = 7
+            col = dot_colors[idx % len(dot_colors)]
+            style = "dashed" if is_existing else "solid"
+            canvas.create_oval(ex-r, ey-r, ex+r, ey+r,
+                               outline=col, width=3, dash=(4,2) if is_existing else ())
+            canvas.create_text(ex, ey, text=str(idx+1), fill=col,
+                               font=("Arial", 9, "bold"))
+
+        def update_count():
+            total = len(existing) + len(pending)
+            count_lbl.config(text=f"目前 {total} 個點（灰圈=已存，彩圈=本次新增）")
+
+        # 畫出既有的點
+        if existing and self.stoves:
+            ref = self.stoves[0]
+            for i, (dx, dy, r, g, b) in enumerate(existing):
+                ex = (ref[0] + dx) * sg * disp_scale
+                ey = (ref[1] + dy) * sg * disp_scale
+                draw_dot(int(ex), int(ey), i, is_existing=True)
+        update_count()
+
         def on_pick(event):
-            # 螢幕像素 → 遊戲像素 → mole 座標
+            total = len(existing) + len(pending)
+            if total >= 4:
+                count_lbl.config(text="已達 4 個上限，請按完成或先清除", foreground="red")
+                return
             px  = min(int(event.x / disp_scale), game_w - 1)
             py  = min(int(event.y / disp_scale), game_h - 1)
             mx  = int(px / sg)
             my  = int(py / sg)
-            rgb = img.convert("RGB").getpixel((px, py))
+            rgb = img_rgb.getpixel((px, py))
+            if not self.stoves:
+                return
+            nearest = min(self.stoves, key=lambda s: abs(s[0]-mx) + abs(s[1]-my))
+            dx, dy  = mx - nearest[0], my - nearest[1]
+            pending.append([dx, dy, rgb[0], rgb[1], rgb[2]])
+            draw_dot(int(event.x), int(event.y), len(existing) + len(pending) - 1)
+            update_count()
 
-            self._extra_settings[color_key] = list(rgb)
-            self.bot.settings[color_key]    = list(rgb)
-
-            msg = f"「{label}」顏色：RGB{rgb}"
-            if offset_key and self.stoves:
-                # 找最近的鍋爐校準點
-                nearest = min(self.stoves, key=lambda s: abs(s[0]-mx) + abs(s[1]-my))
-                dx, dy  = mx - nearest[0], my - nearest[1]
+        def on_save():
+            merged = existing + pending
+            if not merged:
+                messagebox.showwarning("提示", "還沒有點任何位置。")
+                return
+            self._extra_settings[points_key] = merged
+            self.bot.settings[points_key]    = merged
+            # 同步舊格式（取第一個點，保持舊版偵測測試 Δ 顯示正確）
+            if merged:
+                dx, dy, r, g, b = merged[0]
+                self._extra_settings[color_key]  = [r, g, b]
+                self.bot.settings[color_key]     = [r, g, b]
                 self._extra_settings[offset_key] = [dx, dy]
                 self.bot.settings[offset_key]    = [dx, dy]
-                msg += f"\n偏移：({dx:+d}, {dy:+d})（相對最近鍋爐 {nearest}）"
-
             self._save_all()
             win.destroy()
-            messagebox.showinfo("完成", msg + "\n已儲存。")
+            messagebox.showinfo("完成",
+                f"「{label}」已儲存 {len(merged)} 個校準點。\n"
+                "偵測時任一個符合即算偵測到。")
+
+        def on_clear():
+            existing.clear()
+            pending.clear()
+            self._extra_settings[points_key] = []
+            self.bot.settings[points_key]    = []
+            self._save_all()
+            canvas.delete("all")
+            canvas.create_image(0, 0, anchor=tk.NW, image=photo)
+            update_count()
+            count_lbl.config(foreground="blue")
+
+        btn_frame = ttk.Frame(win)
+        btn_frame.pack(pady=6)
+        ttk.Button(btn_frame, text="完成",    command=on_save).pack(side=tk.LEFT, padx=6)
+        ttk.Button(btn_frame, text="清除全部", command=on_clear).pack(side=tk.LEFT, padx=6)
+        ttk.Button(btn_frame, text="取消",    command=win.destroy).pack(side=tk.LEFT, padx=6)
+
+        canvas.bind("<Button-1>", on_pick)
 
         canvas.bind("<Button-1>", on_pick)
 
