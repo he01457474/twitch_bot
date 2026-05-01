@@ -43,7 +43,8 @@ DEFAULT_SETTINGS = {
     "antlag_minutes": 5,
     "door_out": None,         # 出門座標（餐廳內往外走的門口）
     "door_in":  None,         # 進門座標（餐廳外往內走的門口）
-    "spoiled_color": None,    # 腐壞 → 清除
+    "spoiled_color":  None,   # 腐壞 → 清除
+    "spoiled_offset": None,   # 腐壞特徵點偏移 [dx, dy]（相對鍋爐校準點）
     "clock_color":   None,    # 時鐘橙色圓圈（烹飪中或做完）
     "clock_offset":  None,    # 時鐘偏移 [dx, dy]（相對鍋爐校準點）
     "done_color":    None,    # 食物完成黃光
@@ -226,10 +227,11 @@ class RestaurantBot:
             if self.color_diff(pixel, tuple(clock_color)) < threshold:
                 return "cooking"
 
-        # 腐壞（直接取鍋爐中心）
+        # 腐壞（用偏移取特徵點，避免被餐具顏色干擾）
         spoiled_color = self.settings.get("spoiled_color")
+        spoiled_off   = self.settings.get("spoiled_offset") or [0, 0]
         if spoiled_color:
-            pixel = self.get_pixel(sx, sy)
+            pixel = self.get_pixel(sx + spoiled_off[0], sy + spoiled_off[1])
             if self.color_diff(pixel, tuple(spoiled_color)) < threshold:
                 return "spoiled"
 
@@ -579,7 +581,7 @@ class App:
 
         self.stoves, self.recipe, settings = load_config()
         _extra_keys = ("door_out", "door_in",
-                       "spoiled_color",
+                       "spoiled_color", "spoiled_offset",
                        "clock_color", "clock_offset",
                        "done_color",  "done_offset",
                        "state_threshold")
@@ -815,7 +817,7 @@ class App:
 
         # (顯示名稱, 說明, 顏色key, 偏移key或None)
         states = [
-            ("腐壞",       "食物變黑腐壞 → 自動清除",              "spoiled_color", None),
+            ("腐壞",       "食物腐壞特徵點 → 自動清除",             "spoiled_color", "spoiled_offset"),
             ("時鐘（烹飪）", "橙色圓形時鐘 → 烹飪中跳過",           "clock_color",   "clock_offset"),
             ("做完（黃光）", "食物做好黃光 → 自動收菜再重做",         "done_color",    "done_offset"),
         ]
