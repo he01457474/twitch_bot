@@ -274,8 +274,6 @@ class RestaurantBot:
                 self._debug_capture(f"spoiled_{sx}_{sy}", markers)
                 return "spoiled"
 
-        # 未知 → 存圖幫助校準
-        self._debug_capture(f"unknown_{sx}_{sy}", markers)
         return "unknown"
 
     def is_stove_spoiled(self, sx, sy):
