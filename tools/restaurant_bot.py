@@ -256,11 +256,14 @@ class RestaurantBot:
         step_labels = {1: "製作餐具", 2: "放入食材", 3: "開始烹飪"}
         for i in range(max_steps):
             if self._stop.is_set(): return True
-            # 每步前先確認狀態，已烹飪就不用再點
+            # 每步前先確認狀態
             state = self.detect_stove_state(sx, sy)
             if state in ("cooking", "done"):
                 log(f"鍋爐 ({sx},{sy}) 已烹飪 ✓")
                 return True
+            if state == "spoiled":
+                log("偵測到腐壞，停止接續步驟")
+                return False
             label = step_labels.get(start_step + i, f"步驟 {start_step + i}")
             log(f"{label}…")
             pre = self.get_pixel(sx, sy)
@@ -268,11 +271,14 @@ class RestaurantBot:
             # 點完馬上確認有沒有讀條（2 秒內）
             ok, _, bar_color = self.wait_for_pixel_change(sx, sy, timeout=2.0, baseline=pre)
             if not ok:
-                # 有可能剛好自動完成，再查一次狀態
                 if self.detect_stove_state(sx, sy) in ("cooking", "done"):
                     log(f"鍋爐 ({sx},{sy}) 已烹飪 ✓")
                     return True
                 log(f"{label}：點擊無反應")
+                return False
+            # 讀條出現，先排除腐壞提示（腐壞時點擊也會有短暫像素變化）
+            if self.detect_stove_state(sx, sy) == "spoiled":
+                log("偵測到腐壞提示（非製作讀條），停止接續步驟")
                 return False
             log(f"{label}：讀條中…")
             self.wait_for_pixel_change(sx, sy, timeout=15.0, baseline=bar_color)
@@ -504,6 +510,12 @@ class RestaurantBot:
             # 讀條出現？（已在餐具或放入食材的中間步驟）
             stove_now = self.get_pixel(sx, sy)
             if self.color_diff(stove_now, pre_stove) > threshold:
+                # 先排除腐壞提示（腐壞時點擊也會有短暫像素變化）
+                if self.detect_stove_state(sx, sy) == "spoiled":
+                    log("腐壞，清除…")
+                    self.click_real(*confirm_btn, delay=1.0)
+                    time.sleep(0.5)
+                    continue
                 log("偵測到讀條（中間步驟），等待完成再接續…")
                 self.wait_for_pixel_change(sx, sy, timeout=15.0, baseline=stove_now)
                 time.sleep(0.5)
