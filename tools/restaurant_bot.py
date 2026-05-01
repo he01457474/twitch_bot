@@ -789,7 +789,8 @@ class App:
         self.start_btn   = ttk.Button(row_op, text="開始",    command=self._start)
         self.stop_btn    = ttk.Button(row_op, text="停止",    command=self._stop, state=tk.DISABLED)
         self.testnav_btn = ttk.Button(row_op, text="測試換頁", command=self._test_navigate)
-        for btn in (self.start_btn, self.stop_btn, self.testnav_btn):
+        self.testdet_btn = ttk.Button(row_op, text="偵測測試", command=self._open_detect_test)
+        for btn in (self.start_btn, self.stop_btn, self.testnav_btn, self.testdet_btn):
             btn.pack(side=tk.LEFT, padx=4)
         grid_row += 1
 
@@ -1222,6 +1223,105 @@ class App:
             self.bot.navigate_to_page(page)
             self._on_status(f"換頁完成，請確認遊戲目前是否在第 {page} 頁")
         threading.Thread(target=_run, daemon=True).start()
+
+    def _open_detect_test(self):
+        """
+        即時偵測測試視窗：每 0.5 秒掃一次所有鍋爐，
+        顯示偵測到的狀態及各項目的色差 Δ 值，幫助確認校準是否正確。
+        """
+        hwnd = self._get_hwnd()
+        if not hwnd: return
+        self.bot.hwnd = hwnd
+
+        win = tk.Toplevel(self.root)
+        win.title("偵測測試（即時）")
+        win.resizable(False, False)
+
+        ttk.Label(win, text="每 0.5 秒掃一次所有鍋爐，Δ 值越小代表越接近校準顏色，< threshold 表示偵測到。",
+                  padding=(10, 8, 10, 4), wraplength=480).pack()
+
+        threshold = self.bot.settings.get("state_threshold", 40)
+        ttk.Label(win, text=f"目前 threshold = {threshold}（校準狀態色介面可調整）",
+                  foreground="gray", padding=(10, 0, 10, 6)).pack()
+
+        frame = ttk.Frame(win, padding=8)
+        frame.pack(fill=tk.BOTH)
+
+        # 表頭
+        headers = ["鍋爐", "座標", "狀態", "done Δ", "clock Δ", "spoiled Δ"]
+        for col, h in enumerate(headers):
+            ttk.Label(frame, text=h, font=("", 9, "bold"),
+                      padding=(6, 2)).grid(row=0, column=col, sticky=tk.W)
+
+        # 每個鍋爐一行標籤
+        row_labels = []
+        for i in range(len(self.stoves)):
+            cols = []
+            for col in range(len(headers)):
+                lbl = ttk.Label(frame, text="—", padding=(6, 1))
+                lbl.grid(row=i+1, column=col, sticky=tk.W)
+                cols.append(lbl)
+            row_labels.append(cols)
+
+        stop_event = threading.Event()
+
+        def refresh():
+            if stop_event.is_set() or not win.winfo_exists():
+                return
+            s = self.bot.settings
+            threshold = s.get("state_threshold", 40)
+
+            done_color    = s.get("done_color")
+            done_off      = s.get("done_offset")    or [0, 0]
+            clock_color   = s.get("clock_color")
+            clock_off     = s.get("clock_offset")   or [0, 0]
+            spoiled_color = s.get("spoiled_color")
+            spoiled_off   = s.get("spoiled_offset") or [0, 0]
+
+            for i, (sx, sy) in enumerate(self.bot.stoves):
+                state = self.bot.detect_stove_state(sx, sy)
+
+                def delta_str(color, off, spread=4):
+                    if not color:
+                        return "未校準"
+                    ox, oy = off
+                    mx, my = sx + ox, sy + oy
+                    best = 999
+                    for ddx, ddy in ((0,0),(spread,0),(-spread,0),(0,spread),(0,-spread)):
+                        d = self.bot.color_diff(
+                            self.bot.get_pixel(mx+ddx, my+ddy), tuple(color))
+                        if d < best:
+                            best = d
+                    mark = " ✓" if best < threshold else ""
+                    return f"{best}{mark}"
+
+                done_d    = delta_str(done_color,    done_off)
+                clock_d   = delta_str(clock_color,   clock_off)
+                spoiled_d = delta_str(spoiled_color, spoiled_off, spread=6)
+
+                state_color = {"cooking": "blue", "done": "orange",
+                               "spoiled": "red",  "unknown": "gray"}.get(state, "gray")
+
+                def update_row(idx=i, st=state, sc=state_color,
+                               dd=done_d, cd=clock_d, sd=spoiled_d):
+                    if not win.winfo_exists(): return
+                    row_labels[idx][0].config(text=str(idx+1))
+                    row_labels[idx][1].config(text=f"{self.bot.stoves[idx]}")
+                    row_labels[idx][2].config(text=st, foreground=sc)
+                    row_labels[idx][3].config(text=dd)
+                    row_labels[idx][4].config(text=cd)
+                    row_labels[idx][5].config(text=sd)
+
+                win.after(0, update_row)
+
+            win.after(500, refresh)
+
+        def on_close():
+            stop_event.set()
+            win.destroy()
+
+        win.protocol("WM_DELETE_WINDOW", on_close)
+        threading.Thread(target=refresh, daemon=True).start()
 
     def _on_status(self, msg, error=False):
         color = "red" if error else ("gray" if msg == "已停止" else "green")
