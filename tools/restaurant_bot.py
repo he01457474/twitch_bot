@@ -478,6 +478,15 @@ class RestaurantBot:
                 if self._stop.is_set(): return
             on_status("防卡頓：進門…")
             self.click_real(*door_in, delay=2.5)
+            if self._stop.is_set(): return
+            # 等畫面完全載入後再繼續，避免誤點右上角按鈕
+            on_status("防卡頓：等待畫面載入…")
+            self.wait(2.0)
+            # 重新取食譜關閉基準色，進出後畫面已變，舊基準可能導致誤判
+            if self.hwnd:
+                self._recipe_closed_baseline = list(
+                    self.get_pixel(*self.recipe["check_pt"])
+                )
         else:
             on_status("防卡頓：前往地圖…")
             self.click(*MAP_BTN, delay=3.0)
