@@ -43,8 +43,9 @@ DEFAULT_SETTINGS = {
     "antlag_minutes": 5,
     "restaurant_pt":    None,  # 餐廳確認點座標（靜態固定顏色，用來判斷是否在餐廳內）
     "restaurant_color": None,  # 餐廳確認點顏色
-    "door_out": None,         # 出門座標（餐廳內往外走的門口）
-    "door_in":  None,         # 進門座標（餐廳外往內走的門口）
+    "door_out":      None,  # 出門座標（餐廳內往外走的門口）
+    "door_waypoint": None,  # 出門後走到入口前的中途路徑點（選填）
+    "door_in":       None,  # 進門座標（餐廳外往內走的門口）
     "spoiled_color":  None,   # 腐壞 → 清除
     "spoiled_offset": None,   # 腐壞特徵點偏移 [dx, dy]（相對鍋爐校準點）
     "clock_color":   None,    # 時鐘橙色圓圈（烹飪中或做完）
@@ -464,12 +465,17 @@ class RestaurantBot:
         return True
 
     def leave_and_return(self, on_status):
-        door_out = self.settings.get("door_out")
-        door_in  = self.settings.get("door_in")
+        door_out      = self.settings.get("door_out")
+        door_waypoint = self.settings.get("door_waypoint")
+        door_in       = self.settings.get("door_in")
         if door_out and door_in:
             on_status("防卡頓：出門…")
             self.click_real(*door_out, delay=2.5)
             if self._stop.is_set(): return
+            if door_waypoint:
+                on_status("防卡頓：走到入口…")
+                self.click_real(*door_waypoint, delay=2.5)
+                if self._stop.is_set(): return
             on_status("防卡頓：進門…")
             self.click_real(*door_in, delay=2.5)
         else:
@@ -703,7 +709,7 @@ class App:
 
         self.stoves, self.recipe, settings = load_config()
         _extra_keys = ("restaurant_pt", "restaurant_color",
-                       "door_out", "door_in",
+                       "door_out", "door_waypoint", "door_in",
                        "spoiled_color", "spoiled_offset",
                        "clock_color", "clock_offset",
                        "done_color",  "done_offset",
@@ -926,8 +932,40 @@ class App:
         self.bot.settings["door_out"] = list(pts[0])
         self._save_all()
 
-        # 接著馬上問要不要繼續校準入口
-        if messagebox.askyesno("繼續", f"出口已儲存：{pts[0]}\n\n請手動走出餐廳後，按「是」截圖校準入口。"):
+        # 問要不要校準中途走動點
+        ans = messagebox.askyesno(
+            "中途走動點",
+            f"出口已儲存：{pts[0]}\n\n"
+            "出門後需要先走到旁邊再進入嗎？\n\n"
+            "【是】→ 多校準一個「走到入口前的中途點」\n"
+            "【否】→ 跳過，直接校準入口"
+        )
+        if ans:
+            messagebox.showinfo(
+                "校準中途走動點",
+                "請先手動走出餐廳，\n"
+                "站到入口附近的位置後，\n"
+                "再回來按「確定」截圖校準。\n\n"
+                "截圖後點一下角色要走到的目標位置。"
+            )
+            hwnd = self._get_hwnd()
+            if hwnd:
+                CalibrationWindow(self.root, hwnd, ["中途走動點（走到入口附近）"], self._done_door_waypoint)
+        else:
+            # 清除舊的 waypoint（如果之前設過）
+            self._extra_settings["door_waypoint"] = None
+            self.bot.settings["door_waypoint"] = None
+            self._save_all()
+            if messagebox.askyesno("繼續", "請手動走出餐廳後，按「是」截圖校準入口。"):
+                hwnd = self._get_hwnd()
+                if hwnd:
+                    CalibrationWindow(self.root, hwnd, ["入口（餐廳外往內的門口）"], self._done_door_in)
+
+    def _done_door_waypoint(self, pts):
+        self._extra_settings["door_waypoint"] = list(pts[0])
+        self.bot.settings["door_waypoint"] = list(pts[0])
+        self._save_all()
+        if messagebox.askyesno("繼續", f"走動點已儲存：{pts[0]}\n\n請走到入口位置後，按「是」截圖校準入口。"):
             hwnd = self._get_hwnd()
             if hwnd:
                 CalibrationWindow(self.root, hwnd, ["入口（餐廳外往內的門口）"], self._done_door_in)
@@ -936,7 +974,9 @@ class App:
         self._extra_settings["door_in"] = list(pts[0])
         self.bot.settings["door_in"] = list(pts[0])
         self._save_all()
-        messagebox.showinfo("完成", f"入口已儲存：{pts[0]}\n防卡頓將改用門口出入。")
+        wp = self._extra_settings.get("door_waypoint")
+        extra = f"\n中途走動點：{wp}" if wp else ""
+        messagebox.showinfo("完成", f"入口已儲存：{pts[0]}{extra}\n防卡頓將改用門口出入。")
 
     def _calib_restaurant(self):
         """
