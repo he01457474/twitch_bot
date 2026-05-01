@@ -16,6 +16,9 @@ logs/
 
 # Python 暫存
 __pycache__/
+
+# 餐廳機器人 debug 截圖
+tools/debug/
 *.pyc
 *.pyo
 

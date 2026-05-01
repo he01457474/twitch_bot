@@ -192,6 +192,8 @@ class CalibrationWindow:
 
 # ── 機器人邏輯 ────────────────────────────────────────
 
+DEBUG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "debug")
+
 class RestaurantBot:
     def __init__(self, stoves, recipe, settings):
         self.hwnd     = None
@@ -200,6 +202,30 @@ class RestaurantBot:
         self.recipe   = recipe
         self.settings = settings
         self._recipe_closed_baseline = None   # 食譜關閉時的 check_pt 顏色基準
+        self._debug   = False                 # Debug 模式：存標記截圖
+
+    def _debug_capture(self, label, markers=None):
+        """
+        存一張標記截圖到 debug/ 資料夾。
+        markers: list of (mole_x, mole_y, outline_color, text)
+        """
+        if not self._debug or not self.hwnd:
+            return
+        try:
+            from PIL import ImageDraw
+            img, w, h = capture_window(self.hwnd)
+            scale = max(w / MOLE_W, h / MOLE_H)
+            draw  = ImageDraw.Draw(img)
+            for mx, my, color, text in (markers or []):
+                px, py = int(mx * scale), int(my * scale)
+                r = 9
+                draw.ellipse([px-r, py-r, px+r, py+r], outline=color, width=3)
+                draw.text((px + r + 3, py - 8), text, fill=color)
+            os.makedirs(DEBUG_DIR, exist_ok=True)
+            fname = f"{time.strftime('%H%M%S')}_{label}.png"
+            img.save(os.path.join(DEBUG_DIR, fname))
+        except Exception:
+            pass
 
     def detect_stove_state(self, sx, sy):
         """
@@ -208,33 +234,48 @@ class RestaurantBot:
           "cooking" : 烹飪中（橙色時鐘圓圈）→ 跳過
           "spoiled" : 腐壞 → 清除
           "unknown" : 未知 → 行為偵測
+        Debug 模式下會在 done/spoiled/unknown 存標記截圖。
         """
         threshold = self.settings.get("state_threshold", 40)
+        markers   = [(sx, sy, "white", "stove")]
 
         # done 優先（黃光蓋在時鐘上面）
-        done_color  = self.settings.get("done_color")
-        done_off    = self.settings.get("done_offset") or [0, 0]
+        done_color = self.settings.get("done_color")
+        done_off   = self.settings.get("done_offset") or [0, 0]
         if done_color:
-            pixel = self.get_pixel(sx + done_off[0], sy + done_off[1])
-            if self.color_diff(pixel, tuple(done_color)) < threshold:
+            dx, dy = sx + done_off[0], sy + done_off[1]
+            pixel  = self.get_pixel(dx, dy)
+            diff   = self.color_diff(pixel, tuple(done_color))
+            markers.append((dx, dy, "yellow", f"done Δ{diff}"))
+            if diff < threshold:
+                self._debug_capture(f"done_{sx}_{sy}", markers)
                 return "done"
 
-        # 橙色時鐘圓圈 → 烹飪中
+        # 橙色時鐘圓圈 → 烹飪中（不存圖，正常情況太頻繁）
         clock_color = self.settings.get("clock_color")
         clock_off   = self.settings.get("clock_offset") or [0, 0]
         if clock_color:
-            pixel = self.get_pixel(sx + clock_off[0], sy + clock_off[1])
-            if self.color_diff(pixel, tuple(clock_color)) < threshold:
+            cx, cy = sx + clock_off[0], sy + clock_off[1]
+            pixel  = self.get_pixel(cx, cy)
+            diff   = self.color_diff(pixel, tuple(clock_color))
+            markers.append((cx, cy, "orange", f"clock Δ{diff}"))
+            if diff < threshold:
                 return "cooking"
 
-        # 腐壞（用偏移取特徵點，避免被餐具顏色干擾）
+        # 腐壞（黑煙特徵點）
         spoiled_color = self.settings.get("spoiled_color")
         spoiled_off   = self.settings.get("spoiled_offset") or [0, 0]
         if spoiled_color:
-            pixel = self.get_pixel(sx + spoiled_off[0], sy + spoiled_off[1])
-            if self.color_diff(pixel, tuple(spoiled_color)) < threshold:
+            spx, spy = sx + spoiled_off[0], sy + spoiled_off[1]
+            pixel    = self.get_pixel(spx, spy)
+            diff     = self.color_diff(pixel, tuple(spoiled_color))
+            markers.append((spx, spy, "red", f"spoiled Δ{diff}"))
+            if diff < threshold:
+                self._debug_capture(f"spoiled_{sx}_{sy}", markers)
                 return "spoiled"
 
+        # 未知 → 存圖幫助校準
+        self._debug_capture(f"unknown_{sx}_{sy}", markers)
         return "unknown"
 
     def is_stove_spoiled(self, sx, sy):
@@ -275,6 +316,7 @@ class RestaurantBot:
                     log(f"鍋爐 ({sx},{sy}) 已烹飪 ✓")
                     return True
                 log(f"{label}：點擊無反應")
+                self._debug_capture(f"no_bar_{sx}_{sy}_step{start_step+i}")
                 return False
             # 讀條出現，先排除腐壞提示（腐壞時點擊也會有短暫像素變化）
             if self.detect_stove_state(sx, sy) == "spoiled":
@@ -483,6 +525,7 @@ class RestaurantBot:
             if self._stop.is_set(): return
             time.sleep(1.0)
             if not self._complete_to_cooking(sx, sy, log, max_steps=3):
+                self._debug_capture(f"anomaly_{sx}_{sy}")
                 log("步驟異常，返回鍋爐頁…")
                 self.leave_and_return(log)
             return
@@ -538,6 +581,7 @@ class RestaurantBot:
                 return
 
         # 3 次都無反應 → 可能跳到奇怪的頁面，導航回來
+        self._debug_capture(f"no_response_{sx}_{sy}")
         log(f"鍋爐 ({sx},{sy}) 持續無反應，返回鍋爐頁…")
         self.leave_and_return(log)
 
@@ -674,8 +718,21 @@ class App:
         row_tool.grid(row=grid_row, column=0, columnspan=2, pady=(0, 4))
         self.calib_door  = ttk.Button(row_tool, text="校準門口",  command=self._calib_door)
         self.preview_btn = ttk.Button(row_tool, text="預覽座標",  command=self._preview_coords)
-        for btn in (self.calib_door, self.preview_btn):
+        self._debug_var  = tk.BooleanVar(value=False)
+        self.debug_btn   = ttk.Checkbutton(row_tool, text="Debug 截圖",
+                                           variable=self._debug_var,
+                                           command=self._toggle_debug)
+        for btn in (self.calib_door, self.preview_btn, self.debug_btn):
             btn.pack(side=tk.LEFT, padx=4)
+
+    def _toggle_debug(self):
+        on = self._debug_var.get()
+        self.bot._debug = on
+        if on:
+            os.makedirs(DEBUG_DIR, exist_ok=True)
+            messagebox.showinfo("Debug 截圖", f"已開啟，截圖存到：\n{DEBUG_DIR}")
+        else:
+            messagebox.showinfo("Debug 截圖", "已關閉。")
 
     def _get_settings(self):
         s = {k: v.get() for k, v in self.vars.items()}
@@ -876,7 +933,12 @@ class App:
         photo = ImageTk.PhotoImage(disp)
 
         win = tk.Toplevel(self.root)
-        hint = "點一下【時鐘圓圈或黃光】的位置" if offset_key else "點一下【腐壞狀態的鍋爐中心】"
+        hints = {
+            "clock_offset":   "點一下鍋爐上的【橙色時鐘圓圈】",
+            "done_offset":    "點一下食物做好時的【黃色光暈區域】",
+            "spoiled_offset": "點一下鍋爐正上方的【黑煙區域】（不是食物本身，煙的顏色不隨菜色改變）",
+        }
+        hint = hints.get(offset_key, "點一下目標位置")
         win.title(f"校準「{label}」")
         win.grab_set()
         ttk.Label(win, text=f"▶ {hint}", padding=8).pack()
