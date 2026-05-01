@@ -425,19 +425,31 @@ class RestaurantBot:
 
         # 建立候選集，選出最佳匹配
         candidates = {}
-        if hit_sp:   candidates["spoiled"] = diff_sp
-        if hit_d:    candidates["done"]    = diff_d
+        if hit_sp:    candidates["spoiled"] = diff_sp
+        if hit_d:     candidates["done"]    = diff_d
         if clock_hit: candidates["cooking"] = clock_diff
 
         if not candidates:
             return "unknown"
 
-        # cooking 和 spoiled 同時命中時，優先採用 cooking：
-        # 烹飪動畫偶爾觸發 spoiled 閾值，但此時 cooking 也必定命中，
-        # 誤清除正在烹飪的食物的代價遠大於漏掉一次腐壞偵測。
-        if "cooking" in candidates and "spoiled" in candidates:
-            self._debug_capture(f"cooking_beats_spoiled_{sx}_{sy}", markers)
+        # ── 明確優先順序：cooking > done > spoiled ──────────────
+        #
+        # cooking 優先：時鐘動畫最可靠，其他偵測點可能因動畫偶發命中。
+        #   誤清除或誤收正在烹飪的食物代價遠大於漏掉一次腐壞／做完。
+        #
+        # done > spoiled：當兩者同時命中（校準點重疊）：
+        #   - 誤判「done 當 spoiled」→ _clear_spoiled 按確認鈕，
+        #     可能誤觸食譜菜格（高風險）。
+        #   - 誤判「spoiled 當 done」→ _collect_food 只點一下等 1.5 秒，
+        #     若彈窗出現也只是空等，不改變遊戲狀態（低風險）。
+        if "cooking" in candidates:
+            if len(candidates) > 1:
+                self._debug_capture(f"cooking_beats_conflict_{sx}_{sy}", markers)
             return "cooking"
+
+        if "done" in candidates and "spoiled" in candidates:
+            self._debug_capture(f"done_beats_spoiled_{sx}_{sy}", markers)
+            return "done"
 
         best = min(candidates, key=candidates.get)
         if best in ("spoiled", "done"):
@@ -1823,8 +1835,7 @@ class App:
                     clock_d   = best_delta("clock_points",   "clock_color",   "clock_offset",   4, sx, sy, i)
                     spoiled_d = best_delta("spoiled_points", "spoiled_color", "spoiled_offset", 6, sx, sy, i)
 
-                    # 從 Δ 值直接推斷狀態（與 detect_stove_state 邏輯一致）
-                    # 好處：共用同一張截圖，不重新截圖也不等時鐘重試
+                    # 從 Δ 值直接推斷狀態，優先順序 cooking > done > spoiled
                     d_done    = parse_d(done_d)
                     d_clock   = parse_d(clock_d)
                     d_spoiled = parse_d(spoiled_d)
@@ -1832,17 +1843,23 @@ class App:
                     if d_done    < threshold: hits["done"]    = d_done
                     if d_clock   < threshold: hits["cooking"] = d_clock
                     if d_spoiled < threshold: hits["spoiled"] = d_spoiled
-                    if "cooking" in hits and "spoiled" in hits:
-                        state = "cooking"   # 兩者同時命中，採 cooking
-                    elif hits:
-                        state = min(hits, key=hits.get)
-                    else:
-                        state = "unknown"
+                    conflict = len(hits) > 1   # 多個狀態同時命中 → 校準點有重疊
 
+                    if not hits:
+                        state = "unknown"
+                    elif "cooking" in hits:
+                        state = "cooking"
+                    elif "done" in hits and "spoiled" in hits:
+                        state = "done"   # done > spoiled
+                    else:
+                        state = min(hits, key=hits.get)
+
+                    # 有衝突時在狀態後面加 ⚠，提示校準點需要調整
+                    state_txt = f"{state} ⚠" if conflict else state
                     sc = {"cooking": "blue", "done": "orange",
                           "spoiled": "red",  "unknown": "gray"}.get(state, "gray")
 
-                    def update_row(idx=i, st=state, fg=sc,
+                    def update_row(idx=i, st=state_txt, fg=sc,
                                    dd=done_d, cd=clock_d, sd=spoiled_d):
                         if not win.winfo_exists():
                             return
