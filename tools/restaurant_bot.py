@@ -1863,9 +1863,7 @@ class App:
                 return
             collected_pts.pop()
             collected_hsv.pop()
-            idx = len(collected_pts)
-            pct_lbl.config(text=f"已撤回，請重新校準鍋爐 {idx+1}（共 {n} 個）", foreground="gray")
-            refresh_ui()
+            refresh_ui()   # pct_lbl 不動，保留上一次的匹配率資訊
 
         def on_clear():
             collected_pts.clear()
