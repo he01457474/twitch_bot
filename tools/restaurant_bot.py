@@ -809,15 +809,17 @@ class RestaurantBot:
         for step in range(3):
             if self._stop.is_set(): return
 
-            # 前兩步（製作餐具、放食材）用嚴謹雙重偵測，
-            # 確保不在烹飪中才繼續，避免誤操作浪費食材
-            state = self._detect_safe(sx, sy) if step <= 1 else self.detect_stove_state(sx, sy)
-            if state in ("cooking", "done"):
-                log("已進入烹飪 ✓")
-                return
-            if state == "spoiled":
-                log("偵測到腐壞，停止")
-                return
+            # 只有最後一步（開始烹飪）前才用狀態偵測確認：
+            # 前兩步（製作餐具、放食材）之間的中間狀態容易誤判，
+            # 鍋爐橙色框可能被誤判為時鐘 → 提早退出。
+            if step == 2:
+                state = self._detect_safe(sx, sy)
+                if state in ("cooking", "done"):
+                    log("已進入烹飪 ✓")
+                    return
+                if state == "spoiled":
+                    log("偵測到腐壞，停止")
+                    return
 
             log(f"{labels[step]}…")
             pre = self.get_pixel(sx, sy)
@@ -828,36 +830,34 @@ class RestaurantBot:
                 sx, sy, timeout=2.0, baseline=pre)
 
             if not bar_ok:
-                # 沒讀條，再確認一次狀態
-                state = self.detect_stove_state(sx, sy)
-                if state in ("cooking", "done"):
-                    log("已進入烹飪 ✓")
-                    return
-                # 可能有彈窗，點取消保底，等下輪處理
+                # 沒讀條，最後一步才偵測狀態（前兩步跳過，避免誤判）
+                if step == 2:
+                    state = self.detect_stove_state(sx, sy)
+                    if state in ("cooking", "done"):
+                        log("已進入烹飪 ✓")
+                        return
                 log(f"{labels[step]}：無讀條，關彈窗等下輪")
                 self._debug_capture(f"no_bar_{sx}_{sy}_step{step+1}")
                 self.click_real(*cancel_btn, delay=0.5)
                 return
 
-            # 讀條出現，排除腐壞誤觸
-            if self.detect_stove_state(sx, sy) == "spoiled":
-                log("腐壞誤觸，停止")
-                return
-
             log(f"{labels[step]}：讀條中…")
 
-            # 等讀條結束（最多 20 秒），偵測到烹飪就立刻離開
+            # 等讀條結束（最多 20 秒）
+            # 前兩步只靠像素變化判斷讀條結束，不做狀態偵測（避免中間態誤判）
+            # 最後一步才偵測烹飪狀態
             deadline = time.time() + 20.0
             while time.time() < deadline and not self._stop.is_set():
-                state = self.detect_stove_state(sx, sy)
-                if state in ("cooking", "done"):
-                    log("已進入烹飪 ✓")
-                    return
-                if state == "spoiled":
-                    return
+                if step == 2:
+                    state = self.detect_stove_state(sx, sy)
+                    if state in ("cooking", "done"):
+                        log("已進入烹飪 ✓")
+                        return
+                    if state == "spoiled":
+                        return
                 if self.color_diff(self.get_pixel(sx, sy), bar_color) > 40:
                     break   # 讀條結束，繼續下一步
-                time.sleep(0.2)
+                time.sleep(0.3)
 
             time.sleep(0.3)   # 步驟間緩衝
 
@@ -1204,7 +1204,7 @@ class RestaurantBot:
                 self.wait(1)
             self._recipe_closed_baseline = list(self.get_pixel(*self.recipe["check_pt"]))
             # scan_interval 單位已是秒
-            antlag_sec = antlag_minutes * 60 if antlag_minutes > 0 else scan_interval
+            antlag_sec = antlag_minutes * 60   # 0 = 完全關閉防卡頓
 
             # 若未校準餐廳確認點，提醒但不阻擋
             if not self.settings.get("restaurant_pt") or not self.settings.get("restaurant_color"):
@@ -1326,30 +1326,38 @@ class App:
         grp_cal = ttk.LabelFrame(f, text="校準", padding=(10, 4))
         grp_cal.pack(fill=tk.X, pady=(0, 6))
 
-        row_c = ttk.Frame(grp_cal)
-        row_c.pack(fill=tk.X, pady=(2, 0))
-        self.calib_s       = ttk.Button(row_c, text="鍋爐",   command=self._calib_stoves)
-        self.calib_r       = ttk.Button(row_c, text="食譜",   command=self._calib_recipe)
-        self.calib_c       = ttk.Button(row_c, text="彈窗",   command=self._calib_cancel)
-        self.calib_sp      = ttk.Button(row_c, text="狀態色", command=self._calib_state_colors)
-        self.calib_clk_in  = ttk.Button(row_c, text="時鐘內",  command=self._calib_clock_interior)
-        self.calib_smoke   = ttk.Button(row_c, text="黑煙",   command=self._calib_smoke)
-        self.calib_door    = ttk.Button(row_c, text="門口",   command=self._calib_door)
-        self.calib_rest    = ttk.Button(row_c, text="餐廳",   command=self._calib_restaurant)
-        for btn in (self.calib_s, self.calib_r, self.calib_c,
-                    self.calib_sp, self.calib_clk_in, self.calib_smoke,
-                    self.calib_door, self.calib_rest):
+        # 第一列：基礎設定校準
+        row_c1 = ttk.Frame(grp_cal)
+        row_c1.pack(fill=tk.X, pady=(2, 0))
+        ttk.Label(row_c1, text="基礎：", width=5, foreground="gray").pack(side=tk.LEFT)
+        self.calib_s    = ttk.Button(row_c1, text="鍋爐", command=self._calib_stoves)
+        self.calib_r    = ttk.Button(row_c1, text="食譜", command=self._calib_recipe)
+        self.calib_c    = ttk.Button(row_c1, text="彈窗", command=self._calib_cancel)
+        self.calib_door = ttk.Button(row_c1, text="門口", command=self._calib_door)
+        self.calib_rest = ttk.Button(row_c1, text="餐廳", command=self._calib_restaurant)
+        for btn in (self.calib_s, self.calib_r, self.calib_c, self.calib_door, self.calib_rest):
+            btn.pack(side=tk.LEFT, padx=3)
+
+        # 第二列：狀態偵測校準
+        row_c2 = ttk.Frame(grp_cal)
+        row_c2.pack(fill=tk.X, pady=(2, 0))
+        ttk.Label(row_c2, text="偵測：", width=5, foreground="gray").pack(side=tk.LEFT)
+        self.calib_sp     = ttk.Button(row_c2, text="狀態色", command=self._calib_state_colors)
+        self.calib_clk_in = ttk.Button(row_c2, text="時鐘內部", command=self._calib_clock_interior)
+        self.calib_smoke  = ttk.Button(row_c2, text="黑煙",   command=self._calib_smoke)
+        for btn in (self.calib_sp, self.calib_clk_in, self.calib_smoke):
             btn.pack(side=tk.LEFT, padx=3)
 
         # 校準狀態指示列
         self._calib_lbl = {}
         row_cs = ttk.Frame(grp_cal)
-        row_cs.pack(fill=tk.X, pady=(2, 4))
+        row_cs.pack(fill=tk.X, pady=(3, 4))
         for key, title in (("stoves", "鍋爐"), ("recipe", "食譜"), ("cancel", "彈窗"),
-                            ("state",  "狀態色"), ("clk_interior", "時鐘內"),
-                            ("smoke",  "黑煙"), ("door", "門口"), ("restaurant", "餐廳")):
+                            ("door", "門口"), ("restaurant", "餐廳"),
+                            ("state", "狀態色"), ("clk_interior", "時鐘內"),
+                            ("smoke", "黑煙")):
             lbl = ttk.Label(row_cs, text=f"▸{title}", font=("", 8))
-            lbl.pack(side=tk.LEFT, padx=(4, 10))
+            lbl.pack(side=tk.LEFT, padx=(2, 8))
             self._calib_lbl[key] = lbl
         self._refresh_calib_status()
 
