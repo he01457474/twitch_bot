@@ -1681,8 +1681,8 @@ class App:
         lh = int(game_h * left_scale)
         left_photo = ImageTk.PhotoImage(img.resize((lw, lh), Image.LANCZOS))
 
-        # ── 右側放大圖：80×80 摩爾座標 → 4× → 320×320 ────────
-        ZOOM_R      = 40       # 摩爾半徑
+        # ── 右側放大圖：120×120 摩爾座標 → ~2.7× → 320×320 ─────
+        ZOOM_R      = 60       # 摩爾半徑（範圍更大，確保時鐘/光暈都看得到）
         ZOOM_SIZE   = 320      # canvas 尺寸（像素）
         zoom_factor = ZOOM_SIZE / (ZOOM_R * 2)
 
@@ -1692,33 +1692,33 @@ class App:
         win.grab_set()
         win.resizable(False, False)
 
-        ttk.Label(win, text=f"依序校準 {n} 個鍋爐，各自點一次右側放大圖",
+        ttk.Label(win, text=f"依序校準 {n} 個鍋爐，各自點一次放大圖（或左側全景）",
                   font=("", 11, "bold"), padding=(8, 8, 8, 2)).pack()
         instr_lbl = ttk.Label(win, text="", foreground="blue",
                                font=("", 10), padding=(8, 0, 8, 0))
         instr_lbl.pack()
-        ttk.Label(win, text=pt_hint, foreground="gray",
-                  padding=(8, 0, 8, 6), wraplength=820).pack()
+        ttk.Label(win, text=pt_hint + "　（放大圖找不到目標時，直接點左側全景也可以）",
+                  foreground="gray", padding=(8, 0, 8, 6), wraplength=820).pack()
 
         panels = ttk.Frame(win)
         panels.pack(padx=8, pady=4)
 
         # 左側全景
-        lf = ttk.LabelFrame(panels, text="全景（綠圈 = 目前要校準的鍋爐）")
+        lf = ttk.LabelFrame(panels, text="全景（也可直接在這裡點擊，放大圖看不到時用）")
         lf.pack(side=tk.LEFT, padx=(0, 8), anchor=tk.N)
-        left_canvas = tk.Canvas(lf, width=lw, height=lh)
+        left_canvas = tk.Canvas(lf, width=lw, height=lh, cursor="crosshair")
         left_canvas.pack()
         left_canvas.create_image(0, 0, anchor=tk.NW, image=left_photo)
         left_canvas.photo = left_photo
 
         # 右側放大圖
-        rf = ttk.LabelFrame(panels, text="放大圖（在此點擊校準位置）")
+        rf = ttk.LabelFrame(panels, text="放大圖（優先在這裡點擊）")
         rf.pack(side=tk.LEFT, anchor=tk.N)
         zoom_canvas = tk.Canvas(rf, width=ZOOM_SIZE, height=ZOOM_SIZE,
                                 cursor="crosshair", bg="#1a1a1a")
         zoom_canvas.pack()
         pct_lbl = ttk.Label(rf, text="等待點擊…", foreground="gray",
-                             padding=(4, 2), font=("", 9))
+                             padding=(4, 2), font=("", 9), wraplength=ZOOM_SIZE)
         pct_lbl.pack()
 
         # 左側鍋爐標記
@@ -1748,8 +1748,8 @@ class App:
             px1 = min(int((mx0 + ZOOM_R * 2) * sg), game_w)
             py1 = min(int((my0 + ZOOM_R * 2) * sg), game_h)
             crop = img_rgb.crop((px0, py0, px1, py1))
-            # 拉伸到 ZOOM_SIZE × ZOOM_SIZE（最近鄰 → 不模糊，方便看清像素）
-            z = crop.resize((ZOOM_SIZE, ZOOM_SIZE), Image.NEAREST)
+            # LANCZOS 讓放大圖更清晰易辨色
+            z = crop.resize((ZOOM_SIZE, ZOOM_SIZE), Image.LANCZOS)
 
             # 在放大圖上畫鍋爐中心十字
             from PIL import ImageDraw
@@ -1799,17 +1799,12 @@ class App:
 
         refresh_ui()
 
-        def on_zoom_click(event):
+        def _do_pick(click_mx, click_my):
+            """共用的校準邏輯，由放大圖或全景點擊呼叫。"""
             idx = len(collected_pts)
             if idx >= n:
                 return
             sx2, sy2 = self.stoves[idx]
-            mx0 = sx2 - ZOOM_R
-            my0 = sy2 - ZOOM_R
-            # canvas 座標 → 摩爾座標
-            click_mx = mx0 + event.x / zoom_factor
-            click_my = my0 + event.y / zoom_factor
-            # 全圖像素座標
             click_px = min(max(int(click_mx * sg), 0), game_w - 1)
             click_py = min(max(int(click_my * sg), 0), game_h - 1)
             rgb = img_rgb.getpixel((click_px, click_py))
@@ -1818,26 +1813,50 @@ class App:
             dy = round(click_my - sy2)
             collected_pts.append([dx, dy, rgb[0], rgb[1], rgb[2]])
 
-            # 計算 HSV 範圍（取樣點附近 5px 半徑）
+            # 計算 HSV 範圍
             hsv_cfg = _sample_hsv_range(img_rgb, click_px, click_py, sample_r=5)
             hsv_cfg["cx"] = dx
             hsv_cfg["cy"] = dy
             collected_hsv.append(hsv_cfg)
 
-            # 計算該區域實際匹配率
+            # 匹配率
             pct = _hsv_match_pct(img_rgb, sg, sx2 + dx, sy2 + dy,
                                   hsv_cfg["radius"],
                                   hsv_cfg["h"], hsv_cfg["s"], hsv_cfg["v"])
+            thr_pct = hsv_cfg["pct"]
+            # 匹配率說明：60% 是正常的，只要高於閾值（12%）就能偵測到
+            status = "✓ 正常" if pct >= thr_pct else "⚠ 偏低，建議重點"
             pct_lbl.config(
-                text=f"鍋爐 {idx+1} 匹配率：{pct*100:.1f}%"
-                     f"（HSV H={hsv_cfg['h']}, S={hsv_cfg['s']}, V={hsv_cfg['v']}）",
-                foreground="#27ae60" if pct >= hsv_cfg["pct"] else "orange")
+                text=(f"鍋爐 {idx+1}：匹配率 {pct*100:.0f}%，偵測閾值 {thr_pct*100:.0f}%  {status}\n"
+                      f"（匹配率高於閾值即可，60% 是正常值）"),
+                foreground="#27ae60" if pct >= thr_pct else "orange")
 
-            # 更新放大圖（標記點擊位置）
+            # 更新放大圖標記
             show_zoom(idx, click_mx, click_my)
 
             # 0.8s 後自動進下一個鍋爐
             win.after(800, refresh_ui)
+
+        def on_zoom_click(event):
+            idx = len(collected_pts)
+            if idx >= n:
+                return
+            sx2, sy2 = self.stoves[idx]
+            mx0 = sx2 - ZOOM_R
+            my0 = sy2 - ZOOM_R
+            click_mx = mx0 + event.x / zoom_factor
+            click_my = my0 + event.y / zoom_factor
+            _do_pick(click_mx, click_my)
+
+        def on_left_click(event):
+            """左側全景也可點擊（放大圖範圍外才需要用這個）"""
+            idx = len(collected_pts)
+            if idx >= n:
+                return
+            # canvas 座標 → 摩爾座標
+            click_mx = (event.x / left_scale) / sg
+            click_my = (event.y / left_scale) / sg
+            _do_pick(click_mx, click_my)
 
         def on_undo():
             if not collected_pts:
@@ -1879,6 +1898,7 @@ class App:
                 "偵測時使用 HSV 色調範圍，不受遮擋或亮度輕微變化影響。")
 
         zoom_canvas.bind("<Button-1>", on_zoom_click)
+        left_canvas.bind("<Button-1>", on_left_click)
 
         btn_frame = ttk.Frame(win)
         btn_frame.pack(pady=6)
