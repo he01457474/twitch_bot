@@ -597,6 +597,8 @@ class RestaurantBot:
             spoiled_pct = 1.0 - candidates.get("spoiled", 100) / 100
             if "spoiled" in candidates and spoiled_pct >= 0.6:
                 del candidates["cooking"]   # 腐壞接管，往下走正常優先序
+            elif "done" in candidates:
+                del candidates["cooking"]   # 做完接管：食物做完後填滿時鐘也是橙色，兩者會同時命中
             else:
                 if len(candidates) > 1:
                     self._debug_capture(f"cooking_beats_conflict_{sx}_{sy}", markers)
