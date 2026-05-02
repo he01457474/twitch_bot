@@ -727,6 +727,17 @@ class RestaurantBot:
         win32gui.EnumWindows(cb, None)
         return found[0] if found else None
 
+    def _is_window_alive(self):
+        """確認 Flash Player 視窗仍然存在且可見"""
+        if not self.hwnd:
+            return False
+        try:
+            return (win32gui.IsWindow(self.hwnd) and
+                    win32gui.IsWindowVisible(self.hwnd) and
+                    "Adobe Flash Player" in win32gui.GetWindowText(self.hwnd))
+        except Exception:
+            return False
+
     def get_pixel(self, mole_x, mole_y):
         """取得摩爾座標的像素顏色 (R, G, B)"""
         try:
@@ -850,6 +861,9 @@ class RestaurantBot:
                 if self._stop.is_set():
                     return False
                 time.sleep(0.1)
+            if not self._is_window_alive():
+                on_status("Flash Player 視窗已關閉，停止等待", error=True)
+                return False
             elapsed += 1.0
             # 以 _last_antlag 判斷，和掃描前的防卡頓共用同一個計時器，不會重複觸發
             if (interval_seconds > 0 and elapsed < total_seconds and
@@ -915,6 +929,11 @@ class RestaurantBot:
             self.wait(3.0)
 
         while not self._stop.is_set():
+            # 每輪先確認視窗還在，關閉就停止
+            if not self._is_window_alive():
+                on_status("Flash Player 視窗已關閉，停止機器人", error=True)
+                break
+
             # 掃描前防卡頓：若距上次防卡頓已超過設定間隔，先出去繞一圈再掃
             # 這樣即使掃描本身耗時，Flash Player 也不會在掃描前就已經積累太久
             if antlag_sec > 0 and time.time() - self._last_antlag >= antlag_sec:
