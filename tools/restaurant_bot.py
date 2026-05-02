@@ -1904,7 +1904,15 @@ class App:
             show_pct(i, rgb)
             for j in range(n): update_stove_btn(j)
             update_left_markers()
-            # 0.8s 後自動跳到下一個尚未校準的鍋爐
+
+            # 顏色不對時不自動跳下一爐，讓使用者看到警告後重新點擊
+            hcfg = _STATE_COLOR_HINTS.get(offset_key)
+            if hcfg:
+                hh, ss, vv = _rgb_to_hsv(*rgb)
+                if not hcfg["check"](hh, ss, vv):
+                    return   # 顏色警告已顯示在下方，停在這爐等重點
+
+            # 顏色正確，0.8s 後自動跳到下一個尚未校準的鍋爐
             def auto_next():
                 for j in range(1, n + 1):
                     nxt = (i + j) % n
