@@ -855,8 +855,9 @@ class RestaurantBot:
         if state == "done":
             self._collect_food(sx, sy, log)
             state = self._detect_safe(sx, sy)
-            if state not in ("unknown",):
-                return   # 還有東西，下輪再處理
+            if state == "cooking":
+                return   # 確認進入烹飪，跳過
+            # done/unknown 都繼續往下嘗試做菜（done 可能是空鍋爐誤判）
 
         if state == "spoiled":
             if not self._clear_spoiled(sx, sy, log):
@@ -1959,6 +1960,13 @@ class App:
 
         zoom_canvas.bind("<Button-1>", on_zoom_click)
         left_canvas.bind("<Button-1>", on_left_click)
+
+        nav_frame = ttk.Frame(win)
+        nav_frame.pack(pady=(4, 0))
+        ttk.Button(nav_frame, text="◀ 上一爐",
+                   command=lambda: select_stove((cur[0] - 1) % n)).pack(side=tk.LEFT, padx=8)
+        ttk.Button(nav_frame, text="下一爐 ▶",
+                   command=lambda: select_stove((cur[0] + 1) % n)).pack(side=tk.LEFT, padx=8)
 
         btn_frame = ttk.Frame(win)
         btn_frame.pack(pady=6)
