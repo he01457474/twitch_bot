@@ -1885,7 +1885,8 @@ class App:
             # 更新放大圖標記
             show_zoom(idx, click_mx, click_my)
 
-            # 0.8s 後自動進下一個鍋爐
+            # 0.8s 後自動進下一個鍋爐，同時啟用「下一步」讓使用者可以手動提早切換
+            next_btn.config(state=tk.NORMAL)
             win.after(800, refresh_ui)
 
         def on_zoom_click(event):
@@ -1909,11 +1910,18 @@ class App:
             click_my = (event.y / left_scale) / sg
             _do_pick(click_mx, click_my)
 
+        def on_next():
+            """手動跳到下一個鍋爐（點完才能按）"""
+            if len(collected_pts) < n:
+                refresh_ui()
+                next_btn.config(state=tk.DISABLED)
+
         def on_undo():
             if not collected_pts:
                 return
             collected_pts.pop()
             collected_hsv.pop()
+            next_btn.config(state=tk.DISABLED)
             refresh_ui()   # pct_lbl 不動，保留上一次的匹配率資訊
 
         def on_clear():
@@ -1952,9 +1960,12 @@ class App:
 
         btn_frame = ttk.Frame(win)
         btn_frame.pack(pady=6)
-        ttk.Button(btn_frame, text="儲存",     command=on_save   ).pack(side=tk.LEFT, padx=6)
-        ttk.Button(btn_frame, text="上一步",   command=on_undo   ).pack(side=tk.LEFT, padx=6)
-        ttk.Button(btn_frame, text="重新來過", command=on_clear  ).pack(side=tk.LEFT, padx=6)
+        ttk.Button(btn_frame, text="儲存",     command=on_save    ).pack(side=tk.LEFT, padx=6)
+        next_btn = ttk.Button(btn_frame, text="下一步 →", command=on_next,
+                              state=tk.DISABLED)
+        next_btn.pack(side=tk.LEFT, padx=6)
+        ttk.Button(btn_frame, text="上一步",   command=on_undo    ).pack(side=tk.LEFT, padx=6)
+        ttk.Button(btn_frame, text="重新來過", command=on_clear   ).pack(side=tk.LEFT, padx=6)
         ttk.Button(btn_frame, text="取消",     command=win.destroy).pack(side=tk.LEFT, padx=6)
 
     def _calib_stoves(self):
