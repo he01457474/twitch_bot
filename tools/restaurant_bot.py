@@ -547,15 +547,28 @@ class RestaurantBot:
 
         markers = [(sx, sy, "white", "stove")]
 
+        # 若此鍋爐已校準黑煙偵測（smoke_offsets），腐壞由 _has_smoke 負責，
+        # 此處跳過 spoiled_hsv / spoiled_points，避免深色食材被誤判為腐壞。
+        try:
+            _sidx_sp = list(self.stoves).index((sx, sy))
+            _smoke_offs = self.settings.get("smoke_offsets") or []
+            _smoke_calibrated = (_sidx_sp < len(_smoke_offs) and bool(_smoke_offs[_sidx_sp]))
+        except (ValueError, IndexError):
+            _smoke_calibrated = False
+
         # 先收集三種狀態的命中結果，最後用 best-match 決定
         # 每種狀態：先嘗試 HSV 區域偵測（精準），若未設定才 fallback RGB 單點偵測
-        _hsv_sp = check_hsv_state("spoiled_hsv_list")
-        if _hsv_sp is not None:
-            hit_sp, diff_sp, (spx, spy), _ = _hsv_sp
-            markers.append((spx, spy, "red", f"sp {int((1-diff_sp/100)*100)}%"))
+        hit_sp, diff_sp, spx, spy = False, 999, sx, sy
+        if not _smoke_calibrated:
+            _hsv_sp = check_hsv_state("spoiled_hsv_list")
+            if _hsv_sp is not None:
+                hit_sp, diff_sp, (spx, spy), _ = _hsv_sp
+                markers.append((spx, spy, "red", f"sp {int((1-diff_sp/100)*100)}%"))
+            else:
+                hit_sp, diff_sp, (spx, spy) = check_state("spoiled_points", "spoiled_color", "spoiled_offset", spread=6)
+                markers.append((spx, spy, "red", f"spoiled Δ{diff_sp}"))
         else:
-            hit_sp, diff_sp, (spx, spy) = check_state("spoiled_points", "spoiled_color", "spoiled_offset", spread=6)
-            markers.append((spx, spy, "red", f"spoiled Δ{diff_sp}"))
+            markers.append((spx, spy, "red", "sp skipped(smoke)"))
 
         _hsv_d = check_hsv_state("done_hsv_list")
         if _hsv_d is not None:
