@@ -1697,10 +1697,9 @@ class App:
             messagebox.showerror("錯誤", f"截圖失敗：{e}")
             return
 
-        sg      = max(game_w / MOLE_W, game_h / MOLE_H)   # game pixels per mole unit
+        sg      = max(game_w / MOLE_W, game_h / MOLE_H)
         img_rgb = img.convert("RGB")
 
-        # ── 狀態專屬說明 ──────────────────────────────────────
         CALIB_HINTS = {
             "clock_offset":   "請在右側放大圖中，點擊橙色時鐘圓圈的中心位置",
             "done_offset":    "請在右側放大圖中，點擊黃色光暈最亮的位置",
@@ -1708,55 +1707,73 @@ class App:
         }
         pt_hint = CALIB_HINTS.get(offset_key, f"請在右側放大圖中，點擊「{label}」對應位置")
 
-        # ── 左側全景：最寬 480px ──────────────────────────────
         LEFT_MAX_W, LEFT_MAX_H = 480, 400
         left_scale = min(LEFT_MAX_W / game_w, LEFT_MAX_H / game_h, 1.0)
         lw = int(game_w * left_scale)
         lh = int(game_h * left_scale)
         left_photo = ImageTk.PhotoImage(img.resize((lw, lh), Image.LANCZOS))
 
-        # ── 右側放大圖：120×120 摩爾座標 → ~2.7× → 320×320 ─────
-        ZOOM_R      = 60       # 摩爾半徑（範圍更大，確保時鐘/光暈都看得到）
-        ZOOM_SIZE   = 320      # canvas 尺寸（像素）
+        ZOOM_R      = 60
+        ZOOM_SIZE   = 320
         zoom_factor = ZOOM_SIZE / (ZOOM_R * 2)
 
-        # ── 視窗建立 ──────────────────────────────────────────
+        # ── 每個鍋爐的校準資料（None = 未校準） ──────────────
+        c_pts = [None] * n   # [dx,dy,r,g,b]
+        c_hsv = [None] * n   # hsv_cfg dict
+        cur   = [0]          # 目前選中的鍋爐
+
+        # 載入既有校準（方便只改特定鍋爐）
+        ex_pts = self._extra_settings.get(points_key) or []
+        ex_hsv = self._extra_settings.get(hsv_list_key) or []
+        if len(ex_pts) == n:
+            for i in range(n): c_pts[i] = list(ex_pts[i])
+        if len(ex_hsv) == n:
+            for i in range(n): c_hsv[i] = dict(ex_hsv[i])
+
+        # ── 視窗 ─────────────────────────────────────────────
         win = tk.Toplevel(self.root)
         win.title(f"校準「{label}」（各鍋爐獨立）")
         win.grab_set()
         win.resizable(False, False)
 
-        ttk.Label(win, text=f"依序校準 {n} 個鍋爐，各自點一次放大圖（或左側全景）",
+        ttk.Label(win, text="點擊上方鍋爐按鈕切換，在放大圖或全景點擊校準",
                   font=("", 11, "bold"), padding=(8, 8, 8, 2)).pack()
-        instr_lbl = ttk.Label(win, text="", foreground="blue",
-                               font=("", 10), padding=(8, 0, 8, 0))
-        instr_lbl.pack()
-        ttk.Label(win, text=pt_hint + "　（放大圖找不到目標時，直接點左側全景也可以）",
-                  foreground="gray", padding=(8, 0, 8, 6), wraplength=820).pack()
+        ttk.Label(win, text=pt_hint + "　（放大圖找不到時直接點左側全景）",
+                  foreground="gray", padding=(8, 0, 8, 4), wraplength=820).pack()
 
+        # ── 頂部鍋爐切換按鈕列 ───────────────────────────────
+        sel_row = ttk.Frame(win)
+        sel_row.pack(fill=tk.X, padx=8, pady=(0, 2))
+        ttk.Label(sel_row, text="切換鍋爐：").pack(side=tk.LEFT)
+        stove_btns = []
+        for i in range(n):
+            b = tk.Button(sel_row, text=f"爐{i+1}  ——", width=10,
+                          font=("", 9), relief=tk.RAISED,
+                          command=lambda idx=i: select_stove(idx))
+            b.pack(side=tk.LEFT, padx=2)
+            stove_btns.append(b)
+
+        # ── 雙面板 ───────────────────────────────────────────
         panels = ttk.Frame(win)
         panels.pack(padx=8, pady=4)
 
-        # 左側全景
-        lf = ttk.LabelFrame(panels, text="全景（也可直接在這裡點擊，放大圖看不到時用）")
+        lf = ttk.LabelFrame(panels, text="全景（點鍋爐圓圈切換，或直接點擊校準）")
         lf.pack(side=tk.LEFT, padx=(0, 8), anchor=tk.N)
         left_canvas = tk.Canvas(lf, width=lw, height=lh, cursor="crosshair")
         left_canvas.pack()
         left_canvas.create_image(0, 0, anchor=tk.NW, image=left_photo)
         left_canvas.photo = left_photo
 
-        # 右側放大圖
-        rf = ttk.LabelFrame(panels, text="放大圖（優先在這裡點擊）")
+        rf = ttk.LabelFrame(panels, text="放大圖（在此點擊校準）")
         rf.pack(side=tk.LEFT, anchor=tk.N)
         zoom_canvas = tk.Canvas(rf, width=ZOOM_SIZE, height=ZOOM_SIZE,
                                 cursor="crosshair", bg="#1a1a1a")
         zoom_canvas.pack()
-        pct_lbl = ttk.Label(rf, text="等待點擊…", foreground="gray",
+        pct_lbl = ttk.Label(rf, text="請先選擇要校準的鍋爐", foreground="gray",
                              padding=(4, 2), font=("", 9), wraplength=ZOOM_SIZE)
         pct_lbl.pack()
 
-        # 左側鍋爐標記
-        stove_items = []
+        stove_ovals = []
         for i, (sx2, sy2) in enumerate(self.stoves):
             ex = int(sx2 * sg * left_scale)
             ey = int(sy2 * sg * left_scale)
@@ -1764,209 +1781,191 @@ class App:
                                          outline="gray", width=2)
             tx = left_canvas.create_text(ex, ey, text=str(i+1),
                                          fill="gray", font=("Arial", 9, "bold"))
-            stove_items.append((ov, tx))
-
-        collected_pts  = []   # [[dx,dy,r,g,b], ...]  RGB 備用
-        collected_hsv  = []   # [hsv_cfg, ...]  HSV 區域設定
+            stove_ovals.append((ov, tx))
 
         zoom_photo_ref = [None]
 
-        def show_zoom(stove_idx, dot_mx=None, dot_my=None):
-            """更新右側放大圖。dot_mx/my 是點擊的摩爾座標（畫紅圈用）。"""
-            sx2, sy2 = self.stoves[stove_idx]
-            mx0 = sx2 - ZOOM_R
-            my0 = sy2 - ZOOM_R
-            # 全圖像素範圍
+        # ── 計算第 i 爐匹配率 ────────────────────────────────
+        def calc_pct(i):
+            h = c_hsv[i]; p = c_pts[i]
+            if not h or not p: return None
+            sx2, sy2 = self.stoves[i]
+            return _hsv_match_pct(img_rgb, sg, sx2 + h["cx"], sy2 + h["cy"],
+                                   h["radius"], h["h"], h["s"], h["v"])
+
+        def update_stove_btn(i):
+            pct = calc_pct(i)
+            if pct is None:
+                txt, fg, bg = f"爐{i+1}  ——", "gray", "SystemButtonFace"
+            else:
+                thr  = c_hsv[i].get("pct", 0.12)
+                mark = "✓" if pct >= thr else "⚠"
+                txt  = f"爐{i+1} {pct*100:.0f}%{mark}"
+                fg   = "#1a7a1a" if pct >= thr else "#8a4a00"
+                bg   = "#d4f5d4" if pct >= thr else "#fff0c0"
+            stove_btns[i].config(text=txt, fg=fg, bg=bg,
+                                 relief=tk.SUNKEN if i == cur[0] else tk.RAISED)
+
+        def update_left_markers():
+            for i, (ov, tx) in enumerate(stove_ovals):
+                pct = calc_pct(i)
+                if i == cur[0]:
+                    col, ww = "#00dd00", 3
+                elif pct is None:
+                    col, ww = "gray", 2
+                else:
+                    thr = c_hsv[i].get("pct", 0.12)
+                    col = "#27ae60" if pct >= thr else "orange"
+                    ww  = 2
+                left_canvas.itemconfig(ov, outline=col, width=ww)
+                left_canvas.itemconfig(tx, fill=col)
+
+        def show_zoom(i, dot_mx=None, dot_my=None):
+            sx2, sy2 = self.stoves[i]
+            mx0 = sx2 - ZOOM_R; my0 = sy2 - ZOOM_R
             px0 = min(max(int(mx0 * sg), 0), game_w)
             py0 = min(max(int(my0 * sg), 0), game_h)
             px1 = min(int((mx0 + ZOOM_R * 2) * sg), game_w)
             py1 = min(int((my0 + ZOOM_R * 2) * sg), game_h)
-            crop = img_rgb.crop((px0, py0, px1, py1))
-            # LANCZOS 讓放大圖更清晰易辨色
-            z = crop.resize((ZOOM_SIZE, ZOOM_SIZE), Image.LANCZOS)
-
-            # 在放大圖上畫鍋爐中心十字
+            z = img_rgb.crop((px0, py0, px1, py1)).resize(
+                    (ZOOM_SIZE, ZOOM_SIZE), Image.LANCZOS)
             from PIL import ImageDraw
             draw = ImageDraw.Draw(z)
             cx_c = int((sx2 - mx0) * zoom_factor)
             cy_c = int((sy2 - my0) * zoom_factor)
-            draw.line([(cx_c - 12, cy_c), (cx_c + 12, cy_c)], fill="#ffffff", width=1)
-            draw.line([(cx_c, cy_c - 12), (cx_c, cy_c + 12)], fill="#ffffff", width=1)
-
+            draw.line([(cx_c-14, cy_c), (cx_c+14, cy_c)], fill="#ffffff", width=1)
+            draw.line([(cx_c, cy_c-14), (cx_c, cy_c+14)], fill="#ffffff", width=1)
             if dot_mx is not None:
                 dx_c = int((dot_mx - mx0) * zoom_factor)
                 dy_c = int((dot_my - my0) * zoom_factor)
-                draw.ellipse([dx_c - 9, dy_c - 9, dx_c + 9, dy_c + 9],
-                             outline="red", width=3)
-                draw.line([(dx_c - 14, dy_c), (dx_c + 14, dy_c)], fill="red", width=2)
-                draw.line([(dx_c, dy_c - 14), (dx_c, dy_c + 14)], fill="red", width=2)
-
+                draw.ellipse([dx_c-9, dy_c-9, dx_c+9, dy_c+9], outline="red", width=3)
+                draw.line([(dx_c-14, dy_c), (dx_c+14, dy_c)], fill="red", width=2)
+                draw.line([(dx_c, dy_c-14), (dx_c, dy_c+14)], fill="red", width=2)
             photo = ImageTk.PhotoImage(z)
             zoom_canvas.delete("all")
             zoom_canvas.create_image(0, 0, anchor=tk.NW, image=photo)
             zoom_canvas.photo = photo
             zoom_photo_ref[0] = photo
 
-        def refresh_ui(next_after=0):
-            """更新說明、鍋爐標記、放大圖。next_after>0 = 多少 ms 後刷新（用於自動進下一步）。"""
-            idx = len(collected_pts)
-            if idx < n:
-                instr_lbl.config(
-                    text=f"第 {idx+1} / {n} 個鍋爐",
-                    foreground="blue")
-                show_zoom(idx)
-                for i, (ov, tx) in enumerate(stove_items):
-                    if i < idx:
-                        col, ww = "#27ae60", 2
-                    elif i == idx:
-                        col, ww = "#00dd00", 3
-                    else:
-                        col, ww = "gray", 2
-                    left_canvas.itemconfig(ov, outline=col, width=ww)
-                    left_canvas.itemconfig(tx, fill=col)
+        def show_pct(i, rgb=None):
+            """更新右側下方的匹配率 + 顏色說明"""
+            pct = calc_pct(i)
+            if pct is None:
+                pct_lbl.config(text=f"鍋爐 {i+1}：尚未校準，請點放大圖",
+                               foreground="gray"); return
+            thr    = c_hsv[i].get("pct", 0.12)
+            status = "✓ 正常" if pct >= thr else "⚠ 偏低，建議重點"
+            # 顏色說明
+            src = rgb if rgb else (c_pts[i][2:5] if c_pts[i] else None)
+            if src:
+                hh, ss, vv = _rgb_to_hsv(*src)
+                cname = _hsv_color_name(hh, ss, vv)
+                hcfg  = _STATE_COLOR_HINTS.get(offset_key)
+                if hcfg:
+                    ok    = hcfg["check"](hh, ss, vv)
+                    cline = (f"{'✓' if ok else '⚠'} 顏色：{cname}"
+                             + ("" if ok else f"（應為{hcfg['expect']}）"))
+                    cfg   = "#27ae60" if ok else "orange"
+                else:
+                    cline = f"顏色：{cname}"; cfg = "gray"
             else:
-                instr_lbl.config(text=f"全部 {n} 個鍋爐校準完成！按「儲存」確認。",
-                                 foreground="#27ae60")
-                for ov, tx in stove_items:
-                    left_canvas.itemconfig(ov, outline="#27ae60", width=2)
-                    left_canvas.itemconfig(tx, fill="#27ae60")
+                cline = ""; cfg = "#27ae60" if pct >= thr else "orange"
+            pct_lbl.config(
+                text=(f"鍋爐 {i+1}：匹配率 {pct*100:.0f}%（閾值 {thr*100:.0f}%）{status}"
+                      + (f"\n{cline}" if cline else "")),
+                foreground=cfg)
 
-        refresh_ui()
+        def select_stove(i):
+            cur[0] = i
+            show_zoom(i)
+            show_pct(i)
+            for j in range(n): update_stove_btn(j)
+            update_left_markers()
+
+        for i in range(n): update_stove_btn(i)
+        select_stove(0)
 
         def _do_pick(click_mx, click_my):
-            """共用的校準邏輯，由放大圖或全景點擊呼叫。"""
-            idx = len(collected_pts)
-            if idx >= n:
-                return
-            sx2, sy2 = self.stoves[idx]
+            i = cur[0]
+            sx2, sy2 = self.stoves[i]
             click_px = min(max(int(click_mx * sg), 0), game_w - 1)
             click_py = min(max(int(click_my * sg), 0), game_h - 1)
             rgb = img_rgb.getpixel((click_px, click_py))
-
-            dx = round(click_mx - sx2)
-            dy = round(click_my - sy2)
-            collected_pts.append([dx, dy, rgb[0], rgb[1], rgb[2]])
-
-            # 計算 HSV 範圍
-            hsv_cfg = _sample_hsv_range(img_rgb, click_px, click_py, sample_r=5)
-            hsv_cfg["cx"] = dx
-            hsv_cfg["cy"] = dy
-            collected_hsv.append(hsv_cfg)
-
-            # 匹配率
-            pct = _hsv_match_pct(img_rgb, sg, sx2 + dx, sy2 + dy,
-                                  hsv_cfg["radius"],
-                                  hsv_cfg["h"], hsv_cfg["s"], hsv_cfg["v"])
-            thr_pct = hsv_cfg["pct"]
-
-            # ── 顏色正確性檢查 ────────────────────────────────
-            h_c, s_c, v_c = _rgb_to_hsv(*rgb)
-            color_name = _hsv_color_name(h_c, s_c, v_c)
-            hint_cfg   = _STATE_COLOR_HINTS.get(offset_key)
-            if hint_cfg:
-                color_ok = hint_cfg["check"](h_c, s_c, v_c)
-                if color_ok:
-                    color_line = f"✓ 顏色正確（{color_name}，符合{hint_cfg['label']}預期）"
-                    color_fg   = "#27ae60"
-                else:
-                    color_line = (f"⚠ 顏色可能不對（偵測到{color_name}，"
-                                  f"{hint_cfg['label']}應為{hint_cfg['expect']}）")
-                    color_fg = "orange"
-            else:
-                color_line = f"點擊顏色：{color_name}  H={h_c:.0f}° S={s_c:.0f}% V={v_c:.0f}%"
-                color_fg   = "gray"
-
-            pct_status = "✓ 正常" if pct >= thr_pct else "⚠ 偏低，建議重點"
-            pct_lbl.config(
-                text=(f"鍋爐 {idx+1}：匹配率 {pct*100:.0f}%（閾值 {thr_pct*100:.0f}%）{pct_status}\n"
-                      f"{color_line}"),
-                foreground=color_fg if hint_cfg else ("#27ae60" if pct >= thr_pct else "orange"))
-
-            # 更新放大圖標記
-            show_zoom(idx, click_mx, click_my)
-
-            # 0.8s 後自動進下一個鍋爐，同時啟用「下一步」讓使用者可以手動提早切換
-            next_btn.config(state=tk.NORMAL)
-            win.after(800, refresh_ui)
+            dx  = round(click_mx - sx2); dy = round(click_my - sy2)
+            c_pts[i] = [dx, dy, rgb[0], rgb[1], rgb[2]]
+            hsv_cfg  = _sample_hsv_range(img_rgb, click_px, click_py, sample_r=5)
+            hsv_cfg["cx"] = dx; hsv_cfg["cy"] = dy
+            c_hsv[i] = hsv_cfg
+            show_zoom(i, click_mx, click_my)
+            show_pct(i, rgb)
+            for j in range(n): update_stove_btn(j)
+            update_left_markers()
+            # 0.8s 後自動跳到下一個尚未校準的鍋爐
+            def auto_next():
+                for j in range(1, n + 1):
+                    nxt = (i + j) % n
+                    if c_pts[nxt] is None:
+                        select_stove(nxt); return
+                pct_lbl.config(text=f"全部 {n} 個鍋爐已校準！確認後按儲存。",
+                               foreground="#27ae60")
+            win.after(800, auto_next)
 
         def on_zoom_click(event):
-            idx = len(collected_pts)
-            if idx >= n:
-                return
-            sx2, sy2 = self.stoves[idx]
-            mx0 = sx2 - ZOOM_R
-            my0 = sy2 - ZOOM_R
-            click_mx = mx0 + event.x / zoom_factor
-            click_my = my0 + event.y / zoom_factor
-            _do_pick(click_mx, click_my)
+            sx2, sy2 = self.stoves[cur[0]]
+            mx0 = sx2 - ZOOM_R; my0 = sy2 - ZOOM_R
+            _do_pick(mx0 + event.x / zoom_factor, my0 + event.y / zoom_factor)
 
         def on_left_click(event):
-            """左側全景也可點擊（放大圖範圍外才需要用這個）"""
-            idx = len(collected_pts)
-            if idx >= n:
-                return
-            # canvas 座標 → 摩爾座標
             click_mx = (event.x / left_scale) / sg
             click_my = (event.y / left_scale) / sg
+            # 點在鍋爐圓圈附近 → 切換目標
+            for i, (sx2, sy2) in enumerate(self.stoves):
+                if ((click_mx - sx2)**2 + (click_my - sy2)**2) ** 0.5 < 20:
+                    select_stove(i); return
             _do_pick(click_mx, click_my)
 
-        def on_next():
-            """手動跳到下一個鍋爐（點完才能按）"""
-            if len(collected_pts) < n:
-                refresh_ui()
-                next_btn.config(state=tk.DISABLED)
+        def on_clear_one():
+            i = cur[0]
+            c_pts[i] = None; c_hsv[i] = None
+            show_zoom(i)
+            pct_lbl.config(text=f"鍋爐 {i+1} 已清除，請重新校準", foreground="gray")
+            for j in range(n): update_stove_btn(j)
+            update_left_markers()
 
-        def on_undo():
-            if not collected_pts:
-                return
-            collected_pts.pop()
-            collected_hsv.pop()
-            next_btn.config(state=tk.DISABLED)
-            refresh_ui()   # pct_lbl 不動，保留上一次的匹配率資訊
-
-        def on_clear():
-            collected_pts.clear()
-            collected_hsv.clear()
+        def on_clear_all():
+            for i in range(n): c_pts[i] = None; c_hsv[i] = None
             for k in (points_key, hsv_list_key):
-                self._extra_settings[k] = []
-                self.bot.settings[k]    = []
+                self._extra_settings[k] = []; self.bot.settings[k] = []
             self._save_all()
             pct_lbl.config(text="已清空所有校準點", foreground="gray")
-            refresh_ui()
+            for j in range(n): update_stove_btn(j)
+            select_stove(cur[0])
 
         def on_save():
-            if len(collected_pts) < n:
-                messagebox.showwarning("提示",
-                    f"還差 {n - len(collected_pts)} 個鍋爐沒校準。")
-                return
-            self._extra_settings[points_key]   = collected_pts[:]
-            self._extra_settings[hsv_list_key] = collected_hsv[:]
-            self.bot.settings[points_key]      = collected_pts[:]
-            self.bot.settings[hsv_list_key]    = collected_hsv[:]
-            # 清除舊單點格式
+            missing = [i+1 for i in range(n) if c_pts[i] is None]
+            if missing:
+                messagebox.showwarning("提示", f"鍋爐 {missing} 尚未校準。"); return
+            self._extra_settings[points_key]   = list(c_pts)
+            self._extra_settings[hsv_list_key] = list(c_hsv)
+            self.bot.settings[points_key]      = list(c_pts)
+            self.bot.settings[hsv_list_key]    = list(c_hsv)
             for k in (color_key, offset_key):
                 if k:
-                    self._extra_settings[k] = None
-                    self.bot.settings[k]    = None
+                    self._extra_settings[k] = None; self.bot.settings[k] = None
             self._save_all()
             self._refresh_calib_status()
             win.destroy()
-            messagebox.showinfo("完成",
-                f"「{label}」已儲存 {n} 個獨立校準點（含 HSV 區域偵測）。\n"
-                "偵測時使用 HSV 色調範圍，不受遮擋或亮度輕微變化影響。")
+            messagebox.showinfo("完成", f"「{label}」已儲存 {n} 個獨立校準點（含 HSV 區域偵測）。")
 
         zoom_canvas.bind("<Button-1>", on_zoom_click)
         left_canvas.bind("<Button-1>", on_left_click)
 
         btn_frame = ttk.Frame(win)
         btn_frame.pack(pady=6)
-        ttk.Button(btn_frame, text="儲存",     command=on_save    ).pack(side=tk.LEFT, padx=6)
-        next_btn = ttk.Button(btn_frame, text="下一步 →", command=on_next,
-                              state=tk.DISABLED)
-        next_btn.pack(side=tk.LEFT, padx=6)
-        ttk.Button(btn_frame, text="上一步",   command=on_undo    ).pack(side=tk.LEFT, padx=6)
-        ttk.Button(btn_frame, text="重新來過", command=on_clear   ).pack(side=tk.LEFT, padx=6)
-        ttk.Button(btn_frame, text="取消",     command=win.destroy).pack(side=tk.LEFT, padx=6)
+        ttk.Button(btn_frame, text="儲存",     command=on_save     ).pack(side=tk.LEFT, padx=6)
+        ttk.Button(btn_frame, text="清除此爐", command=on_clear_one).pack(side=tk.LEFT, padx=6)
+        ttk.Button(btn_frame, text="清除全部", command=on_clear_all).pack(side=tk.LEFT, padx=6)
+        ttk.Button(btn_frame, text="取消",     command=win.destroy ).pack(side=tk.LEFT, padx=6)
 
     def _calib_stoves(self):
         hwnd = self._get_hwnd()
