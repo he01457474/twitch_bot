@@ -547,28 +547,7 @@ class RestaurantBot:
 
         markers = [(sx, sy, "white", "stove")]
 
-        # 若此鍋爐已校準黑煙偵測（smoke_offsets），腐壞由 _has_smoke 負責，
-        # 此處跳過 spoiled_hsv / spoiled_points，避免深色食材被誤判為腐壞。
-        try:
-            _sidx_sp = list(self.stoves).index((sx, sy))
-            _smoke_offs = self.settings.get("smoke_offsets") or []
-            _smoke_calibrated = (_sidx_sp < len(_smoke_offs) and bool(_smoke_offs[_sidx_sp]))
-        except (ValueError, IndexError):
-            _smoke_calibrated = False
-
-        # 先收集三種狀態的命中結果，最後用 best-match 決定
-        # 每種狀態：先嘗試 HSV 區域偵測（精準），若未設定才 fallback RGB 單點偵測
-        hit_sp, diff_sp, spx, spy = False, 999, sx, sy
-        if not _smoke_calibrated:
-            _hsv_sp = check_hsv_state("spoiled_hsv_list")
-            if _hsv_sp is not None:
-                hit_sp, diff_sp, (spx, spy), _ = _hsv_sp
-                markers.append((spx, spy, "red", f"sp {int((1-diff_sp/100)*100)}%"))
-            else:
-                hit_sp, diff_sp, (spx, spy) = check_state("spoiled_points", "spoiled_color", "spoiled_offset", spread=6)
-                markers.append((spx, spy, "red", f"spoiled Δ{diff_sp}"))
-        else:
-            markers.append((spx, spy, "red", "sp skipped(smoke)"))
+        # 腐壞偵測已移至點擊後彈窗偵測處理，detect_stove_state 只偵測 done / cooking。
 
         _hsv_d = check_hsv_state("done_hsv_list")
         if _hsv_d is not None:
@@ -637,9 +616,8 @@ class RestaurantBot:
                     pass   # 有白色扇形 → 確認烹飪中，保持 clock_hit=True
                 # 模糊區間：保持 clock_hit=True（寧可誤判為烹飪，等下一輪再確認）
 
-        # 建立候選集，選出最佳匹配
+        # 建立候選集：只有 done / cooking，腐壞改由點擊後彈窗偵測
         candidates = {}
-        if hit_sp:         candidates["spoiled"] = diff_sp
         if hit_d:          candidates["done"]    = diff_d
         if full_clock_hit: candidates["done"]    = min(candidates.get("done", 999), clock_diff)
         if clock_hit:      candidates["cooking"] = clock_diff
@@ -647,33 +625,13 @@ class RestaurantBot:
         if not candidates:
             return "unknown"
 
-        # ── 明確優先順序 ──────────────────────────────────────
-        #
-        # 若腐壞匹配率 > 60%，優先腐壞（即使時鐘也命中）：
-        #   時鐘 HSV 校準過寬（h=[0,360]）時會誤命中所有鍋爐，
-        #   此時腐壞高匹配率才是可靠訊號。
-        #
-        # done > spoiled：誤判「done 當 spoiled」風險高（按確認鈕可能誤觸食譜），
-        #   誤判「spoiled 當 done」只是空等，低風險。
-        if "cooking" in candidates:
-            # 腐壞匹配率高時，腐壞優先（score = (1-pct)*100，越小越準）
-            spoiled_pct = 1.0 - candidates.get("spoiled", 100) / 100
-            if "spoiled" in candidates and spoiled_pct >= 0.6:
-                del candidates["cooking"]   # 腐壞接管，往下走正常優先序
-            elif "done" in candidates:
-                del candidates["cooking"]   # 做完接管：食物做完後填滿時鐘也是橙色，兩者會同時命中
-            else:
-                if len(candidates) > 1:
-                    self._debug_capture(f"cooking_beats_conflict_{sx}_{sy}", markers)
-                return "cooking"
-
-        if "done" in candidates and "spoiled" in candidates:
-            self._debug_capture(f"done_beats_spoiled_{sx}_{sy}", markers)
-            return "done"
+        # done 優先於 cooking（食物做完後時鐘也是橙色，兩者同時命中時取 done）
+        if "done" in candidates and "cooking" in candidates:
+            del candidates["cooking"]
 
         best = min(candidates, key=candidates.get)
-        if best in ("spoiled", "done"):
-            self._debug_capture(f"{best}_{sx}_{sy}", markers)
+        if best == "done":
+            self._debug_capture(f"done_{sx}_{sy}", markers)
         return best
 
     def is_stove_spoiled(self, sx, sy):
@@ -682,8 +640,8 @@ class RestaurantBot:
     def _detect_safe(self, sx, sy):
         """
         嚴謹版狀態偵測：連偵測兩次（間隔 0.3 秒），採保守判斷。
-        任一次偵測到 cooking 或 spoiled，即回傳該結果，
-        防止烹飪中或腐壞的鍋爐被誤判為 unknown 而浪費食材。
+        任一次偵測到 cooking 即回傳，兩次任一 done 才算 done。
+        腐壞已移至點擊後彈窗偵測，不在此處判斷。
         """
         s1 = self.detect_stove_state(sx, sy)
         if s1 == "cooking":
@@ -694,9 +652,6 @@ class RestaurantBot:
             return "cooking"
         if s1 == "done" or s2 == "done":
             return "done"
-        # spoiled 需兩次都確認，避免烹飪動畫觸發偶發假陽性後就直接清除食材
-        if s1 == "spoiled" and s2 == "spoiled":
-            return "spoiled"
         return "unknown"
 
     def _is_in_restaurant(self):
@@ -830,9 +785,6 @@ class RestaurantBot:
                 if state in ("cooking", "done"):
                     log("已進入烹飪 ✓")
                     return
-                if state == "spoiled":
-                    log("偵測到腐壞，停止")
-                    return
 
             log(f"{labels[step]}…")
             pre = self.get_pixel(sx, sy)
@@ -866,8 +818,6 @@ class RestaurantBot:
                     if state in ("cooking", "done"):
                         log("已進入烹飪 ✓")
                         return
-                    if state == "spoiled":
-                        return
                 if self.color_diff(self.get_pixel(sx, sy), bar_color) > 40:
                     break   # 讀條結束，繼續下一步
                 time.sleep(0.3)
@@ -878,15 +828,16 @@ class RestaurantBot:
         """
         點鍋爐開食譜 → 選菜 → 做步驟。
 
-        若食譜沒開，觀察其他反應：
-          - 已在讀條中 → 等結束再接續步驟
-          - 狀態改變（烹飪/完成/腐壞）→ 對應處理
-          - 完全無反應 → 點取消保底，跳過
-        兩次都失敗直接跳過（不跑防卡頓）。
+        彈窗處理邏輯：
+          - 食譜開了 → 正常做菜
+          - 食譜沒開 + 偵測到烹飪中 → 捐菜彈窗，按取消
+          - 食譜沒開 + 偵測到做好了 → 收菜後重試
+          - 食譜沒開 + 狀態 unknown → 腐壞彈窗，按確認清除，再試一次
         """
-        check      = self.recipe["check_pt"]
-        cancel_btn = self.recipe.get("cancel_btn", DEFAULT_RECIPE["cancel_btn"])
-        threshold  = self.settings.get("state_threshold", 40)
+        check       = self.recipe["check_pt"]
+        confirm_btn = self.recipe.get("confirm_btn", DEFAULT_RECIPE["confirm_btn"])
+        cancel_btn  = self.recipe.get("cancel_btn",  DEFAULT_RECIPE["cancel_btn"])
+        threshold   = self.settings.get("state_threshold", 40)
 
         # 食譜已開著（例如上輪未關），直接選菜
         if self.is_recipe_open():
@@ -900,7 +851,6 @@ class RestaurantBot:
             if self._stop.is_set(): return
 
             pre_check = self.get_pixel(*check)
-            pre_stove = self.get_pixel(sx, sy)
             self.click(sx, sy, delay=0.3)
 
             # 等食譜開啟（1.5 秒）
@@ -914,61 +864,47 @@ class RestaurantBot:
                     self._do_steps(sx, sy, log)
                 return
 
-            # 食譜沒開，用嚴謹偵測確認狀態，避免誤把烹飪中當作 unknown
+            # 食譜沒開，偵測目前狀態
             state = self._detect_safe(sx, sy)
+
             if state == "cooking":
-                log("烹飪中（之前未偵測到），跳過")
+                # 烹飪中才會跳捐菜彈窗，按取消關掉
+                log("偵測到烹飪中，關捐菜彈窗")
+                self.click_real(*cancel_btn, delay=0.5)
                 return
+
             if state == "done":
-                log("食物做好（之前未偵測到），收菜")
+                # 食物做好但之前未偵測到，收菜後下一輪重試
+                log("食物做好（之前未偵測到），收菜後重試")
                 self._collect_food(sx, sy, log)
-                return
-            if state == "spoiled":
-                log("腐壞（之前未偵測到），清除")
-                self._clear_spoiled(sx, sy, log)
-                return
+                continue   # 重新點鍋爐嘗試開食譜
 
-            # 鍋爐像素有沒有持續變化（已在讀條中）
-            stove_now = self.get_pixel(sx, sy)
-            if self.color_diff(stove_now, pre_stove) > threshold:
-                time.sleep(0.4)
-                if self.color_diff(self.get_pixel(sx, sy), pre_stove) > threshold:
-                    log("偵測到讀條（中間步驟），等結束…")
-                    self.wait_for_pixel_change(sx, sy, timeout=15.0, baseline=stove_now)
-                    self.wait(0.5)
-                    state = self.detect_stove_state(sx, sy)
-                    if state not in ("cooking", "done"):
-                        self._do_steps(sx, sy, log)
-                    return
-
-            # 完全無反應，點取消關掉可能的彈窗
-            log(f"無反應（第 {attempt+1} 次），關彈窗…")
-            self.click_real(*cancel_btn, delay=0.5)
+            # 狀態 unknown：食譜沒開 + 不是烹飪中
+            # → 可能是腐壞彈窗（空鍋爐不跳窗，只有腐壞才跳）
+            if attempt == 0:
+                log("食譜未開，疑似腐壞彈窗，按確認清除")
+                self.click_real(*confirm_btn, delay=0.5)
+                self.wait(1.5)
+                # 清除後繼續下一輪 attempt，重新點鍋爐
+            else:
+                log("第二次仍未開食譜，按取消保底，跳過")
+                self.click_real(*cancel_btn, delay=0.5)
 
         log(f"鍋爐 ({sx},{sy}) 兩次都無法開食譜，跳過")
 
     def setup_stove(self, sx, sy, page, dish, on_status=None):
         """
-        處理單個鍋爐，流程：
-          1. 偵測狀態
+        處理單個鍋爐：
+          1. 偵測時鐘狀態
           2. cooking → 跳過
-             done    → 收菜
-          3. 黑煙偵測（方案 B，優先）：
-             有煙 → 清除燒糊（_clear_spoiled_smoke）
-             無煙 → 直接做菜
-             未校準 → fallback HSV 腐壞偵測
-          4. 做菜（開食譜 → 選菜 → 三步驟）
-
-        遇到問題只跳過，不跑 leave_and_return。
+          3. done    → 收菜，然後嘗試做菜
+          4. unknown → 嘗試點鍋爐開食譜
+             - 食譜開了 → 選菜、三步驟做菜
+             - 跳彈窗    → 在 _open_recipe_and_cook 內處理
+               (烹飪中跳捐菜 → 取消；腐壞跳確認框 → 確認清除後重試)
         """
         def log(msg):
             if on_status: on_status(msg)
-
-        # 取出此鍋爐的索引（用於 _has_smoke）
-        try:
-            stove_idx = list(self.stoves).index((sx, sy))
-        except ValueError:
-            stove_idx = 0
 
         state = self._detect_safe(sx, sy)
         log(f"鍋爐 ({sx},{sy})：{state}")
@@ -978,40 +914,8 @@ class RestaurantBot:
 
         if state == "done":
             self._collect_food(sx, sy, log)
-            state = self._detect_safe(sx, sy)
-            if state == "cooking":
-                return   # 確認進入烹飪，跳過
-            # done/unknown 都繼續往下嘗試做菜
+            # 收完菜繼續往下，嘗試開食譜做菜
 
-        # ── 方案 B：黑煙偵測 ──────────────────────────────────
-        smoke = self._has_smoke(stove_idx)
-
-        if smoke is not None:
-            # smoke_offsets 已校準，以黑煙結果為準
-            if smoke:
-                if not self._clear_spoiled_smoke(sx, sy, log):
-                    log("清除失敗（黑煙誤判），仍嘗試做菜")
-                else:
-                    state = self._detect_safe(sx, sy)
-                    if state == "cooking":
-                        return
-                    if state == "done":
-                        self._collect_food(sx, sy, log)
-            else:
-                log("無黑煙，直接做菜")
-        else:
-            # ── Fallback：HSV 腐壞偵測 ───────────────────────
-            if state == "spoiled":
-                if not self._clear_spoiled(sx, sy, log):
-                    log("清除失敗（可能誤判），仍嘗試做菜")
-                else:
-                    state = self._detect_safe(sx, sy)
-                    if state == "done":
-                        self._collect_food(sx, sy, log)
-                    elif state not in ("unknown",):
-                        return
-
-        # 空鍋爐，開始做菜
         self._open_recipe_and_cook(sx, sy, page, dish, log)
 
     def find_window(self):
