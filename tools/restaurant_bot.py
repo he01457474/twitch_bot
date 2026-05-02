@@ -162,6 +162,40 @@ def _hsv_match_pct(img, scale, mole_cx, mole_cy, radius, h_range, s_range, v_ran
     return matched / total if total > 0 else 0.0
 
 
+def _hsv_color_name(h, s, v):
+    """把 HSV 值轉成中文顏色名稱，方便使用者判斷。"""
+    if v < 20:              return "黑色"
+    if s < 15:              return "白/灰色"
+    if h < 15 or h >= 345: return "紅色"
+    if h < 45:              return "橙色"
+    if h < 75:              return "黃色"
+    if h < 150:             return "綠色"
+    if h < 195:             return "青色"
+    if h < 255:             return "藍色"
+    if h < 285:             return "紫色"
+    return "粉紅色"
+
+
+# 每個狀態的預期顏色範圍（用於校準時給使用者提示）
+_STATE_COLOR_HINTS = {
+    "clock_offset": {
+        "label":  "時鐘（烹飪中）",
+        "expect": "橙色（H 10-50°，飽和度 > 55%，亮度 > 45%）",
+        "check":  lambda h, s, v: 10 <= h <= 50 and s >= 55 and v >= 45,
+    },
+    "done_offset": {
+        "label":  "做完（黃光）",
+        "expect": "黃色（H 35-75°，飽和度 > 35%，亮度 > 55%）",
+        "check":  lambda h, s, v: 35 <= h <= 75 and s >= 35 and v >= 55,
+    },
+    "spoiled_offset": {
+        "label":  "腐壞（黑煙）",
+        "expect": "深色/灰色（亮度 < 50%，或飽和度低）",
+        "check":  lambda h, s, v: v <= 50 or (s <= 30 and v <= 65),
+    },
+}
+
+
 def _sample_hsv_range(img_rgb, px_x, px_y, sample_r=5):
     """
     取樣 (px_x, px_y) 附近 sample_r 半徑的方形區域，
@@ -1824,12 +1858,29 @@ class App:
                                   hsv_cfg["radius"],
                                   hsv_cfg["h"], hsv_cfg["s"], hsv_cfg["v"])
             thr_pct = hsv_cfg["pct"]
-            # 匹配率說明：60% 是正常的，只要高於閾值（12%）就能偵測到
-            status = "✓ 正常" if pct >= thr_pct else "⚠ 偏低，建議重點"
+
+            # ── 顏色正確性檢查 ────────────────────────────────
+            h_c, s_c, v_c = _rgb_to_hsv(*rgb)
+            color_name = _hsv_color_name(h_c, s_c, v_c)
+            hint_cfg   = _STATE_COLOR_HINTS.get(offset_key)
+            if hint_cfg:
+                color_ok = hint_cfg["check"](h_c, s_c, v_c)
+                if color_ok:
+                    color_line = f"✓ 顏色正確（{color_name}，符合{hint_cfg['label']}預期）"
+                    color_fg   = "#27ae60"
+                else:
+                    color_line = (f"⚠ 顏色可能不對（偵測到{color_name}，"
+                                  f"{hint_cfg['label']}應為{hint_cfg['expect']}）")
+                    color_fg = "orange"
+            else:
+                color_line = f"點擊顏色：{color_name}  H={h_c:.0f}° S={s_c:.0f}% V={v_c:.0f}%"
+                color_fg   = "gray"
+
+            pct_status = "✓ 正常" if pct >= thr_pct else "⚠ 偏低，建議重點"
             pct_lbl.config(
-                text=(f"鍋爐 {idx+1}：匹配率 {pct*100:.0f}%，偵測閾值 {thr_pct*100:.0f}%  {status}\n"
-                      f"（匹配率高於閾值即可，60% 是正常值）"),
-                foreground="#27ae60" if pct >= thr_pct else "orange")
+                text=(f"鍋爐 {idx+1}：匹配率 {pct*100:.0f}%（閾值 {thr_pct*100:.0f}%）{pct_status}\n"
+                      f"{color_line}"),
+                foreground=color_fg if hint_cfg else ("#27ae60" if pct >= thr_pct else "orange"))
 
             # 更新放大圖標記
             show_zoom(idx, click_mx, click_my)
