@@ -5,6 +5,7 @@ import time
 import json
 import os
 import ctypes
+import colorsys
 import win32gui
 import win32api
 import win32ui
@@ -57,6 +58,11 @@ DEFAULT_SETTINGS = {
     "clock_points":   [],
     "spoiled_points": [],
     "state_threshold": 40,    # 顏色差異容許值
+    # HSV 區域偵測（新格式，每個元素對應一個鍋爐）
+    # 格式：{"cx":dx, "cy":dy, "radius":10, "h":[hmin,hmax], "s":[smin,smax], "v":[vmin,vmax], "pct":0.15}
+    "done_hsv_list":    [],
+    "clock_hsv_list":   [],
+    "spoiled_hsv_list": [],
 }
 MAP_BTN        = (33,  505)
 HOME_BTN       = (880, 538)
@@ -122,6 +128,73 @@ def capture_window(hwnd):
     win32gui.ReleaseDC(hwnd, hwndDC)
     img = Image.frombuffer("RGB", (info["bmWidth"], info["bmHeight"]), raw, "raw", "BGRX", 0, 1)
     return img, w, h
+
+
+# ── HSV 區域偵測輔助 ──────────────────────────────────
+
+def _rgb_to_hsv(r, g, b):
+    """RGB (0-255) → HSV (h: 0-360, s: 0-100, v: 0-100)"""
+    h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+    return h * 360, s * 100, v * 100
+
+
+def _hsv_match_pct(img, scale, mole_cx, mole_cy, radius, h_range, s_range, v_range):
+    """
+    以 (mole_cx, mole_cy) 為中心、radius 為半徑的方形區域內，
+    計算符合 HSV 範圍的像素佔比（0.0 ~ 1.0）。
+    h_range = [hmin, hmax]（支援跨 0 的紅色系，例如 [350, 10]）
+    """
+    w, h_img = img.size
+    total = matched = 0
+    hmin, hmax = h_range
+    smin, smax = s_range
+    vmin, vmax = v_range
+    for dy in range(-radius, radius + 1):
+        for dx in range(-radius, radius + 1):
+            px = min(max(int((mole_cx + dx) * scale), 0), w - 1)
+            py = min(max(int((mole_cy + dy) * scale), 0), h_img - 1)
+            r2, g2, b2 = img.getpixel((px, py))
+            hh, ss, vv = _rgb_to_hsv(r2, g2, b2)
+            total += 1
+            h_ok = (hmin <= hh <= hmax) if hmin <= hmax else (hh >= hmin or hh <= hmax)
+            if h_ok and smin <= ss <= smax and vmin <= vv <= vmax:
+                matched += 1
+    return matched / total if total > 0 else 0.0
+
+
+def _sample_hsv_range(img_rgb, px_x, px_y, sample_r=5):
+    """
+    取樣 (px_x, px_y) 附近 sample_r 半徑的方形區域，
+    計算 HSV 均值並建議範圍（mean ± tolerance）。
+    回傳 dict: {"h", "s", "v", "radius", "pct", "cx":0, "cy":0}
+    """
+    w, h = img_rgb.size
+    hs, ss, vs = [], [], []
+    for dy in range(-sample_r, sample_r + 1):
+        for dx in range(-sample_r, sample_r + 1):
+            ix = min(max(px_x + dx, 0), w - 1)
+            iy = min(max(px_y + dy, 0), h - 1)
+            r, g, b = img_rgb.getpixel((ix, iy))
+            hh, s2, vv = _rgb_to_hsv(r, g, b)
+            hs.append(hh); ss.append(s2); vs.append(vv)
+    nm = len(hs)
+    h_mean = sum(hs) / nm
+    s_mean = sum(ss) / nm
+    v_mean = sum(vs) / nm
+    h_std  = (sum((x - h_mean) ** 2 for x in hs) / nm) ** 0.5
+    s_std  = (sum((x - s_mean) ** 2 for x in ss) / nm) ** 0.5
+    v_std  = (sum((x - v_mean) ** 2 for x in vs) / nm) ** 0.5
+    H_TOL = max(h_std * 2.5, 20)
+    S_TOL = max(s_std * 2.5, 28)
+    V_TOL = max(v_std * 2.5, 28)
+    return {
+        "cx": 0, "cy": 0,
+        "radius": 10,
+        "h": [round(max(h_mean - H_TOL, 0), 1),  round(min(h_mean + H_TOL, 360), 1)],
+        "s": [round(max(s_mean - S_TOL, 0), 1),  round(min(s_mean + S_TOL, 100), 1)],
+        "v": [round(max(v_mean - V_TOL, 0), 1),  round(min(v_mean + V_TOL, 100), 1)],
+        "pct": 0.12,
+    }
 
 
 # ── 校準視窗（通用）──────────────────────────────────
@@ -351,6 +424,33 @@ class RestaurantBot:
                     best = d
             return best
 
+        def check_hsv_state(hsv_list_key):
+            """
+            若設定了 HSV 清單，取本鍋爐對應的 HSV config 偵測。
+            回傳 (hit: bool, score: int, xy: tuple) 或 None（未設定）。
+            score = int((1 - pct) * 100)，越小越好，和 RGB Δ 相同方向。
+            """
+            hsv_list = self.settings.get(hsv_list_key) or []
+            if not hsv_list:
+                return None
+            try:
+                idx = list(self.stoves).index((sx, sy))
+                cfg = hsv_list[idx] if idx < len(hsv_list) else None
+            except (ValueError, IndexError):
+                cfg = None
+            if not cfg:
+                return None
+            cx = sx + cfg.get("cx", 0)
+            cy = sy + cfg.get("cy", 0)
+            radius       = cfg.get("radius", 10)
+            h_range      = cfg.get("h", [0, 360])
+            s_range      = cfg.get("s", [0, 100])
+            v_range      = cfg.get("v", [0, 100])
+            pct_threshold = cfg.get("pct", 0.12)
+            pct   = _hsv_match_pct(img, scale, cx, cy, radius, h_range, s_range, v_range)
+            score = int((1.0 - pct) * 100)
+            return pct >= pct_threshold, score, (cx, cy)
+
         def check_state(points_key, old_color_key, old_offset_key, spread=4):
             """
             先檢查多點清單，再 fallback 舊格式。
@@ -394,34 +494,52 @@ class RestaurantBot:
         markers = [(sx, sy, "white", "stove")]
 
         # 先收集三種狀態的命中結果，最後用 best-match 決定
-        hit_sp, diff_sp, (spx, spy) = check_state("spoiled_points", "spoiled_color", "spoiled_offset", spread=6)
-        markers.append((spx, spy, "red", f"spoiled Δ{diff_sp}"))
+        # 每種狀態：先嘗試 HSV 區域偵測（精準），若未設定才 fallback RGB 單點偵測
+        _hsv_sp = check_hsv_state("spoiled_hsv_list")
+        if _hsv_sp is not None:
+            hit_sp, diff_sp, (spx, spy) = _hsv_sp
+            markers.append((spx, spy, "red", f"sp {int((1-diff_sp/100)*100)}%"))
+        else:
+            hit_sp, diff_sp, (spx, spy) = check_state("spoiled_points", "spoiled_color", "spoiled_offset", spread=6)
+            markers.append((spx, spy, "red", f"spoiled Δ{diff_sp}"))
 
-        hit_d, diff_d, (dx, dy) = check_state("done_points", "done_color", "done_offset")
-        markers.append((dx, dy, "yellow", f"done Δ{diff_d}"))
+        _hsv_d = check_hsv_state("done_hsv_list")
+        if _hsv_d is not None:
+            hit_d, diff_d, (dx, dy) = _hsv_d
+            markers.append((dx, dy, "yellow", f"done {int((1-diff_d/100)*100)}%"))
+        else:
+            hit_d, diff_d, (dx, dy) = check_state("done_points", "done_color", "done_offset")
+            markers.append((dx, dy, "yellow", f"done Δ{diff_d}"))
 
-        # 時鐘 → 烹飪中（動畫，時序重試）
+        # 時鐘 → 烹飪中
         clock_calibrated = bool(
+            self.settings.get("clock_hsv_list") or
             self.settings.get("clock_points") or self.settings.get("clock_color")
         )
         clock_hit, clock_diff, clock_pt = False, 999, (sx, sy)
         if clock_calibrated:
-            for _sample in range(3):
-                if _sample > 0:
-                    time.sleep(0.15)
-                    try:
-                        raw_img, w, h = capture_window(self.hwnd)
-                        img   = raw_img.convert("RGB")
-                        scale = max(w / MOLE_W, h / MOLE_H)
-                    except Exception:
+            _hsv_ck = check_hsv_state("clock_hsv_list")
+            if _hsv_ck is not None:
+                clock_hit, clock_diff, clock_pt = _hsv_ck
+                markers.append((*clock_pt, "orange", f"ck {int((1-clock_diff/100)*100)}%"))
+            else:
+                # RGB 時鐘需時序重試（動畫）
+                for _sample in range(3):
+                    if _sample > 0:
+                        time.sleep(0.15)
+                        try:
+                            raw_img, w, h = capture_window(self.hwnd)
+                            img   = raw_img.convert("RGB")
+                            scale = max(w / MOLE_W, h / MOLE_H)
+                        except Exception:
+                            break
+                    h_t, d_t, p_t = check_state("clock_points", "clock_color", "clock_offset")
+                    if d_t < clock_diff:
+                        clock_diff, clock_pt = d_t, p_t
+                    if h_t:
+                        clock_hit = True
                         break
-                h_t, d_t, p_t = check_state("clock_points", "clock_color", "clock_offset")
-                if d_t < clock_diff:
-                    clock_diff, clock_pt = d_t, p_t
-                if h_t:
-                    clock_hit = True
-                    break
-        markers.append((*clock_pt, "orange", f"clock Δ{clock_diff}"))
+                markers.append((*clock_pt, "orange", f"clock Δ{clock_diff}"))
 
         # 建立候選集，選出最佳匹配
         candidates = {}
@@ -993,6 +1111,7 @@ class App:
                        "clock_color",   "clock_offset",
                        "done_color",    "done_offset",
                        "done_points", "clock_points", "spoiled_points",
+                       "done_hsv_list", "clock_hsv_list", "spoiled_hsv_list",
                        "state_threshold")
         self._extra_settings = {k: settings[k] for k in _extra_keys}
         self.bot = RestaurantBot(self.stoves, self.recipe, settings)
@@ -1101,7 +1220,9 @@ class App:
                            tuple(DEFAULT_RECIPE["confirm_btn"]) or
                            tuple(self.recipe.get("cancel_btn", ())) !=
                            tuple(DEFAULT_RECIPE["cancel_btn"])),
-            "state":      bool(s.get("done_points") or s.get("clock_points") or
+            "state":      bool(s.get("done_hsv_list") or s.get("clock_hsv_list") or
+                               s.get("spoiled_hsv_list") or
+                               s.get("done_points") or s.get("clock_points") or
                                s.get("spoiled_points") or s.get("done_color") or
                                s.get("clock_color") or s.get("spoiled_color")),
             "door":       bool(s.get("door_out") and s.get("door_in")),
@@ -1489,11 +1610,14 @@ class App:
 
         for label, hint, color_key, offset_key in states:
             state_name = color_key.replace("_color", "")
-            points = self._extra_settings.get(f"{state_name}_points") or []
-            color  = self._extra_settings.get(color_key)
-            offset = self._extra_settings.get(offset_key) if offset_key else None
+            hsv_list = self._extra_settings.get(f"{state_name}_hsv_list") or []
+            points   = self._extra_settings.get(f"{state_name}_points") or []
+            color    = self._extra_settings.get(color_key)
+            offset   = self._extra_settings.get(offset_key) if offset_key else None
             n_stoves = len(self.stoves)
-            if points:
+            if hsv_list:
+                badge = f"✓ HSV 區域（{len(hsv_list)} 爐）"
+            elif points:
                 if len(points) == n_stoves:
                     badge = f"✓ 各鍋爐獨立（{len(points)} 點）"
                 else:
@@ -1520,12 +1644,12 @@ class App:
 
     def _calib_offset_color(self, color_key, offset_key, label):
         """
-        個別校準：依序點擊 N 個鍋爐各自的偵測位置（一格一點）。
-        儲存為 <state>_points 格式 [[dx,dy,r,g,b], ...]，元素數量等於鍋爐數。
-        偵測時每個鍋爐只取自己那個點，不會互相干擾。
+        個別校準（放大圖版）：左側顯示全景，右側顯示放大圖，
+        點擊右側放大圖完成校準，同時儲存 RGB (*_points) 與 HSV (*_hsv_list)。
         """
-        state_name = color_key.replace("_color", "")   # done / clock / spoiled
+        state_name = color_key.replace("_color", "")
         points_key = f"{state_name}_points"
+        hsv_list_key = f"{state_name}_hsv_list"
         n = len(self.stoves)
         if n == 0:
             messagebox.showwarning("提示", "請先校準鍋爐座標。")
@@ -1539,127 +1663,210 @@ class App:
             messagebox.showerror("錯誤", f"截圖失敗：{e}")
             return
 
-        sg         = max(game_w / MOLE_W, game_h / MOLE_H)
-        disp_scale = min(900 / game_w, 580 / game_h, 1.0)
+        sg      = max(game_w / MOLE_W, game_h / MOLE_H)   # game pixels per mole unit
         img_rgb = img.convert("RGB")
-        disp    = img.resize((int(game_w * disp_scale), int(game_h * disp_scale)))
-        photo   = ImageTk.PhotoImage(disp)
 
-        point_hints = {
-            "clock_offset":   "橙色時鐘圓圈",
-            "done_offset":    "食物做好的黃光",
-            "spoiled_offset": "鍋爐上方的黑煙",
+        # ── 狀態專屬說明 ──────────────────────────────────────
+        CALIB_HINTS = {
+            "clock_offset":   "請在右側放大圖中，點擊橙色時鐘圓圈的中心位置",
+            "done_offset":    "請在右側放大圖中，點擊黃色光暈最亮的位置",
+            "spoiled_offset": "請在右側放大圖中，點擊鍋爐上方黑色煙霧的位置",
         }
-        pt_hint = point_hints.get(offset_key, label)
+        pt_hint = CALIB_HINTS.get(offset_key, f"請在右側放大圖中，點擊「{label}」對應位置")
 
+        # ── 左側全景：最寬 480px ──────────────────────────────
+        LEFT_MAX_W, LEFT_MAX_H = 480, 400
+        left_scale = min(LEFT_MAX_W / game_w, LEFT_MAX_H / game_h, 1.0)
+        lw = int(game_w * left_scale)
+        lh = int(game_h * left_scale)
+        left_photo = ImageTk.PhotoImage(img.resize((lw, lh), Image.LANCZOS))
+
+        # ── 右側放大圖：80×80 摩爾座標 → 4× → 320×320 ────────
+        ZOOM_R      = 40       # 摩爾半徑
+        ZOOM_SIZE   = 320      # canvas 尺寸（像素）
+        zoom_factor = ZOOM_SIZE / (ZOOM_R * 2)
+
+        # ── 視窗建立 ──────────────────────────────────────────
         win = tk.Toplevel(self.root)
         win.title(f"校準「{label}」（各鍋爐獨立）")
         win.grab_set()
+        win.resizable(False, False)
 
-        instr_lbl = ttk.Label(win, text="", padding=8, font=("", 11, "bold"))
+        ttk.Label(win, text=f"依序校準 {n} 個鍋爐，各自點一次右側放大圖",
+                  font=("", 11, "bold"), padding=(8, 8, 8, 2)).pack()
+        instr_lbl = ttk.Label(win, text="", foreground="blue",
+                               font=("", 10), padding=(8, 0, 8, 0))
         instr_lbl.pack()
-        sub_lbl = ttk.Label(win,
-            text=f"點擊對應鍋爐的「{pt_hint}」位置。按「上一步」可撤回，按「重新來過」清空全部。",
-            foreground="gray", padding=(8, 0, 8, 4), wraplength=600)
-        sub_lbl.pack()
+        ttk.Label(win, text=pt_hint, foreground="gray",
+                  padding=(8, 0, 8, 6), wraplength=820).pack()
 
-        canvas = tk.Canvas(win,
-                           width=int(game_w * disp_scale),
-                           height=int(game_h * disp_scale),
-                           cursor="crosshair")
-        canvas.pack(padx=8, pady=4)
-        canvas.create_image(0, 0, anchor=tk.NW, image=photo)
-        canvas.photo = photo
+        panels = ttk.Frame(win)
+        panels.pack(padx=8, pady=4)
 
-        # ── 鍋爐位置標記（空心圓 + 序號） ──
-        stove_ovals = []   # (oval_id, text_id) per stove
-        for i, (sx, sy) in enumerate(self.stoves):
-            ex = int(sx * sg * disp_scale)
-            ey = int(sy * sg * disp_scale)
-            ov = canvas.create_oval(ex-14, ey-14, ex+14, ey+14,
-                                    outline="gray", width=2)
-            tx = canvas.create_text(ex, ey, text=str(i+1),
-                                    fill="gray", font=("Arial", 10, "bold"))
-            stove_ovals.append((ov, tx))
+        # 左側全景
+        lf = ttk.LabelFrame(panels, text="全景（綠圈 = 目前要校準的鍋爐）")
+        lf.pack(side=tk.LEFT, padx=(0, 8), anchor=tk.N)
+        left_canvas = tk.Canvas(lf, width=lw, height=lh)
+        left_canvas.pack()
+        left_canvas.create_image(0, 0, anchor=tk.NW, image=left_photo)
+        left_canvas.photo = left_photo
 
-        collected   = []    # [[dx,dy,r,g,b], ...]
-        dot_canvas_items = []   # (dot_id, lbl_id) 已畫的偵測點
+        # 右側放大圖
+        rf = ttk.LabelFrame(panels, text="放大圖（在此點擊校準位置）")
+        rf.pack(side=tk.LEFT, anchor=tk.N)
+        zoom_canvas = tk.Canvas(rf, width=ZOOM_SIZE, height=ZOOM_SIZE,
+                                cursor="crosshair", bg="#1a1a1a")
+        zoom_canvas.pack()
+        pct_lbl = ttk.Label(rf, text="等待點擊…", foreground="gray",
+                             padding=(4, 2), font=("", 9))
+        pct_lbl.pack()
 
-        def refresh_ui():
-            idx = len(collected)
+        # 左側鍋爐標記
+        stove_items = []
+        for i, (sx2, sy2) in enumerate(self.stoves):
+            ex = int(sx2 * sg * left_scale)
+            ey = int(sy2 * sg * left_scale)
+            ov = left_canvas.create_oval(ex-12, ey-12, ex+12, ey+12,
+                                         outline="gray", width=2)
+            tx = left_canvas.create_text(ex, ey, text=str(i+1),
+                                         fill="gray", font=("Arial", 9, "bold"))
+            stove_items.append((ov, tx))
+
+        collected_pts  = []   # [[dx,dy,r,g,b], ...]  RGB 備用
+        collected_hsv  = []   # [hsv_cfg, ...]  HSV 區域設定
+
+        zoom_photo_ref = [None]
+
+        def show_zoom(stove_idx, dot_mx=None, dot_my=None):
+            """更新右側放大圖。dot_mx/my 是點擊的摩爾座標（畫紅圈用）。"""
+            sx2, sy2 = self.stoves[stove_idx]
+            mx0 = sx2 - ZOOM_R
+            my0 = sy2 - ZOOM_R
+            # 全圖像素範圍
+            px0 = min(max(int(mx0 * sg), 0), game_w)
+            py0 = min(max(int(my0 * sg), 0), game_h)
+            px1 = min(int((mx0 + ZOOM_R * 2) * sg), game_w)
+            py1 = min(int((my0 + ZOOM_R * 2) * sg), game_h)
+            crop = img_rgb.crop((px0, py0, px1, py1))
+            # 拉伸到 ZOOM_SIZE × ZOOM_SIZE（最近鄰 → 不模糊，方便看清像素）
+            z = crop.resize((ZOOM_SIZE, ZOOM_SIZE), Image.NEAREST)
+
+            # 在放大圖上畫鍋爐中心十字
+            from PIL import ImageDraw
+            draw = ImageDraw.Draw(z)
+            cx_c = int((sx2 - mx0) * zoom_factor)
+            cy_c = int((sy2 - my0) * zoom_factor)
+            draw.line([(cx_c - 12, cy_c), (cx_c + 12, cy_c)], fill="#ffffff", width=1)
+            draw.line([(cx_c, cy_c - 12), (cx_c, cy_c + 12)], fill="#ffffff", width=1)
+
+            if dot_mx is not None:
+                dx_c = int((dot_mx - mx0) * zoom_factor)
+                dy_c = int((dot_my - my0) * zoom_factor)
+                draw.ellipse([dx_c - 9, dy_c - 9, dx_c + 9, dy_c + 9],
+                             outline="red", width=3)
+                draw.line([(dx_c - 14, dy_c), (dx_c + 14, dy_c)], fill="red", width=2)
+                draw.line([(dx_c, dy_c - 14), (dx_c, dy_c + 14)], fill="red", width=2)
+
+            photo = ImageTk.PhotoImage(z)
+            zoom_canvas.delete("all")
+            zoom_canvas.create_image(0, 0, anchor=tk.NW, image=photo)
+            zoom_canvas.photo = photo
+            zoom_photo_ref[0] = photo
+
+        def refresh_ui(next_after=0):
+            """更新說明、鍋爐標記、放大圖。next_after>0 = 多少 ms 後刷新（用於自動進下一步）。"""
+            idx = len(collected_pts)
             if idx < n:
                 instr_lbl.config(
-                    text=f"第 {idx+1} / {n} 個鍋爐　→　請點鍋爐 {idx+1} 的偵測位置",
-                    foreground="black")
-                for i, (ov, tx) in enumerate(stove_ovals):
+                    text=f"第 {idx+1} / {n} 個鍋爐",
+                    foreground="blue")
+                show_zoom(idx)
+                for i, (ov, tx) in enumerate(stove_items):
                     if i < idx:
-                        col = "#27ae60"    # 已完成：深綠
+                        col, ww = "#27ae60", 2
                     elif i == idx:
-                        col = "green"      # 目前目標：亮綠
+                        col, ww = "#00dd00", 3
                     else:
-                        col = "gray"       # 未到：灰
-                    canvas.itemconfig(ov, outline=col, width=3 if i == idx else 2)
-                    canvas.itemconfig(tx, fill=col)
+                        col, ww = "gray", 2
+                    left_canvas.itemconfig(ov, outline=col, width=ww)
+                    left_canvas.itemconfig(tx, fill=col)
             else:
-                instr_lbl.config(
-                    text=f"全部 {n} 個鍋爐校準完成！按「儲存」確認。",
-                    foreground="#27ae60")
-                for ov, tx in stove_ovals:
-                    canvas.itemconfig(ov, outline="#27ae60", width=2)
-                    canvas.itemconfig(tx, fill="#27ae60")
+                instr_lbl.config(text=f"全部 {n} 個鍋爐校準完成！按「儲存」確認。",
+                                 foreground="#27ae60")
+                for ov, tx in stove_items:
+                    left_canvas.itemconfig(ov, outline="#27ae60", width=2)
+                    left_canvas.itemconfig(tx, fill="#27ae60")
 
         refresh_ui()
 
-        def on_pick(event):
-            idx = len(collected)
+        def on_zoom_click(event):
+            idx = len(collected_pts)
             if idx >= n:
                 return
-            px  = min(int(event.x / disp_scale), game_w - 1)
-            py  = min(int(event.y / disp_scale), game_h - 1)
-            mx  = int(px / sg)
-            my  = int(py / sg)
-            rgb = img_rgb.getpixel((px, py))
-            sx, sy = self.stoves[idx]
-            dx, dy = mx - sx, my - sy
-            collected.append([dx, dy, rgb[0], rgb[1], rgb[2]])
-            # 畫偵測點（小實心圓）
-            r = 6
-            d = canvas.create_oval(event.x-r, event.y-r, event.x+r, event.y+r,
-                                   fill="lime", outline="green", width=2)
-            t = canvas.create_text(event.x + 12, event.y, text=str(idx+1),
-                                   fill="green", font=("Arial", 9, "bold"))
-            dot_canvas_items.append((d, t))
-            refresh_ui()
+            sx2, sy2 = self.stoves[idx]
+            mx0 = sx2 - ZOOM_R
+            my0 = sy2 - ZOOM_R
+            # canvas 座標 → 摩爾座標
+            click_mx = mx0 + event.x / zoom_factor
+            click_my = my0 + event.y / zoom_factor
+            # 全圖像素座標
+            click_px = min(max(int(click_mx * sg), 0), game_w - 1)
+            click_py = min(max(int(click_my * sg), 0), game_h - 1)
+            rgb = img_rgb.getpixel((click_px, click_py))
+
+            dx = round(click_mx - sx2)
+            dy = round(click_my - sy2)
+            collected_pts.append([dx, dy, rgb[0], rgb[1], rgb[2]])
+
+            # 計算 HSV 範圍（取樣點附近 5px 半徑）
+            hsv_cfg = _sample_hsv_range(img_rgb, click_px, click_py, sample_r=5)
+            hsv_cfg["cx"] = dx
+            hsv_cfg["cy"] = dy
+            collected_hsv.append(hsv_cfg)
+
+            # 計算該區域實際匹配率
+            pct = _hsv_match_pct(img_rgb, sg, sx2 + dx, sy2 + dy,
+                                  hsv_cfg["radius"],
+                                  hsv_cfg["h"], hsv_cfg["s"], hsv_cfg["v"])
+            pct_lbl.config(
+                text=f"鍋爐 {idx+1} 匹配率：{pct*100:.1f}%"
+                     f"（HSV H={hsv_cfg['h']}, S={hsv_cfg['s']}, V={hsv_cfg['v']}）",
+                foreground="#27ae60" if pct >= hsv_cfg["pct"] else "orange")
+
+            # 更新放大圖（標記點擊位置）
+            show_zoom(idx, click_mx, click_my)
+
+            # 0.8s 後自動進下一個鍋爐
+            win.after(800, refresh_ui)
 
         def on_undo():
-            if not collected:
+            if not collected_pts:
                 return
-            collected.pop()
-            if dot_canvas_items:
-                d, t = dot_canvas_items.pop()
-                canvas.delete(d)
-                canvas.delete(t)
+            collected_pts.pop()
+            collected_hsv.pop()
+            pct_lbl.config(text="已撤回上一步", foreground="gray")
             refresh_ui()
 
         def on_clear():
-            collected.clear()
-            for d, t in dot_canvas_items:
-                canvas.delete(d)
-                canvas.delete(t)
-            dot_canvas_items.clear()
-            self._extra_settings[points_key] = []
-            self.bot.settings[points_key]    = []
+            collected_pts.clear()
+            collected_hsv.clear()
+            for k in (points_key, hsv_list_key):
+                self._extra_settings[k] = []
+                self.bot.settings[k]    = []
             self._save_all()
+            pct_lbl.config(text="已清空所有校準點", foreground="gray")
             refresh_ui()
 
         def on_save():
-            if len(collected) < n:
+            if len(collected_pts) < n:
                 messagebox.showwarning("提示",
-                    f"還差 {n - len(collected)} 個鍋爐沒校準。")
+                    f"還差 {n - len(collected_pts)} 個鍋爐沒校準。")
                 return
-            self._extra_settings[points_key] = collected[:]
-            self.bot.settings[points_key]    = collected[:]
-            # 清除舊格式（改用個別 points，舊格式已無作用）
+            self._extra_settings[points_key]   = collected_pts[:]
+            self._extra_settings[hsv_list_key] = collected_hsv[:]
+            self.bot.settings[points_key]      = collected_pts[:]
+            self.bot.settings[hsv_list_key]    = collected_hsv[:]
+            # 清除舊單點格式
             for k in (color_key, offset_key):
                 if k:
                     self._extra_settings[k] = None
@@ -1668,17 +1875,17 @@ class App:
             self._refresh_calib_status()
             win.destroy()
             messagebox.showinfo("完成",
-                f"「{label}」已儲存 {n} 個個別校準點。\n"
-                "每個鍋爐只用自己那個點偵測，不互相干擾。")
+                f"「{label}」已儲存 {n} 個獨立校準點（含 HSV 區域偵測）。\n"
+                "偵測時使用 HSV 色調範圍，不受遮擋或亮度輕微變化影響。")
+
+        zoom_canvas.bind("<Button-1>", on_zoom_click)
 
         btn_frame = ttk.Frame(win)
         btn_frame.pack(pady=6)
-        ttk.Button(btn_frame, text="儲存",      command=on_save ).pack(side=tk.LEFT, padx=6)
-        ttk.Button(btn_frame, text="上一步",    command=on_undo ).pack(side=tk.LEFT, padx=6)
-        ttk.Button(btn_frame, text="重新來過",  command=on_clear).pack(side=tk.LEFT, padx=6)
-        ttk.Button(btn_frame, text="取消",      command=win.destroy).pack(side=tk.LEFT, padx=6)
-
-        canvas.bind("<Button-1>", on_pick)
+        ttk.Button(btn_frame, text="儲存",     command=on_save   ).pack(side=tk.LEFT, padx=6)
+        ttk.Button(btn_frame, text="上一步",   command=on_undo   ).pack(side=tk.LEFT, padx=6)
+        ttk.Button(btn_frame, text="重新來過", command=on_clear  ).pack(side=tk.LEFT, padx=6)
+        ttk.Button(btn_frame, text="取消",     command=win.destroy).pack(side=tk.LEFT, padx=6)
 
     def _calib_stoves(self):
         hwnd = self._get_hwnd()
@@ -1760,18 +1967,19 @@ class App:
         win.title("偵測測試（即時）")
         win.resizable(False, False)
 
-        ttk.Label(win, text="每 0.5 秒掃一次所有鍋爐，Δ 值越小代表越接近校準顏色，< threshold 表示偵測到。",
-                  padding=(10, 8, 10, 4), wraplength=480).pack()
+        ttk.Label(win,
+                  text="每 0.2 秒掃一次。HSV 模式顯示匹配率（% 越高越命中），RGB 模式顯示色差 Δ（越小越命中）。",
+                  padding=(10, 8, 10, 4), wraplength=520).pack()
 
         threshold = self.bot.settings.get("state_threshold", 40)
-        ttk.Label(win, text=f"目前 threshold = {threshold}（校準狀態色介面可調整）",
+        ttk.Label(win, text=f"RGB threshold = {threshold}  ｜  HSV 預設閾值 = 12%",
                   foreground="gray", padding=(10, 0, 10, 6)).pack()
 
         frame = ttk.Frame(win, padding=8)
         frame.pack(fill=tk.BOTH)
 
         # 表頭
-        headers = ["鍋爐", "座標", "狀態", "做完 Δ", "時鐘 Δ", "腐壞 Δ"]
+        headers = ["鍋爐", "座標", "狀態", "做完", "時鐘", "腐壞"]
         for col, h in enumerate(headers):
             ttk.Label(frame, text=h, font=("", 9, "bold"),
                       padding=(6, 2)).grid(row=0, column=col, sticky=tk.W)
@@ -1814,7 +2022,27 @@ class App:
                     py = min(max(int(my * scale), 0), gh - 1)
                     return img.getpixel((px, py))
 
+                def hsv_score(hsv_list_key, _sx, _sy, _idx):
+                    """HSV 模式：回傳 'XX% ✓' 或 'XX%' 或 None（未設定）"""
+                    hsv_list = s.get(hsv_list_key) or []
+                    if not hsv_list or _idx >= len(hsv_list):
+                        return None
+                    cfg = hsv_list[_idx]
+                    if not cfg:
+                        return None
+                    cx = _sx + cfg.get("cx", 0)
+                    cy = _sy + cfg.get("cy", 0)
+                    pct = _hsv_match_pct(img, scale, cx, cy,
+                                         cfg.get("radius", 10),
+                                         cfg.get("h", [0, 360]),
+                                         cfg.get("s", [0, 100]),
+                                         cfg.get("v", [0, 100]))
+                    pct_thr = cfg.get("pct", 0.12)
+                    mark = " ✓" if pct >= pct_thr else ""
+                    return f"{pct*100:.0f}%{mark}"
+
                 def best_delta(pts_key, color_key, off_key, spread, _sx, _sy, _idx):
+                    """RGB 模式：回傳 'Δ ✓' 或 'Δ' 或 '未校準'"""
                     pts   = s.get(pts_key) or []
                     color = s.get(color_key)
                     off   = s.get(off_key) or [0, 0]
@@ -1822,7 +2050,6 @@ class App:
                         return "未校準"
                     best = 999
                     if pts:
-                        # 個別校準模式：只看這個鍋爐自己的點
                         if len(pts) == len(self.bot.stoves):
                             relevant = [pts[_idx]] if _idx < len(pts) else pts
                         else:
@@ -1839,47 +2066,59 @@ class App:
                     mark = " ✓" if best < threshold else ""
                     return f"{best}{mark}"
 
-                def parse_d(d_str):
-                    """把 best_delta 回傳的字串（如 '25 ✓' 或 '未校準'）轉成整數 Δ"""
+                def state_score(hsv_key, pts_key, col_key, off_key, spread, _sx, _sy, _idx):
+                    """優先用 HSV，若無才用 RGB"""
+                    hs = hsv_score(hsv_key, _sx, _sy, _idx)
+                    if hs is not None:
+                        return hs, hs
+                    bd = best_delta(pts_key, col_key, off_key, spread, _sx, _sy, _idx)
+                    return bd, bd
+
+                def parse_score(txt):
+                    """從顯示文字推算命中分數（用於狀態推斷）"""
+                    if "未校準" in txt:
+                        return 999, False
+                    hit = "✓" in txt
                     try:
-                        return int(d_str.split()[0])
-                    except (ValueError, IndexError):
-                        return 999
+                        num = float(txt.replace("%", "").replace("✓", "").strip())
+                        # HSV%：命中判斷看 ✓；RGB Δ：命中判斷看 ✓
+                        return num, hit
+                    except ValueError:
+                        return 999, False
 
                 for i, (sx, sy) in enumerate(self.bot.stoves):
                     if stop_event.is_set():
                         break
 
-                    done_d    = best_delta("done_points",    "done_color",    "done_offset",    4, sx, sy, i)
-                    clock_d   = best_delta("clock_points",   "clock_color",   "clock_offset",   4, sx, sy, i)
-                    spoiled_d = best_delta("spoiled_points", "spoiled_color", "spoiled_offset", 6, sx, sy, i)
+                    done_txt,    _ = state_score("done_hsv_list",    "done_points",    "done_color",    "done_offset",    4, sx, sy, i)
+                    clock_txt,   _ = state_score("clock_hsv_list",   "clock_points",   "clock_color",   "clock_offset",   4, sx, sy, i)
+                    spoiled_txt, _ = state_score("spoiled_hsv_list", "spoiled_points", "spoiled_color", "spoiled_offset", 6, sx, sy, i)
 
-                    # 從 Δ 值直接推斷狀態，優先順序 cooking > done > spoiled
-                    d_done    = parse_d(done_d)
-                    d_clock   = parse_d(clock_d)
-                    d_spoiled = parse_d(spoiled_d)
+                    _, done_hit    = parse_score(done_txt)
+                    _, clock_hit   = parse_score(clock_txt)
+                    _, spoiled_hit = parse_score(spoiled_txt)
+
                     hits = {}
-                    if d_done    < threshold: hits["done"]    = d_done
-                    if d_clock   < threshold: hits["cooking"] = d_clock
-                    if d_spoiled < threshold: hits["spoiled"] = d_spoiled
-                    conflict = len(hits) > 1   # 多個狀態同時命中 → 校準點有重疊
+                    if done_hit:    hits["done"]    = 1
+                    if clock_hit:   hits["cooking"] = 1
+                    if spoiled_hit: hits["spoiled"] = 1
+                    conflict = len(hits) > 1
 
                     if not hits:
                         state = "unknown"
                     elif "cooking" in hits:
                         state = "cooking"
                     elif "done" in hits and "spoiled" in hits:
-                        state = "done"   # done > spoiled
+                        state = "done"
                     else:
-                        state = min(hits, key=hits.get)
+                        state = next(iter(hits))
 
-                    # 有衝突時在狀態後面加 ⚠，提示校準點需要調整
                     state_txt = f"{state} ⚠" if conflict else state
                     sc = {"cooking": "blue", "done": "orange",
                           "spoiled": "red",  "unknown": "gray"}.get(state, "gray")
 
                     def update_row(idx=i, st=state_txt, fg=sc,
-                                   dd=done_d, cd=clock_d, sd=spoiled_d):
+                                   dd=done_txt, cd=clock_txt, sd=spoiled_txt):
                         if not win.winfo_exists():
                             return
                         row_labels[idx][0].config(text=str(idx+1))
