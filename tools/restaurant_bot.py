@@ -584,20 +584,23 @@ class RestaurantBot:
         if not candidates:
             return "unknown"
 
-        # ── 明確優先順序：cooking > done > spoiled ──────────────
+        # ── 明確優先順序 ──────────────────────────────────────
         #
-        # cooking 優先：時鐘動畫最可靠，其他偵測點可能因動畫偶發命中。
-        #   誤清除或誤收正在烹飪的食物代價遠大於漏掉一次腐壞／做完。
+        # 若腐壞匹配率 > 60%，優先腐壞（即使時鐘也命中）：
+        #   時鐘 HSV 校準過寬（h=[0,360]）時會誤命中所有鍋爐，
+        #   此時腐壞高匹配率才是可靠訊號。
         #
-        # done > spoiled：當兩者同時命中（校準點重疊）：
-        #   - 誤判「done 當 spoiled」→ _clear_spoiled 按確認鈕，
-        #     可能誤觸食譜菜格（高風險）。
-        #   - 誤判「spoiled 當 done」→ _collect_food 只點一下等 1.5 秒，
-        #     若彈窗出現也只是空等，不改變遊戲狀態（低風險）。
+        # done > spoiled：誤判「done 當 spoiled」風險高（按確認鈕可能誤觸食譜），
+        #   誤判「spoiled 當 done」只是空等，低風險。
         if "cooking" in candidates:
-            if len(candidates) > 1:
-                self._debug_capture(f"cooking_beats_conflict_{sx}_{sy}", markers)
-            return "cooking"
+            # 腐壞匹配率高時，腐壞優先（score = (1-pct)*100，越小越準）
+            spoiled_pct = 1.0 - candidates.get("spoiled", 100) / 100
+            if "spoiled" in candidates and spoiled_pct >= 0.6:
+                del candidates["cooking"]   # 腐壞接管，往下走正常優先序
+            else:
+                if len(candidates) > 1:
+                    self._debug_capture(f"cooking_beats_conflict_{sx}_{sy}", markers)
+                return "cooking"
 
         if "done" in candidates and "spoiled" in candidates:
             self._debug_capture(f"done_beats_spoiled_{sx}_{sy}", markers)
