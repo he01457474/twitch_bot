@@ -1070,65 +1070,66 @@ class RestaurantBot:
             return
 
         self._stop.clear()
-        # 給 3 秒讓玩家確認食譜已關閉，再取基準色
-        for i in range(3, 0, -1):
-            if self._stop.is_set(): return
-            on_status(f"請確認食譜已關閉，{i} 秒後開始…")
-            self.wait(1)
-        self._recipe_closed_baseline = list(self.get_pixel(*self.recipe["check_pt"]))
-        # scan_interval 單位已是秒
-        antlag_sec = antlag_minutes * 60 if antlag_minutes > 0 else scan_interval
+        try:
+            # 給 3 秒讓玩家確認食譜已關閉，再取基準色
+            for i in range(3, 0, -1):
+                if self._stop.is_set(): return
+                on_status(f"請確認食譜已關閉，{i} 秒後開始…")
+                self.wait(1)
+            self._recipe_closed_baseline = list(self.get_pixel(*self.recipe["check_pt"]))
+            # scan_interval 單位已是秒
+            antlag_sec = antlag_minutes * 60 if antlag_minutes > 0 else scan_interval
 
-        # 若未校準餐廳確認點，提醒但不阻擋
-        if not self.settings.get("restaurant_pt") or not self.settings.get("restaurant_color"):
-            on_status("提示：未校準餐廳確認點，建議校準以防止在餐廳外誤觸做菜")
-            self.wait(3.0)
+            # 若未校準餐廳確認點，提醒但不阻擋
+            if not self.settings.get("restaurant_pt") or not self.settings.get("restaurant_color"):
+                on_status("提示：未校準餐廳確認點，建議校準以防止在餐廳外誤觸做菜")
+                self.wait(3.0)
 
-        while not self._stop.is_set():
-            # 每輪先確認視窗還在，關閉就停止
-            if not self._is_window_alive():
-                on_status("Flash Player 視窗已關閉，停止機器人", error=True)
-                break
+            while not self._stop.is_set():
+                # 每輪先確認視窗還在，關閉就停止
+                if not self._is_window_alive():
+                    on_status("Flash Player 視窗已關閉，停止機器人", error=True)
+                    break
 
-            # 掃描前防卡頓：若距上次防卡頓已超過設定間隔，先出去繞一圈再掃
-            # 這樣即使掃描本身耗時，Flash Player 也不會在掃描前就已經積累太久
-            if antlag_sec > 0 and time.time() - self._last_antlag >= antlag_sec:
-                on_status("掃描前防卡頓…")
-                self.leave_and_return(on_status)
-                if self._stop.is_set(): break
+                # 掃描前防卡頓：若距上次防卡頓已超過設定間隔，先出去繞一圈再掃
+                # 這樣即使掃描本身耗時，Flash Player 也不會在掃描前就已經積累太久
+                if antlag_sec > 0 and time.time() - self._last_antlag >= antlag_sec:
+                    on_status("掃描前防卡頓…")
+                    self.leave_and_return(on_status)
+                    if self._stop.is_set(): break
 
-            # 確認在餐廳內，否則嘗試導航回來
-            if not self._is_in_restaurant():
-                on_status("不在餐廳，嘗試返回…")
-                self.leave_and_return(on_status)
-                if self._stop.is_set(): break
-                self.wait(2.0)
+                # 確認在餐廳內，否則嘗試導航回來
                 if not self._is_in_restaurant():
-                    on_status("無法確認在餐廳，跳過本輪掃描")
-                    if not self.wait_with_antlag(scan_interval, antlag_sec, on_status, "等待重試"): break
-                    continue
+                    on_status("不在餐廳，嘗試返回…")
+                    self.leave_and_return(on_status)
+                    if self._stop.is_set(): break
+                    self.wait(2.0)
+                    if not self._is_in_restaurant():
+                        on_status("無法確認在餐廳，跳過本輪掃描")
+                        if not self.wait_with_antlag(scan_interval, antlag_sec, on_status, "等待重試"): break
+                        continue
 
-            # 只有偵測到食譜開著才按 X，避免誤點右上角按鈕
-            if self.is_recipe_open():
-                self.click_real(*self.recipe["close"], delay=0.5)
+                # 只有偵測到食譜開著才按 X，避免誤點右上角按鈕
+                if self.is_recipe_open():
+                    self.click_real(*self.recipe["close"], delay=0.5)
 
-            # 掃描所有鍋爐：已完成→收菜並重新做，烹飪中→跳過
-            n = len(self.stoves)
-            on_status(f"開始掃描（共 {n} 個鍋爐）…")
-            self.save_live_snapshot("掃描前")   # 存桌面快照供除錯
-            for i, (sx, sy) in enumerate(self.stoves):
+                # 掃描所有鍋爐：已完成→收菜並重新做，烹飪中→跳過
+                n = len(self.stoves)
+                on_status(f"開始掃描（共 {n} 個鍋爐）…")
+                self.save_live_snapshot("掃描前")   # 存桌面快照供除錯
+                for i, (sx, sy) in enumerate(self.stoves):
+                    if self._stop.is_set(): break
+                    on_status(f"【鍋爐 {i+1}/{n}】掃描中…")
+                    self.setup_stove(sx, sy, page, dish, on_status)
+                    on_status(f"【鍋爐 {i+1}/{n}】完成")
+                    if not self.wait(1.0): break
+
                 if self._stop.is_set(): break
-                on_status(f"【鍋爐 {i+1}/{n}】掃描中…")
-                self.setup_stove(sx, sy, page, dish, on_status)
-                on_status(f"【鍋爐 {i+1}/{n}】完成")
-                if not self.wait(1.0): break
 
-            if self._stop.is_set(): break
-
-            # 等待下次掃描（含防卡頓）
-            if not self.wait_with_antlag(scan_interval, antlag_sec, on_status, "等待掃描"): break
-
-        on_status("已停止")
+                # 等待下次掃描（含防卡頓）
+                if not self.wait_with_antlag(scan_interval, antlag_sec, on_status, "等待掃描"): break
+        finally:
+            on_status("已停止")
 
     def stop(self):
         self._stop.set()
