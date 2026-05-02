@@ -866,13 +866,14 @@ class RestaurantBot:
 
         if state == "spoiled":
             if not self._clear_spoiled(sx, sy, log):
-                log("清除失敗，跳過")
-                return
-            state = self._detect_safe(sx, sy)
-            if state == "done":
-                self._collect_food(sx, sy, log)
-            elif state not in ("unknown",):
-                return
+                log("清除失敗（可能誤判），仍嘗試做菜")
+                # 不跳過：誤判空鍋爐時仍應繼續做菜
+            else:
+                state = self._detect_safe(sx, sy)
+                if state == "done":
+                    self._collect_food(sx, sy, log)
+                elif state not in ("unknown",):
+                    return
 
         # 空鍋爐，開始做菜
         self._open_recipe_and_cook(sx, sy, page, dish, log)
