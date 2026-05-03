@@ -392,55 +392,49 @@ class RestaurantBot:
 
     def _ocr_image(self, pil_img):
         """用 Windows 內建 OCR 辨識 PIL Image，回傳文字字串。
-        需要 winsdk 套件（pip install winsdk）；未安裝時回傳空字串。
-        在背景執行緒呼叫時，會自動初始化 COM（WinRT 需要）。"""
+        透過 subprocess 執行，避免 worker thread COM apartment 衝突。
+        需要 winsdk 套件（pip install winsdk）；未安裝時回傳空字串。"""
+        _OCR_SCRIPT = r"""
+import sys, asyncio, io
+sys.stdout.reconfigure(encoding='utf-8')
+import winsdk.windows.media.ocr as ocr
+import winsdk.windows.globalization as glob
+import winsdk.windows.graphics.imaging as wgi
+import winsdk.windows.storage.streams as wss
+
+async def run():
+    data = sys.stdin.buffer.read()
+    stream = wss.InMemoryRandomAccessStream()
+    writer = wss.DataWriter(stream)
+    writer.write_bytes(data)
+    await writer.store_async()
+    stream.seek(0)
+    decoder = await wgi.BitmapDecoder.create_async(stream)
+    bitmap  = await decoder.get_software_bitmap_async()
+    if bitmap.bitmap_pixel_format != wgi.BitmapPixelFormat.BGRA8:
+        bitmap = wgi.SoftwareBitmap.convert(bitmap, wgi.BitmapPixelFormat.BGRA8)
+    for tag in ['zh-Hans-CN', 'zh-TW']:
+        lang = glob.Language(tag)
+        if ocr.OcrEngine.is_language_supported(lang):
+            engine = ocr.OcrEngine.try_create_from_language(lang)
+            if engine:
+                result = await engine.recognize_async(bitmap)
+                print(result.text if result else '', end='')
+                return
+
+asyncio.run(run())
+"""
         try:
-            import asyncio, io, ctypes
-            import winsdk.windows.media.ocr as ocr
-            import winsdk.windows.globalization as glob
-            import winsdk.windows.graphics.imaging as wgi
-            import winsdk.windows.storage.streams as wss
-
-            # WinRT 在 worker thread 需要先初始化 COM（STA）
-            # 回傳 S_FALSE(1) 表示已初始化，也是正常的
-            COINIT_APARTMENTTHREADED = 0x2
-            hr = ctypes.windll.ole32.CoInitializeEx(None, COINIT_APARTMENTTHREADED)
-            com_inited = hr in (0, 1)  # S_OK or S_FALSE
-
-            async def _run():
-                buf = io.BytesIO()
-                pil_img.convert("RGB").save(buf, format="PNG")
-                png_bytes = buf.getvalue()
-
-                stream = wss.InMemoryRandomAccessStream()
-                writer = wss.DataWriter(stream)
-                writer.write_bytes(png_bytes)
-                await writer.store_async()
-                stream.seek(0)
-
-                decoder = await wgi.BitmapDecoder.create_async(stream)
-                bitmap  = await decoder.get_software_bitmap_async()
-                if bitmap.bitmap_pixel_format != wgi.BitmapPixelFormat.BGRA8:
-                    bitmap = wgi.SoftwareBitmap.convert(
-                        bitmap, wgi.BitmapPixelFormat.BGRA8)
-
-                for tag in ["zh-Hans-CN", "zh-TW", "zh"]:
-                    lang = glob.Language(tag)
-                    if ocr.OcrEngine.is_language_supported(lang):
-                        engine = ocr.OcrEngine.try_create_from_language(lang)
-                        if engine:
-                            result = await engine.recognize_async(bitmap)
-                            return result.text if result else ""
-                return ""
-
-            loop = asyncio.new_event_loop()
-            try:
-                text = loop.run_until_complete(_run())
-            finally:
-                loop.close()
-                if com_inited:
-                    ctypes.windll.ole32.CoUninitialize()
-            return text
+            import subprocess, io, sys
+            buf = io.BytesIO()
+            pil_img.convert("RGB").save(buf, format="PNG")
+            result = subprocess.run(
+                [sys.executable, "-c", _OCR_SCRIPT],
+                input=buf.getvalue(),
+                capture_output=True,
+                timeout=10,
+            )
+            return result.stdout.decode("utf-8", errors="ignore").strip()
         except Exception:
             return ""
 
