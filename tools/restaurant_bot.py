@@ -680,12 +680,11 @@ class RestaurantBot:
 
     def _do_steps(self, sx, sy, log):
         """
-        執行最多 3 個烹飪步驟（製作餐具、放食材、開始烹飪）。
-
-        每步點完觀察反應：
+        執行 3 個烹飪步驟（製作餐具、放食材、開始烹飪）。
+        純靠讀條（像素變化）判斷每步是否完成，不做額外狀態偵測：
           有讀條 → 等結束 → 繼續下一步
-          已烹飪 → 直接結束
-          無讀條 → 點取消關掉可能的彈窗，結束（讓下輪重試，不跑防卡頓）
+          step 2 讀條結束 → 直接宣告烹飪開始
+          無讀條 → 點取消關掉可能的彈窗，結束（讓下輪重試）
         """
         cancel_btn = self.recipe.get("cancel_btn", DEFAULT_RECIPE["cancel_btn"])
         labels = ["製作餐具", "放食材", "開始烹飪"]
@@ -693,52 +692,31 @@ class RestaurantBot:
         for step in range(3):
             if self._stop.is_set(): return
 
-            # 只有最後一步（開始烹飪）前才用狀態偵測確認：
-            # 前兩步（製作餐具、放食材）之間的中間狀態容易誤判，
-            # 鍋爐橙色框可能被誤判為時鐘 → 提早退出。
-            if step == 2:
-                state = self._detect_safe(sx, sy)
-                if state in ("cooking", "done"):
-                    log("已進入烹飪 ✓")
-                    return
-
             log(f"{labels[step]}…")
             pre = self.get_pixel(sx, sy)
             self.click(sx, sy, delay=0.2)
 
-            # 等讀條出現（最多 2 秒）
             bar_ok, _, bar_color = self.wait_for_pixel_change(
                 sx, sy, timeout=2.0, baseline=pre)
 
             if not bar_ok:
-                # 沒讀條，最後一步才偵測狀態（前兩步跳過，避免誤判）
-                if step == 2:
-                    state = self.detect_stove_state(sx, sy)
-                    if state in ("cooking", "done"):
-                        log("已進入烹飪 ✓")
-                        return
                 log(f"{labels[step]}：無讀條，關彈窗等下輪")
                 self._debug_capture(f"no_bar_{sx}_{sy}_step{step+1}")
                 self.click_real(*cancel_btn, delay=0.5)
                 return
 
             log(f"{labels[step]}：讀條中…")
-
-            # 等讀條結束（最多 20 秒）
-            # 前兩步只靠像素變化判斷讀條結束，不做狀態偵測（避免中間態誤判）
-            # 最後一步才偵測烹飪狀態
             deadline = time.time() + 20.0
             while time.time() < deadline and not self._stop.is_set():
-                if step == 2:
-                    state = self.detect_stove_state(sx, sy)
-                    if state in ("cooking", "done"):
-                        log("已進入烹飪 ✓")
-                        return
                 if self.color_diff(self.get_pixel(sx, sy), bar_color) > 40:
-                    break   # 讀條結束，繼續下一步
+                    break
                 time.sleep(0.3)
 
-            time.sleep(0.3)   # 步驟間緩衝
+            if step == 2:
+                log("已進入烹飪 ✓")
+                return
+
+            time.sleep(0.3)
 
     def _open_recipe_and_cook(self, sx, sy, page, dish, log):
         """
@@ -764,7 +742,7 @@ class RestaurantBot:
                 self._do_steps(sx, sy, log)
             return
 
-        for attempt in range(2):
+        for attempt in range(3):
             if self._stop.is_set(): return
 
             pre_check = self.get_pixel(*check)
@@ -781,30 +759,36 @@ class RestaurantBot:
                     self._do_steps(sx, sy, log)
                 return
 
-            # 食譜沒開——用像素動畫判斷是否烹飪中（比 HSV 更可靠）
-            # 取兩次間隔 0.3 秒的鍋爐像素，若差異超過 threshold → 仍在動畫 = 烹飪中
+            # 食譜沒開——用像素動畫判斷是否烹飪中
+            # 取兩次間隔 0.5 秒的鍋爐像素，差異 > 15 → 仍在動畫 = 烹飪中
             time.sleep(0.2)
             p1 = self.get_pixel(sx, sy)
-            time.sleep(0.3)
+            time.sleep(0.5)
             p2 = self.get_pixel(sx, sy)
 
-            if self.color_diff(p1, p2) > threshold:
-                # 鍋爐仍在動畫 = 烹飪中，跳出的是捐菜彈窗 → 取消
-                log("偵測到烹飪動畫，關捐菜彈窗")
+            if self.color_diff(p1, p2) > 15:
+                # 鍋爐仍在動畫 = 烹飪中 → 捐菜彈窗 → 取消，直接跳下一爐
+                log("偵測到烹飪動畫，關捐菜彈窗，跳下一爐")
                 self.click_real(*cancel_btn, delay=0.5)
                 return
 
-            # 鍋爐靜止：可能是腐壞彈窗或食物剛被收走
+            # 鍋爐靜止：
+            #   attempt 0 → 取消（關掉可能的捐菜彈窗，或食物剛收走後暫退）
+            #   attempt 1 → 確認（腐壞彈窗清除）
+            #   attempt 2 → 取消保底，跳過
             if attempt == 0:
+                log("食譜未開，暫退（取消）再試")
+                self.click_real(*cancel_btn, delay=0.5)
+                self.wait(0.5)
+            elif attempt == 1:
                 log("食譜未開，疑似腐壞彈窗，按確認清除")
                 self.click_real(*confirm_btn, delay=0.5)
                 self.wait(1.5)
-                # 第 2 次 attempt 重新點鍋爐（清完就是空爐，食譜會開）
             else:
-                log("第二次仍未開食譜，按取消保底，跳過")
+                log("三次都無法開食譜，按取消保底，跳過")
                 self.click_real(*cancel_btn, delay=0.5)
 
-        log(f"鍋爐 ({sx},{sy}) 兩次都無法開食譜，跳過")
+        log(f"鍋爐 ({sx},{sy}) 無法開食譜，跳過")
 
     def setup_stove(self, sx, sy, page, dish, on_status=None):
         """
