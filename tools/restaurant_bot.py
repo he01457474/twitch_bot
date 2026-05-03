@@ -1207,9 +1207,17 @@ asyncio.run(run())
         on_status("點選「快速開始」…")
         self.click(*btn_quick, delay=3.0)
 
-        # Step 4：等待進入遊戲（等 loading 完成）
+        # Step 4：等待進入遊戲（偵測底部工具列出現）
         on_status("等待進入遊戲…")
-        self.wait(12.0)
+        self.wait(3.0)   # 先等過場，避免截到 loading 畫面誤判
+        if self._stop.is_set(): return
+        ok = self._wait_for_screen(
+            ["動作", "背包", "廣場", "地圖", "設置"],
+            region=(0, 460, 960, 560),   # 只掃底部工具列區域
+            timeout=45.0, on_status=on_status
+        )
+        if not ok:
+            on_status("等待進入遊戲逾時，嘗試繼續…")
         if self._stop.is_set(): return
 
         # Step 5：處理可能的系統提示彈窗
