@@ -377,10 +377,11 @@ class RestaurantBot:
             confirm_btn = self.recipe.get("confirm_btn", DEFAULT_RECIPE["confirm_btn"])
             cancel_btn  = self.recipe.get("cancel_btn",  DEFAULT_RECIPE["cancel_btn"])
 
-            # 彈窗文字在按鈕上方 ~100-20px（mole 座標）
+            # 彈窗文字在按鈕上方 ~20-170px（mole 座標）
+            # 往上多留 60px（改為 170），確保兩行文字都能截到
             left  = max(0, int((min(confirm_btn[0], cancel_btn[0]) - 160) * scale))
             right = min(w, int((max(confirm_btn[0], cancel_btn[0]) + 160) * scale))
-            top   = max(0, int((confirm_btn[1] - 110) * scale))
+            top   = max(0, int((confirm_btn[1] - 170) * scale))
             bot   = min(h, int((confirm_btn[1] -  15) * scale))
 
             region = img.crop((left, top, right, bot))
@@ -391,16 +392,22 @@ class RestaurantBot:
 
     def _ocr_image(self, pil_img):
         """用 Windows 內建 OCR 辨識 PIL Image，回傳文字字串。
-        需要 winsdk 套件（pip install winsdk）；未安裝時回傳空字串。"""
+        需要 winsdk 套件（pip install winsdk）；未安裝時回傳空字串。
+        在背景執行緒呼叫時，會自動初始化 COM（WinRT 需要）。"""
         try:
-            import asyncio, io
+            import asyncio, io, ctypes
             import winsdk.windows.media.ocr as ocr
             import winsdk.windows.globalization as glob
             import winsdk.windows.graphics.imaging as wgi
             import winsdk.windows.storage.streams as wss
 
+            # WinRT 在 worker thread 需要先初始化 COM（STA）
+            # 回傳 S_FALSE(1) 表示已初始化，也是正常的
+            COINIT_APARTMENTTHREADED = 0x2
+            hr = ctypes.windll.ole32.CoInitializeEx(None, COINIT_APARTMENTTHREADED)
+            com_inited = hr in (0, 1)  # S_OK or S_FALSE
+
             async def _run():
-                # PIL → PNG → InMemoryRandomAccessStream
                 buf = io.BytesIO()
                 pil_img.convert("RGB").save(buf, format="PNG")
                 png_bytes = buf.getvalue()
@@ -411,15 +418,12 @@ class RestaurantBot:
                 await writer.store_async()
                 stream.seek(0)
 
-                # BitmapDecoder → SoftwareBitmap
                 decoder = await wgi.BitmapDecoder.create_async(stream)
                 bitmap  = await decoder.get_software_bitmap_async()
-                # OCR 要求 BGRA8 格式
                 if bitmap.bitmap_pixel_format != wgi.BitmapPixelFormat.BGRA8:
                     bitmap = wgi.SoftwareBitmap.convert(
                         bitmap, wgi.BitmapPixelFormat.BGRA8)
 
-                # 取第一個支援的中文語言
                 for tag in ["zh-Hans-CN", "zh-TW", "zh"]:
                     lang = glob.Language(tag)
                     if ocr.OcrEngine.is_language_supported(lang):
@@ -434,6 +438,8 @@ class RestaurantBot:
                 text = loop.run_until_complete(_run())
             finally:
                 loop.close()
+                if com_inited:
+                    ctypes.windll.ole32.CoUninitialize()
             return text
         except Exception:
             return ""
