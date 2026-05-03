@@ -1536,6 +1536,19 @@ class App:
         for btn in (self.calib_sp, self.calib_clk_in):
             btn.pack(side=tk.LEFT, padx=3)
 
+        # 第三列：重連按鈕座標校準
+        row_c3 = ttk.Frame(grp_cal)
+        row_c3.pack(fill=tk.X, pady=(2, 0))
+        ttk.Label(row_c3, text="重連：", width=5, foreground="gray").pack(side=tk.LEFT)
+        self.calib_btn_dc  = ttk.Button(row_c3, text="斷線確認",   command=self._calib_btn_disconnect_confirm)
+        self.calib_btn_no  = ttk.Button(row_c3, text="系統提示",   command=self._calib_btn_notice_ok)
+        self.calib_btn_gs  = ttk.Button(row_c3, text="主畫面開始", command=self._calib_btn_game_start)
+        self.calib_btn_li  = ttk.Button(row_c3, text="角色登入",   command=self._calib_btn_login)
+        self.calib_btn_qs  = ttk.Button(row_c3, text="快速開始",   command=self._calib_btn_quick_start)
+        for btn in (self.calib_btn_dc, self.calib_btn_no,
+                    self.calib_btn_gs, self.calib_btn_li, self.calib_btn_qs):
+            btn.pack(side=tk.LEFT, padx=3)
+
         # 校準狀態指示列
         self._calib_lbl = {}
         row_cs = ttk.Frame(grp_cal)
@@ -1556,11 +1569,13 @@ class App:
         # ── 執行 ─────────────────────────────────────────
         grp_run = ttk.LabelFrame(f, text="執行", padding=(10, 4))
         grp_run.pack(fill=tk.X, pady=(0, 6))
-        self.start_btn = ttk.Button(grp_run, text="▶ 開始", command=self._start, width=10)
-        self.stop_btn  = ttk.Button(grp_run, text="■ 停止", command=self._stop,  width=10,
-                                    state=tk.DISABLED)
+        self.start_btn  = ttk.Button(grp_run, text="▶ 開始",   command=self._start,        width=10)
+        self.stop_btn   = ttk.Button(grp_run, text="■ 停止",   command=self._stop,         width=10,
+                                     state=tk.DISABLED)
+        self.login_btn  = ttk.Button(grp_run, text="↩ 手動登入", command=self._manual_login, width=12)
         self.start_btn.pack(side=tk.LEFT, padx=(0, 6), pady=4)
-        self.stop_btn.pack(side=tk.LEFT, pady=4)
+        self.stop_btn.pack(side=tk.LEFT, padx=(0, 6), pady=4)
+        self.login_btn.pack(side=tk.LEFT, pady=4)
 
         # ── 工具 ─────────────────────────────────────────
         grp_tool = ttk.LabelFrame(f, text="工具", padding=(10, 4))
@@ -1627,9 +1642,12 @@ class App:
     def _set_running(self, running):
         sa = tk.DISABLED if running else tk.NORMAL
         sb = tk.NORMAL   if running else tk.DISABLED
-        for btn in (self.start_btn, self.calib_s, self.calib_r,
+        for btn in (self.start_btn, self.login_btn,
+                    self.calib_s, self.calib_r,
                     self.calib_c, self.calib_sp, self.calib_clk_in,
                     self.calib_door, self.calib_rest,
+                    self.calib_btn_dc, self.calib_btn_no,
+                    self.calib_btn_gs, self.calib_btn_li, self.calib_btn_qs,
                     self.testnav_btn, self.testdet_btn, self.preview_btn, self.snap_btn):
             btn.config(state=sa)
         self.stop_btn.config(state=sb)
@@ -1812,6 +1830,62 @@ class App:
                    command=lambda: build_preview()).pack(side=tk.RIGHT)
 
         build_preview()
+
+    # ── 重連座標校準 ──────────────────────────────────────
+
+    def _calib_one_btn(self, title, prompt, settings_key, done_msg):
+        """通用：截圖讓使用者點一個按鈕座標，存入 extra_settings。"""
+        hwnd = self._get_hwnd()
+        if not hwnd: return
+        messagebox.showinfo(f"校準 {title}", prompt)
+        def _done(pts):
+            self._extra_settings[settings_key] = list(pts[0])
+            self.bot.settings[settings_key]    = list(pts[0])
+            self._save_all()
+            messagebox.showinfo("完成", f"{done_msg}：{pts[0]}")
+        CalibrationWindow(self.root, hwnd, [f"點擊「{title}」按鈕位置"], _done)
+
+    def _calib_btn_disconnect_confirm(self):
+        self._calib_one_btn(
+            "斷線確認",
+            "請讓「本次連接已斷開」彈窗出現在遊戲畫面，\n再按確定截圖，然後點彈窗上的「確認」按鈕。",
+            "btn_disconnect_confirm", "斷線確認按鈕")
+
+    def _calib_btn_notice_ok(self):
+        self._calib_one_btn(
+            "知道了",
+            "請讓「系統提示」彈窗出現，\n再按確定截圖，然後點「知道了」按鈕。",
+            "btn_notice_ok", "系統提示按鈕")
+
+    def _calib_btn_game_start(self):
+        self._calib_one_btn(
+            "主畫面開始",
+            "請切換到遊戲主畫面（摩爾莊園 LOGO 那頁），\n再按確定截圖，然後點「開始」按鈕。",
+            "btn_game_start", "主畫面開始按鈕")
+
+    def _calib_btn_login(self):
+        self._calib_one_btn(
+            "角色登入",
+            "請切換到角色選擇（登入）畫面，\n再按確定截圖，然後點「登入」按鈕。",
+            "btn_login", "角色登入按鈕")
+
+    def _calib_btn_quick_start(self):
+        self._calib_one_btn(
+            "快速開始",
+            "請切換到選擇伺服器畫面，\n再按確定截圖，然後點「快速開始」按鈕。",
+            "btn_quick_start", "快速開始按鈕")
+
+    def _manual_login(self):
+        """手動觸發登入流程（不啟動完整掃描），用於測試或手動重連。"""
+        hwnd = self._get_hwnd()
+        if not hwnd: return
+        self.bot.hwnd = hwnd
+        self.bot.settings.update(self._get_settings())
+        self._set_running(True)
+        def _run():
+            self.bot._login_flow(self._on_status)
+            self.root.after(0, lambda: self._set_running(False))
+        threading.Thread(target=_run, daemon=True).start()
 
     def _calib_cancel(self):
         hwnd = self._get_hwnd()
