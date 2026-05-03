@@ -82,6 +82,15 @@ DEFAULT_SETTINGS = {
     "smoke_offsets":      [],
     "smoke_threshold":    30,    # 暗色像素 V < 此值視為黑煙（0~100）
     "smoke_pct_threshold": 0.15, # 暗色像素佔比超過此值 → 有黑煙
+    # 重連 / 閃退設定
+    "flash_exe_path": r"D:\下載\Win登入器\flashplayer_32_sa.exe",
+    "game_url":       "http://mole.61.com.tw/Client.swf",
+    # 各畫面按鈕座標（遊戲 960×560 坐標系）
+    "btn_disconnect_confirm": [478, 382],  # 斷線「確認」按鈕
+    "btn_notice_ok":          [480, 390],  # 系統提示「知道了」
+    "btn_game_start":         [484, 398],  # 主畫面「開始」
+    "btn_login":              [484, 432],  # 角色選擇「登入」
+    "btn_quick_start":        [456, 517],  # 選伺服器「快速開始」
 }
 MAP_BTN        = (33,  505)
 HOME_BTN       = (880, 538)
@@ -1127,6 +1136,180 @@ asyncio.run(run())
         self._recipe_closed_baseline = list(self.get_pixel(*check))
         return True
 
+    # ── 斷線 / 閃退重連 ──────────────────────────────────
+
+    def _ocr_screen_region(self, x1, y1, x2, y2):
+        """截取遊戲畫面指定區域做 OCR，回傳文字。"""
+        if not self.hwnd:
+            return ""
+        try:
+            img, w, h = capture_window(self.hwnd)
+            scale = max(w / MOLE_W, h / MOLE_H)
+            region = img.convert("RGB").crop((
+                max(0, int(x1 * scale)), max(0, int(y1 * scale)),
+                min(w, int(x2 * scale)), min(h, int(y2 * scale)),
+            ))
+            return self._ocr_image(region)
+        except Exception:
+            return ""
+
+    def _detect_disconnect_popup(self):
+        """偵測斷線彈窗（本次連接已斷開）。
+        先用像素快速判斷，再 OCR 確認，避免每輪都跑 OCR。"""
+        r, g, b = self.get_pixel(480, 320)
+        if not (r > 200 and g > 185):   # 彈窗背景是淺米色，平時不符合
+            return False
+        text = self._ocr_screen_region(200, 200, 760, 440)
+        return "斷開" in text or "重新登" in text
+
+    def _wait_for_screen(self, keywords, region=(80, 40, 880, 520), timeout=20.0, on_status=None):
+        """輪詢 OCR，等到畫面出現指定關鍵字之一，回傳 True/False。"""
+        msg = "/".join(keywords)
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if self._stop.is_set():
+                return False
+            text = self._ocr_screen_region(*region)
+            if any(kw in text for kw in keywords):
+                return True
+            if on_status:
+                on_status(f"等待畫面「{msg}」…")
+            time.sleep(1.5)
+        return False
+
+    def _handle_notice_popup(self, on_status):
+        """處理系統提示 / 知道了彈窗（半夜維護公告等）。"""
+        text = self._ocr_screen_region(180, 180, 780, 440)
+        if any(kw in text for kw in ["系統提示", "知道了", "休息"]):
+            btn = tuple(self.settings.get("btn_notice_ok", [480, 390]))
+            on_status("偵測到系統提示，點知道了…")
+            self.click(*btn, delay=1.0)
+
+    def _login_flow(self, on_status):
+        """從主畫面完成整個登入流程直到進入遊戲。
+        步驟：主畫面開始 → 角色登入 → 選伺服器快速開始 → 導航餐廳"""
+        btn_start = tuple(self.settings.get("btn_game_start",  [484, 398]))
+        btn_login = tuple(self.settings.get("btn_login",       [484, 432]))
+        btn_quick = tuple(self.settings.get("btn_quick_start", [456, 517]))
+
+        # Step 1：等主畫面 → 點「開始」
+        self._wait_for_screen(["摩爾莊園", "mole.61"], timeout=25, on_status=on_status)
+        on_status("點選「開始」…")
+        self.click(*btn_start, delay=2.0)
+
+        # Step 2：等登入畫面 → 點「登入」（密碼已記住）
+        self._wait_for_screen(["登入", "密碼"], timeout=12, on_status=on_status)
+        on_status("點選「登入」…")
+        self.click(*btn_login, delay=2.0)
+
+        # Step 3：等選伺服器 → 點「快速開始」
+        self._wait_for_screen(["選擇伺服器", "快速"], timeout=12, on_status=on_status)
+        on_status("點選「快速開始」…")
+        self.click(*btn_quick, delay=3.0)
+
+        # Step 4：等待進入遊戲（等 loading 完成）
+        on_status("等待進入遊戲…")
+        self.wait(12.0)
+        if self._stop.is_set(): return
+
+        # Step 5：處理可能的系統提示彈窗
+        self._handle_notice_popup(on_status)
+        self.wait(1.0)
+
+        # Step 6：導航到餐廳
+        if not self._is_in_restaurant():
+            on_status("導航至餐廳…")
+            # 使用地圖/家園按鈕導航
+            self.click(*MAP_BTN, delay=3.0)
+            if self._stop.is_set(): return
+            self.click(*HOME_BTN, delay=1.0)
+            self.click(*RESTAURANT_BTN, delay=4.0)
+
+        # 重取食譜基準色
+        if self.hwnd:
+            self._recipe_closed_baseline = list(self.get_pixel(*self.recipe["check_pt"]))
+        on_status("重連完成，恢復掃描…")
+
+    def _launch_flash_and_login(self, on_status):
+        """Flash 閃退：重啟 exe → 開啟遊戲 URL → 走登入流程。"""
+        import subprocess, ctypes
+        exe  = self.settings.get("flash_exe_path", r"D:\下載\Win登入器\flashplayer_32_sa.exe")
+        url  = self.settings.get("game_url", "http://mole.61.com.tw/Client.swf")
+
+        on_status("重啟 Flash Player…")
+        try:
+            subprocess.Popen([exe])
+        except Exception as e:
+            on_status(f"無法啟動 Flash Player：{e}", error=True)
+            return False
+
+        # 等視窗出現
+        on_status("等待 Flash Player 視窗…")
+        for _ in range(40):
+            if self._stop.is_set(): return False
+            time.sleep(0.5)
+            hwnd = self.find_window()
+            if hwnd:
+                self.hwnd = hwnd
+                break
+        else:
+            on_status("Flash Player 視窗未出現，停止", error=True)
+            return False
+        time.sleep(1.0)
+
+        # 帶到前景，Ctrl+O 開啟 URL 對話框，用剪貼簿貼入網址
+        on_status("輸入遊戲網址…")
+        try:
+            win32gui.SetForegroundWindow(self.hwnd)
+            time.sleep(0.5)
+            VK_CTRL = 0x11; VK_O = 0x4F; VK_V = 0x56; VK_ENTER = 0x0D
+            def _key(vk, up=False):
+                ctypes.windll.user32.keybd_event(vk, 0, 2 if up else 0, 0)
+                time.sleep(0.05)
+
+            # Ctrl+O
+            _key(VK_CTRL); _key(VK_O); _key(VK_O, up=True); _key(VK_CTRL, up=True)
+            time.sleep(1.0)
+
+            # 把網址寫到剪貼簿再 Ctrl+V 貼入
+            import win32clipboard
+            win32clipboard.OpenClipboard()
+            win32clipboard.EmptyClipboard()
+            win32clipboard.SetClipboardText(url)
+            win32clipboard.CloseClipboard()
+
+            # 找對話框 Edit 控件，直接 SetText（最可靠）
+            dialog_edit = None
+            deadline = time.time() + 5
+            while time.time() < deadline:
+                def _cb(hwnd, lst):
+                    if win32gui.IsWindowVisible(hwnd) and hwnd != self.hwnd:
+                        e = win32gui.FindWindowEx(hwnd, 0, "Edit", None)
+                        if e:
+                            lst.append(e)
+                edits = []
+                win32gui.EnumWindows(_cb, edits)
+                if edits:
+                    dialog_edit = edits[0]
+                    break
+                time.sleep(0.3)
+
+            if dialog_edit:
+                win32gui.SendMessage(dialog_edit, win32con.WM_SETTEXT, 0, url)
+                time.sleep(0.2)
+                _key(VK_ENTER); _key(VK_ENTER, up=True)
+            else:
+                # fallback：Ctrl+V 貼入再按 Enter
+                _key(VK_CTRL); _key(VK_V); _key(VK_V, up=True); _key(VK_CTRL, up=True)
+                time.sleep(0.2)
+                _key(VK_ENTER); _key(VK_ENTER, up=True)
+        except Exception as e:
+            on_status(f"開啟 URL 時出錯：{e}")
+
+        # 走登入流程
+        self._login_flow(on_status)
+        return True
+
     def run(self, page, dish, scan_interval, antlag_minutes, on_status):
         self.hwnd = self.find_window()
         if not self.hwnd:
@@ -1168,10 +1351,36 @@ asyncio.run(run())
             on_status("初始化完成，開始掃描…")
 
             while not self._stop.is_set():
-                # 每輪先確認視窗還在，關閉就停止
+                # 每輪先確認視窗還在
                 if not self._is_window_alive():
-                    on_status("Flash Player 視窗已關閉，停止機器人", error=True)
-                    break
+                    wait_sec = self.settings.get("restart_wait_seconds", 15)
+                    on_status(f"Flash Player 視窗消失，等待 {wait_sec} 秒…")
+                    deadline = time.time() + wait_sec
+                    while time.time() < deadline and not self._stop.is_set():
+                        time.sleep(1.0)
+                        if self._is_window_alive():
+                            on_status("視窗已恢復，繼續掃描…")
+                            break
+                    else:
+                        # 視窗沒回來，嘗試自動重啟
+                        if not self._stop.is_set() and self.settings.get("flash_exe_path"):
+                            self._launch_flash_and_login(on_status)
+                        else:
+                            on_status("Flash Player 視窗已關閉，停止機器人", error=True)
+                            break
+                    if self._stop.is_set(): break
+                    continue
+
+                # 偵測斷線彈窗（先快速像素判斷，有疑才 OCR）
+                if self._detect_disconnect_popup():
+                    on_status("偵測到斷線彈窗，執行重連…")
+                    btn_confirm = tuple(self.settings.get("btn_disconnect_confirm", [478, 382]))
+                    self.click(*btn_confirm, delay=1.5)
+                    self.wait(2.0)
+                    self._handle_notice_popup(on_status)
+                    self._login_flow(on_status)
+                    if self._stop.is_set(): break
+                    continue
 
                 # 掃描前防卡頓：若距上次防卡頓已超過設定間隔，先出去繞一圈再掃
                 # 這樣即使掃描本身耗時，Flash Player 也不會在掃描前就已經積累太久
@@ -1236,7 +1445,10 @@ class App:
                        "state_threshold",
                        "clock_interior_offsets",
                        "cooking_white_threshold", "done_white_threshold",
-                       "smoke_offsets", "smoke_threshold", "smoke_pct_threshold")
+                       "smoke_offsets", "smoke_threshold", "smoke_pct_threshold",
+                       "game_url",
+                       "btn_disconnect_confirm", "btn_notice_ok",
+                       "btn_game_start", "btn_login", "btn_quick_start")
         self._extra_settings = {k: settings[k] for k in _extra_keys}
         self.bot = RestaurantBot(self.stoves, self.recipe, settings)
         self._build_ui(settings)
@@ -1289,6 +1501,14 @@ class App:
         ttk.Label(row3, text=" 秒（視窗消失後重試）").pack(side=tk.LEFT)
         self.vars["harvest_wait"] = v_hw
         self.vars["restart_wait_seconds"] = v_rw
+
+        row4 = ttk.Frame(grp_set)
+        row4.pack(fill=tk.X, pady=2)
+        ttk.Label(row4, text="Flash Player 路徑", width=17, anchor=tk.W).pack(side=tk.LEFT)
+        v_exe = tk.StringVar(value=settings.get("flash_exe_path",
+                             r"D:\下載\Win登入器\flashplayer_32_sa.exe"))
+        ttk.Entry(row4, textvariable=v_exe, width=48).pack(side=tk.LEFT)
+        self.vars["flash_exe_path"] = v_exe
 
         # ── 校準 ─────────────────────────────────────────
         grp_cal = ttk.LabelFrame(f, text="校準", padding=(10, 4))
