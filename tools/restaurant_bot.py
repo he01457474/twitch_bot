@@ -4,6 +4,7 @@ import threading
 import time
 import json
 import os
+import sys
 import ctypes
 import colorsys
 import win32gui
@@ -22,7 +23,13 @@ except Exception:
 
 MOLE_W = 960
 MOLE_H = 560
-CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "restaurant_config.json")
+
+# 打包成 exe 後 __file__ 指向暫存目錄，改用 sys.executable 所在目錄
+if getattr(sys, "frozen", False):
+    _APP_DIR = os.path.dirname(sys.executable)
+else:
+    _APP_DIR = os.path.dirname(os.path.abspath(__file__))
+CONFIG_FILE = os.path.join(_APP_DIR, "restaurant_config.json")
 
 # 預設值
 DEFAULT_STOVES = [
@@ -2825,7 +2832,40 @@ class App:
             self.root.after(0, lambda: messagebox.showerror("錯誤", msg))
 
 
+def _check_ocr_language():
+    """檢查 Windows 是否已安裝中文 OCR 語言包。
+    若未安裝，顯示一次性提示說明如何安裝，但不阻止程式啟動。"""
+    try:
+        import winsdk.windows.media.ocr as ocr
+        import winsdk.windows.globalization as glob
+        for tag in ["zh-Hans-CN", "zh-TW"]:
+            if ocr.OcrEngine.is_language_supported(glob.Language(tag)):
+                return  # 有支援，不需提示
+        # 都不支援
+        messagebox.showwarning(
+            "OCR 語言包未安裝",
+            "目前 Windows 未安裝中文 OCR 語言包，\n"
+            "彈窗偵測（燒糊 / 捐菜）將無法使用，\n"
+            "機器人仍可運作，但彈窗處理會改用保守策略。\n\n"
+            "如需啟用 OCR，請依照以下步驟安裝：\n"
+            "1. 開啟「設定」→「時間與語言」→「語言」\n"
+            "2. 新增「中文（簡體，中國）」或「中文（繁體，台灣）」\n"
+            "3. 點「選項」，確認「光學字元辨識」已勾選下載\n"
+            "4. 下載完成後重新啟動本程式"
+        )
+    except ImportError:
+        messagebox.showwarning(
+            "OCR 套件未安裝",
+            "找不到 winsdk 套件，彈窗文字偵測無法使用。\n"
+            "機器人仍可運作，但彈窗處理會改用保守策略。\n\n"
+            "（此訊息通常不應出現，請聯絡提供程式的人）"
+        )
+    except Exception:
+        pass
+
+
 if __name__ == "__main__":
     root = tk.Tk()
-    App(root)
+    app = App(root)
+    root.after(500, _check_ocr_language)   # 視窗開好後再顯示，避免被主視窗蓋住
     root.mainloop()
