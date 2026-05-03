@@ -772,12 +772,34 @@ asyncio.run(run())
         return self.color_diff(current, tuple(color)) < threshold
 
     def is_recipe_open(self):
-        """根據 check_pt 和記錄的關閉基準色，判斷食譜是否開著"""
-        if self._recipe_closed_baseline is None:
+        """OCR 偵測畫面上是否出現「食譜」標題文字。
+        OCR 不可用（winsdk 未裝）時，fallback 到像素基準色比對。"""
+        if not self.hwnd:
             return False
-        current = self.get_pixel(*self.recipe["check_pt"])
-        threshold = self.settings.get("state_threshold", 40)
-        return self.color_diff(current, tuple(self._recipe_closed_baseline)) > threshold
+        try:
+            img, w, h = capture_window(self.hwnd)
+            img   = img.convert("RGB")
+            scale = max(w / MOLE_W, h / MOLE_H)
+            cx, cy = self.recipe["check_pt"]
+            # 截取 check_pt 左側延伸區域，涵蓋「食譜」標題文字位置
+            left  = max(0, int((cx - 250) * scale))
+            right = min(w, int((cx + 150) * scale))
+            top   = max(0, int((cy -  40) * scale))
+            bot   = min(h, int((cy +  30) * scale))
+            region = img.crop((left, top, right, bot))
+            text = self._ocr_image(region)
+            if text:
+                return "食譜" in text
+            # OCR 回傳空字串（未安裝 winsdk）→ fallback 像素比對
+            if self._recipe_closed_baseline is not None:
+                px = min(int(cx * scale), w - 1)
+                py = min(int(cy * scale), h - 1)
+                current = img.getpixel((px, py))
+                threshold = self.settings.get("state_threshold", 40)
+                return self.color_diff(current, tuple(self._recipe_closed_baseline)) > threshold
+        except Exception:
+            pass
+        return False
 
     # ── 鍋爐動作：收菜 / 做菜步驟 ────────────────────────
 
@@ -1120,14 +1142,12 @@ asyncio.run(run())
 
             # 1. 若食譜開著，先關掉再取基準色
             #    先用 check_pt 暖色判斷（食譜標題為橙金色），不靠基準色
-            check_px = self.get_pixel(*self.recipe["check_pt"])
-            r_, g_, b_ = check_px
-            _, s_, v_ = _rgb_to_hsv(r_, g_, b_)
-            h_ = colorsys.rgb_to_hsv(r_/255, g_/255, b_/255)[0] * 360
-            if 15 < h_ < 65 and s_ > 25 and v_ > 55:
+            # 1. 若食譜開著（OCR 偵測「食譜」文字），先關掉
+            if self.is_recipe_open():
                 on_status("初始化：食譜開著，自動關閉…")
                 self.click_real(*self.recipe["close"], delay=0.8)
                 self.wait(0.8)
+            # 取基準色（供 OCR 不可用時的像素 fallback）
             self._recipe_closed_baseline = list(self.get_pixel(*self.recipe["check_pt"]))
 
             # 2. 若不在餐廳，嘗試導航過去
