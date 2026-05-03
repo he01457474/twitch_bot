@@ -744,11 +744,12 @@ class RestaurantBot:
         """
         點鍋爐開食譜 → 選菜 → 做步驟。
 
-        彈窗處理邏輯：
+        彈窗處理邏輯（純點擊後反應，不靠預先色彩偵測）：
           - 食譜開了 → 正常做菜
-          - 食譜沒開 + 偵測到烹飪中 → 捐菜彈窗，按取消
-          - 食譜沒開 + 偵測到做好了 → 收菜後重試
-          - 食譜沒開 + 狀態 unknown → 腐壞彈窗，按確認清除，再試一次
+          - 食譜沒開 + 鍋爐像素持續在動 → 烹飪中 → 捐菜彈窗 → 取消
+          - 食譜沒開 + 鍋爐像素靜止：
+              第 1 次 → 腐壞彈窗或食物剛收走 → 確認後再試
+              第 2 次 → 按取消保底，跳過
         """
         check       = self.recipe["check_pt"]
         confirm_btn = self.recipe.get("confirm_btn", DEFAULT_RECIPE["confirm_btn"])
@@ -780,28 +781,25 @@ class RestaurantBot:
                     self._do_steps(sx, sy, log)
                 return
 
-            # 食譜沒開，偵測目前狀態
-            state = self._detect_safe(sx, sy)
+            # 食譜沒開——用像素動畫判斷是否烹飪中（比 HSV 更可靠）
+            # 取兩次間隔 0.3 秒的鍋爐像素，若差異超過 threshold → 仍在動畫 = 烹飪中
+            time.sleep(0.2)
+            p1 = self.get_pixel(sx, sy)
+            time.sleep(0.3)
+            p2 = self.get_pixel(sx, sy)
 
-            if state == "cooking":
-                # 烹飪中才會跳捐菜彈窗，按取消關掉
-                log("偵測到烹飪中，關捐菜彈窗")
+            if self.color_diff(p1, p2) > threshold:
+                # 鍋爐仍在動畫 = 烹飪中，跳出的是捐菜彈窗 → 取消
+                log("偵測到烹飪動畫，關捐菜彈窗")
                 self.click_real(*cancel_btn, delay=0.5)
                 return
 
-            if state == "done":
-                # 食物做好但之前未偵測到，收菜後下一輪重試
-                log("食物做好（之前未偵測到），收菜後重試")
-                self._collect_food(sx, sy, log)
-                continue   # 重新點鍋爐嘗試開食譜
-
-            # 狀態 unknown：食譜沒開 + 不是烹飪中
-            # → 可能是腐壞彈窗（空鍋爐不跳窗，只有腐壞才跳）
+            # 鍋爐靜止：可能是腐壞彈窗或食物剛被收走
             if attempt == 0:
                 log("食譜未開，疑似腐壞彈窗，按確認清除")
                 self.click_real(*confirm_btn, delay=0.5)
                 self.wait(1.5)
-                # 清除後繼續下一輪 attempt，重新點鍋爐
+                # 第 2 次 attempt 重新點鍋爐（清完就是空爐，食譜會開）
             else:
                 log("第二次仍未開食譜，按取消保底，跳過")
                 self.click_real(*cancel_btn, delay=0.5)
@@ -810,27 +808,14 @@ class RestaurantBot:
 
     def setup_stove(self, sx, sy, page, dish, on_status=None):
         """
-        處理單個鍋爐：
-          1. 偵測時鐘狀態
-          2. cooking → 跳過
-          3. done    → 收菜，然後嘗試做菜
-          4. unknown → 嘗試點鍋爐開食譜
-             - 食譜開了 → 選菜、三步驟做菜
-             - 跳彈窗    → 在 _open_recipe_and_cook 內處理
-               (烹飪中跳捐菜 → 取消；腐壞跳確認框 → 確認清除後重試)
+        處理單個鍋爐。
+        不做預先偵測，直接點鍋爐，由 _open_recipe_and_cook 根據點擊後的反應判斷：
+          - 食譜開了 → 做菜
+          - 偵測到烹飪中（點後仍在動）→ 捐菜彈窗 → 取消
+          - 其他 → 腐壞彈窗或食物剛收走 → 確認後重試
         """
         def log(msg):
             if on_status: on_status(msg)
-
-        state = self._detect_safe(sx, sy)
-        log(f"鍋爐 ({sx},{sy})：{state}")
-
-        if state == "cooking":
-            return
-
-        if state == "done":
-            self._collect_food(sx, sy, log)
-            # 收完菜繼續往下，嘗試開食譜做菜
 
         self._open_recipe_and_cook(sx, sy, page, dish, log)
 
