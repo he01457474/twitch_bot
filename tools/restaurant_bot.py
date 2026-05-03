@@ -800,14 +800,23 @@ asyncio.run(run())
             if self._stop.is_set(): return
 
             log(f"{labels[step]}…")
-            pre = self.get_pixel(sx, sy)
-            self.click(sx, sy, delay=0.2)
 
-            bar_ok, _, bar_color = self.wait_for_pixel_change(
-                sx, sy, timeout=2.0, baseline=pre)
+            # 點一次，沒觸發讀條就再點一次，兩次都沒反應才放棄
+            bar_ok, bar_color = False, None
+            for click_try in range(2):
+                pre = self.get_pixel(sx, sy)
+                self.click(sx, sy, delay=0.2)
+                ok, _, color = self.wait_for_pixel_change(
+                    sx, sy, timeout=2.5, baseline=pre)
+                if ok:
+                    bar_ok, bar_color = True, color
+                    break
+                if click_try == 0:
+                    log(f"{labels[step]}：沒觸發讀條，補點一次…")
+                    time.sleep(0.3)
 
             if not bar_ok:
-                log(f"{labels[step]}：無讀條，關彈窗等下輪")
+                log(f"{labels[step]}：兩次都無讀條，關彈窗等下輪")
                 self._debug_capture(f"no_bar_{sx}_{sy}_step{step+1}")
                 self.click_real(*cancel_btn, delay=0.5)
                 return
@@ -823,7 +832,7 @@ asyncio.run(run())
                 log("已進入烹飪 ✓")
                 return
 
-            time.sleep(0.3)
+            time.sleep(0.5)  # 讓遊戲回到可點擊狀態再進下一步
 
     def _open_recipe_and_cook(self, sx, sy, page, dish, log):
         """
