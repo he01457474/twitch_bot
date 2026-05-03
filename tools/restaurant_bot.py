@@ -336,7 +336,8 @@ class RestaurantBot:
         self._recipe_closed_baseline = None   # 食譜關閉時的 check_pt 顏色基準
         self._debug   = False                 # Debug 模式：存標記截圖
         self._last_antlag = 0.0               # 上次執行防卡頓的時間戳記
-        self._last_popup_img = None           # 最近一次彈窗截圖（RAM，程式結束自動清除）
+        self._last_popup_img  = None           # 最近一次彈窗截圖（RAM，程式結束自動清除）
+        self._last_ocr_text   = ""             # 最近一次 OCR 辨識文字（供 log 顯示）
 
     def _debug_capture(self, label, markers=None):
         """
@@ -439,11 +440,14 @@ class RestaurantBot:
 
     def _detect_popup_type(self):
         """截圖彈窗文字區 → OCR → 判斷彈窗類型。
-        回傳：'spoiled'（燒糊）、'donation'（捐菜）、None（無法判斷）"""
+        回傳：'spoiled'（燒糊）、'donation'（捐菜）、None（無法判斷）
+        辨識結果同時存到 self._last_ocr_text 供外部 log。"""
         region = self._capture_popup_region()
         if region is None:
+            self._last_ocr_text = ""
             return None
         text = self._ocr_image(region)
+        self._last_ocr_text = text.strip()
         if not text:
             return None
         # 燒糊彈窗關鍵字
@@ -877,6 +881,8 @@ class RestaurantBot:
 
             # 鍋爐靜止：截圖 OCR 判斷彈窗類型
             popup_type = self._detect_popup_type()
+            ocr_preview = self._last_ocr_text[:30] if self._last_ocr_text else "（空）"
+            log(f"OCR 讀到：{ocr_preview}")
             if popup_type == "spoiled":
                 log("OCR：燒糊彈窗，按確認清除")
                 self.click_real(*confirm_btn, delay=0.5)
@@ -1227,7 +1233,8 @@ class App:
         self.calib_c    = ttk.Button(row_c1, text="彈窗", command=self._calib_cancel)
         self.calib_door = ttk.Button(row_c1, text="門口", command=self._calib_door)
         self.calib_rest = ttk.Button(row_c1, text="餐廳", command=self._calib_restaurant)
-        for btn in (self.calib_s, self.calib_r, self.calib_c, self.calib_door, self.calib_rest):
+        self.calib_ocr  = ttk.Button(row_c1, text="測 OCR", command=self._test_ocr)
+        for btn in (self.calib_s, self.calib_r, self.calib_c, self.calib_door, self.calib_rest, self.calib_ocr):
             btn.pack(side=tk.LEFT, padx=3)
 
         # 第二列：狀態偵測校準
@@ -1535,6 +1542,38 @@ class App:
         self._save_all()
         self._refresh_calib_status()
         messagebox.showinfo("完成", f"確認：{pts[0]}　取消：{pts[1]}\n已儲存。")
+
+    def _test_ocr(self):
+        """截圖目前彈窗區域，執行 OCR，顯示辨識結果供確認關鍵字是否正確。"""
+        hwnd = self._get_hwnd()
+        if not hwnd: return
+        self.bot.hwnd = hwnd
+        region = self.bot._capture_popup_region()
+        if region is None:
+            messagebox.showerror("測 OCR", "截圖失敗，請確認遊戲視窗已開啟。")
+            return
+        text = self.bot._ocr_image(region)
+        if not text:
+            messagebox.showwarning(
+                "測 OCR",
+                "OCR 沒有辨識到文字。\n\n"
+                "可能原因：\n"
+                "• 目前畫面沒有彈窗\n"
+                "• Windows 未安裝中文 OCR 語言包\n"
+                "• winsdk 未安裝"
+            )
+            return
+        # 判斷類型
+        if any(kw in text for kw in ["燒糊", "處理掉", "燒"]):
+            result = "→ 判定：燒糊彈窗（會按確認清除）"
+        elif any(kw in text for kw in ["捐", "流浪", "拉姆"]):
+            result = "→ 判定：捐菜彈窗（會按取消跳過）"
+        else:
+            result = "→ 判定：無法辨識（會走保守策略）"
+        messagebox.showinfo(
+            "測 OCR 結果",
+            f"辨識到的文字：\n\n「{text.strip()}」\n\n{result}"
+        )
 
     def _calib_door(self):
         hwnd = self._get_hwnd()
