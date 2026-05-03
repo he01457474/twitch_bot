@@ -49,6 +49,7 @@ DEFAULT_RECIPE = {
 DEFAULT_SETTINGS = {
     "page": 6, "dish": 1, "cook_minutes": 20, "cook_seconds": 0,
     "antlag_minutes": 5,
+    "harvest_wait": 3,         # 收菜後等待秒數，再重新點鍋爐
     "restaurant_pt":    None,  # 餐廳確認點座標（靜態固定顏色，用來判斷是否在餐廳內）
     "restaurant_color": None,  # 餐廳確認點顏色
     "door_out":      None,  # 出門座標（餐廳內往外走的門口）
@@ -838,85 +839,86 @@ asyncio.run(run())
         """
         點鍋爐開食譜 → 選菜 → 做步驟。
 
-        彈窗處理邏輯（純點擊後反應，不靠預先色彩偵測）：
-          - 食譜開了 → 正常做菜
-          - 食譜沒開 + 鍋爐像素持續在動 → 烹飪中 → 捐菜彈窗 → 取消
-          - 食譜沒開 + 鍋爐像素靜止：
-              第 1 次 → 腐壞彈窗或食物剛收走 → 確認後再試
-              第 2 次 → 按取消保底，跳過
+        流程：
+          1. 點鍋爐，等食譜開啟（1.5 秒）
+             → 開了 → 做菜
+          2. 沒開 → 偵測像素動畫：
+             → 烹飪中（像素在動）→ 取消捐菜彈窗，跳下一爐
+          3. 鍋爐靜止 → OCR 判斷：
+             → 燒糊彈窗 → 確認清除 → 等 harvest_wait 秒 → 再點一次 → 做菜或跳過
+             → 捐菜彈窗（做菜中）→ 取消，跳下一爐
+             → 無彈窗（可能剛收菜完）→ 等 harvest_wait 秒 → 再點一次 → 做菜或跳過
         """
-        check       = self.recipe["check_pt"]
-        confirm_btn = self.recipe.get("confirm_btn", DEFAULT_RECIPE["confirm_btn"])
-        cancel_btn  = self.recipe.get("cancel_btn",  DEFAULT_RECIPE["cancel_btn"])
-        threshold   = self.settings.get("state_threshold", 40)
+        check        = self.recipe["check_pt"]
+        confirm_btn  = self.recipe.get("confirm_btn", DEFAULT_RECIPE["confirm_btn"])
+        cancel_btn   = self.recipe.get("cancel_btn",  DEFAULT_RECIPE["cancel_btn"])
+        harvest_wait = self.settings.get("harvest_wait", 3)
+
+        def _click_and_wait_recipe():
+            """點一次鍋爐，等食譜開啟，回傳是否開啟"""
+            pre = self.get_pixel(*check)
+            self.click(sx, sy, delay=0.3)
+            ok, _, _ = self.wait_for_pixel_change(*check, timeout=1.5, baseline=pre)
+            return ok
+
+        def _do_cook():
+            if self._select_dish(page, dish, check, log):
+                self.wait(0.8)
+                self._do_steps(sx, sy, log)
 
         # 食譜已開著（例如上輪未關），直接選菜
         if self.is_recipe_open():
             log("食譜已開著，直接選菜…")
-            if self._select_dish(page, dish, check, log):
-                self.wait(0.8)
-                self._do_steps(sx, sy, log)
+            _do_cook()
             return
 
-        for attempt in range(3):
-            if self._stop.is_set(): return
+        # ── 第一次點鍋爐 ──
+        if _click_and_wait_recipe():
+            log("食譜已開啟 ✓")
+            _do_cook()
+            return
 
-            pre_check = self.get_pixel(*check)
-            self.click(sx, sy, delay=0.3)
+        # 食譜沒開──偵測像素動畫（烹飪中 or 靜止）
+        time.sleep(0.2)
+        p1 = self.get_pixel(sx, sy)
+        time.sleep(0.5)
+        p2 = self.get_pixel(sx, sy)
 
-            # 等食譜開啟（1.5 秒）
-            recipe_ok, _, _ = self.wait_for_pixel_change(
-                *check, timeout=1.5, baseline=pre_check)
+        if self.color_diff(p1, p2) > 15:
+            # 烹飪中（像素仍在動）→ 可能跳出捐菜彈窗，取消後跳下一爐
+            log("偵測到烹飪動畫，關捐菜彈窗，跳下一爐")
+            self.click_real(*cancel_btn, delay=0.5)
+            return
 
-            if recipe_ok:
-                log("食譜已開啟 ✓")
-                if self._select_dish(page, dish, check, log):
-                    self.wait(0.8)
-                    self._do_steps(sx, sy, log)
-                return
+        # 鍋爐靜止：OCR 判斷彈窗類型
+        popup_type  = self._detect_popup_type()
+        ocr_preview = self._last_ocr_text[:30] if self._last_ocr_text else "（空）"
+        log(f"OCR 讀到：{ocr_preview}")
 
-            # 食譜沒開——用像素動畫判斷是否烹飪中
-            # 取兩次間隔 0.5 秒的鍋爐像素，差異 > 15 → 仍在動畫 = 烹飪中
-            time.sleep(0.2)
-            p1 = self.get_pixel(sx, sy)
-            time.sleep(0.5)
-            p2 = self.get_pixel(sx, sy)
-
-            if self.color_diff(p1, p2) > 15:
-                # 鍋爐仍在動畫 = 烹飪中 → 捐菜彈窗 → 取消，直接跳下一爐
-                log("偵測到烹飪動畫，關捐菜彈窗，跳下一爐")
-                self.click_real(*cancel_btn, delay=0.5)
-                return
-
-            # 鍋爐靜止：截圖 OCR 判斷彈窗類型
-            popup_type = self._detect_popup_type()
-            ocr_preview = self._last_ocr_text[:30] if self._last_ocr_text else "（空）"
-            log(f"OCR 讀到：{ocr_preview}")
-            if popup_type == "spoiled":
-                log("OCR：燒糊彈窗，按確認清除")
-                self.click_real(*confirm_btn, delay=0.5)
-                self.wait(1.5)
-                # 清除後繼續下一輪 attempt 重新點鍋爐
-                continue
-            elif popup_type == "donation":
-                log("OCR：捐菜彈窗，按取消，跳下一爐")
-                self.click_real(*cancel_btn, delay=0.5)
-                return
+        if popup_type == "spoiled":
+            log("OCR：燒糊彈窗，按確認清除")
+            self.click_real(*confirm_btn, delay=0.5)
+            log(f"等待 {harvest_wait} 秒清除動畫…")
+            if not self.wait(harvest_wait): return
+            if _click_and_wait_recipe():
+                log("清除後食譜開啟 ✓")
+                _do_cook()
             else:
-                # OCR 無結果（winsdk 未安裝或未出彈窗）：保守策略
-                if attempt == 0:
-                    log("食譜未開，無法辨識彈窗，按取消暫退再試")
-                    self.click_real(*cancel_btn, delay=0.5)
-                    self.wait(0.5)
-                elif attempt == 1:
-                    log("食譜未開，嘗試按確認清除腐壞")
-                    self.click_real(*confirm_btn, delay=0.5)
-                    self.wait(1.5)
-                else:
-                    log("三次都無法開食譜，按取消保底，跳過")
-                    self.click_real(*cancel_btn, delay=0.5)
+                log("清除後仍無法開食譜，跳過")
 
-        log(f"鍋爐 ({sx},{sy}) 無法開食譜，跳過")
+        elif popup_type == "donation":
+            log("OCR：捐菜彈窗（做菜中），按取消，跳下一爐")
+            self.click_real(*cancel_btn, delay=0.5)
+
+        else:
+            # 無彈窗：可能剛收菜完，鍋爐需要稍等才能再開食譜
+            log(f"無彈窗，等待 {harvest_wait} 秒後重新點鍋爐…")
+            if not self.wait(harvest_wait): return
+            if _click_and_wait_recipe():
+                log("收菜後食譜開啟 ✓")
+                _do_cook()
+            else:
+                log("等待後仍無法開食譜，跳下一爐")
 
     def setup_stove(self, sx, sy, page, dish, on_status=None):
         """
@@ -1228,6 +1230,14 @@ class App:
         self.vars["cook_minutes"]  = v_min
         self.vars["cook_seconds"]  = v_sec
         self.vars["antlag_minutes"] = v_al
+
+        row3 = ttk.Frame(grp_set)
+        row3.pack(fill=tk.X, pady=2)
+        ttk.Label(row3, text="收菜等待", width=17, anchor=tk.W).pack(side=tk.LEFT)
+        v_hw = tk.IntVar(value=settings.get("harvest_wait", 3))
+        ttk.Spinbox(row3, from_=0, to=30, textvariable=v_hw, width=4).pack(side=tk.LEFT)
+        ttk.Label(row3, text=" 秒（收菜後、燒糊清除後等待再點鍋爐）").pack(side=tk.LEFT)
+        self.vars["harvest_wait"] = v_hw
 
         # ── 校準 ─────────────────────────────────────────
         grp_cal = ttk.LabelFrame(f, text="校準", padding=(10, 4))
