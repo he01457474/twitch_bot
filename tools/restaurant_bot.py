@@ -1544,7 +1544,8 @@ class App:
         messagebox.showinfo("完成", f"確認：{pts[0]}　取消：{pts[1]}\n已儲存。")
 
     def _test_ocr(self):
-        """截圖目前彈窗區域，執行 OCR，顯示辨識結果供確認關鍵字是否正確。"""
+        """截圖目前彈窗區域，執行 OCR，顯示辨識結果供確認關鍵字是否正確。
+        OCR 在背景執行緒跑，避免阻塞 UI。"""
         hwnd = self._get_hwnd()
         if not hwnd: return
         self.bot.hwnd = hwnd
@@ -1552,28 +1553,38 @@ class App:
         if region is None:
             messagebox.showerror("測 OCR", "截圖失敗，請確認遊戲視窗已開啟。")
             return
-        text = self.bot._ocr_image(region)
-        if not text:
-            messagebox.showwarning(
-                "測 OCR",
-                "OCR 沒有辨識到文字。\n\n"
-                "可能原因：\n"
-                "• 目前畫面沒有彈窗\n"
-                "• Windows 未安裝中文 OCR 語言包\n"
-                "• winsdk 未安裝"
-            )
-            return
-        # 判斷類型
-        if any(kw in text for kw in ["燒糊", "處理掉", "燒"]):
-            result = "→ 判定：燒糊彈窗（會按確認清除）"
-        elif any(kw in text for kw in ["捐", "流浪", "拉姆"]):
-            result = "→ 判定：捐菜彈窗（會按取消跳過）"
-        else:
-            result = "→ 判定：無法辨識（會走保守策略）"
-        messagebox.showinfo(
-            "測 OCR 結果",
-            f"辨識到的文字：\n\n「{text.strip()}」\n\n{result}"
-        )
+
+        self.calib_ocr.config(state="disabled", text="辨識中…")
+
+        def _run():
+            text = self.bot._ocr_image(region)
+
+            def _show():
+                self.calib_ocr.config(state="normal", text="測 OCR")
+                if not text:
+                    messagebox.showwarning(
+                        "測 OCR",
+                        "OCR 沒有辨識到文字。\n\n"
+                        "可能原因：\n"
+                        "• 目前畫面沒有彈窗\n"
+                        "• Windows 未安裝中文 OCR 語言包\n"
+                        "• winsdk 未安裝"
+                    )
+                    return
+                if any(kw in text for kw in ["燒糊", "處理掉", "燒"]):
+                    result = "→ 判定：燒糊彈窗（會按確認清除）"
+                elif any(kw in text for kw in ["捐", "流浪", "拉姆"]):
+                    result = "→ 判定：捐菜彈窗（會按取消跳過）"
+                else:
+                    result = "→ 判定：無法辨識（會走保守策略）"
+                messagebox.showinfo(
+                    "測 OCR 結果",
+                    f"辨識到的文字：\n\n「{text.strip()}」\n\n{result}"
+                )
+
+            self.root.after(0, _show)
+
+        threading.Thread(target=_run, daemon=True).start()
 
     def _calib_door(self):
         hwnd = self._get_hwnd()
