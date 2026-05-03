@@ -50,6 +50,7 @@ DEFAULT_SETTINGS = {
     "page": 6, "dish": 1, "cook_minutes": 20, "cook_seconds": 0,
     "antlag_minutes": 5,
     "harvest_wait": 3,         # 收菜後等待秒數，再重新點鍋爐
+    "restart_wait_seconds": 15, # 視窗消失後等待重新出現的秒數
     "restaurant_pt":    None,  # 餐廳確認點座標（靜態固定顏色，用來判斷是否在餐廳內）
     "restaurant_color": None,  # 餐廳確認點顏色
     "door_out":      None,  # 出門座標（餐廳內往外走的門口）
@@ -1066,18 +1067,24 @@ asyncio.run(run())
 
     def navigate_to_page(self, target_page):
         r = self.recipe
+        page_tabs = r.get("page_tabs", DEFAULT_RECIPE["page_tabs"])
+
         # 先連按左箭頭確保回到第 1 頁
         for _ in range(15):
             if self._stop.is_set(): return
             self.click_real(*r["left_arrow"], delay=0.15)
+        time.sleep(0.2)
 
-        # 右箭頭本身就會切換頁面，不需要額外點 tab
-        # 第 1 頁 = 0 次，第 2 頁 = 1 次，依此類推
-        for _ in range(target_page - 1):
-            if self._stop.is_set(): return
-            self.click_real(*r["right_arrow"], delay=0.15)
+        if 1 <= target_page <= len(page_tabs):
+            # 直接點 tab 按鈕，避免箭頭計數在遊戲卡頓時漏點
+            self.click_real(*page_tabs[target_page - 1], delay=0.2)
+        else:
+            # 超出 tab 範圍（第 6 頁以上）：用右箭頭從第 1 頁導到目標頁
+            for _ in range(target_page - 1):
+                if self._stop.is_set(): return
+                self.click_real(*r["right_arrow"], delay=0.2)
 
-        time.sleep(0.3)
+        time.sleep(0.5)  # 等頁面渲染完成（從 0.3 加長）
 
     def _select_dish(self, page, dish, check, log):
         """換頁 + 點菜色 + 等食譜關閉。成功回傳 True。"""
@@ -1106,19 +1113,39 @@ asyncio.run(run())
 
         self._stop.clear()
         try:
-            # 給 3 秒讓玩家確認食譜已關閉，再取基準色
-            for i in range(3, 0, -1):
-                if self._stop.is_set(): return
-                on_status(f"請確認食譜已關閉，{i} 秒後開始…")
-                self.wait(1)
-            self._recipe_closed_baseline = list(self.get_pixel(*self.recipe["check_pt"]))
-            # scan_interval 單位已是秒
             antlag_sec = antlag_minutes * 60   # 0 = 完全關閉防卡頓
+
+            # ── 啟動初始化 ──
+            on_status("初始化中…")
+
+            # 1. 若食譜開著，先關掉再取基準色
+            #    先用 check_pt 暖色判斷（食譜標題為橙金色），不靠基準色
+            check_px = self.get_pixel(*self.recipe["check_pt"])
+            r_, g_, b_ = check_px
+            _, s_, v_ = _rgb_to_hsv(r_, g_, b_)
+            h_ = colorsys.rgb_to_hsv(r_/255, g_/255, b_/255)[0] * 360
+            if 15 < h_ < 65 and s_ > 25 and v_ > 55:
+                on_status("初始化：食譜開著，自動關閉…")
+                self.click_real(*self.recipe["close"], delay=0.8)
+                self.wait(0.8)
+            self._recipe_closed_baseline = list(self.get_pixel(*self.recipe["check_pt"]))
+
+            # 2. 若不在餐廳，嘗試導航過去
+            if not self._is_in_restaurant():
+                on_status("初始化：不在餐廳，嘗試導航…")
+                self.leave_and_return(on_status)
+                if self._stop.is_set(): return
+                self.wait(2.0)
+                if not self._is_in_restaurant():
+                    on_status("初始化：無法確認在餐廳，請手動前往後重啟", error=True)
+                    return
 
             # 若未校準餐廳確認點，提醒但不阻擋
             if not self.settings.get("restaurant_pt") or not self.settings.get("restaurant_color"):
                 on_status("提示：未校準餐廳確認點，建議校準以防止在餐廳外誤觸做菜")
-                self.wait(3.0)
+                self.wait(2.0)
+
+            on_status("初始化完成，開始掃描…")
 
             while not self._stop.is_set():
                 # 每輪先確認視窗還在，關閉就停止
@@ -1236,8 +1263,12 @@ class App:
         ttk.Label(row3, text="收菜等待", width=17, anchor=tk.W).pack(side=tk.LEFT)
         v_hw = tk.IntVar(value=settings.get("harvest_wait", 3))
         ttk.Spinbox(row3, from_=0, to=30, textvariable=v_hw, width=4).pack(side=tk.LEFT)
-        ttk.Label(row3, text=" 秒（收菜後、燒糊清除後等待再點鍋爐）").pack(side=tk.LEFT)
+        ttk.Label(row3, text=" 秒（收菜後等待）   視窗等待 ").pack(side=tk.LEFT)
+        v_rw = tk.IntVar(value=settings.get("restart_wait_seconds", 15))
+        ttk.Spinbox(row3, from_=5, to=120, textvariable=v_rw, width=4).pack(side=tk.LEFT)
+        ttk.Label(row3, text=" 秒（視窗消失後重試）").pack(side=tk.LEFT)
         self.vars["harvest_wait"] = v_hw
+        self.vars["restart_wait_seconds"] = v_rw
 
         # ── 校準 ─────────────────────────────────────────
         grp_cal = ttk.LabelFrame(f, text="校準", padding=(10, 4))
