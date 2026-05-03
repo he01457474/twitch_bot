@@ -329,6 +329,7 @@ class RestaurantBot:
         self._recipe_closed_baseline = None   # 食譜關閉時的 check_pt 顏色基準
         self._debug   = False                 # Debug 模式：存標記截圖
         self._last_antlag = 0.0               # 上次執行防卡頓的時間戳記
+        self._last_popup_img = None           # 最近一次彈窗截圖（RAM，程式結束自動清除）
 
     def _debug_capture(self, label, markers=None):
         """
@@ -352,6 +353,101 @@ class RestaurantBot:
             img.save(os.path.join(DEBUG_DIR, fname))
         except Exception:
             pass
+
+    # ── OCR 彈窗偵測 ──────────────────────────────────────────────────────
+
+    def _capture_popup_region(self):
+        """截取彈窗文字區，存到 self._last_popup_img 並回傳 PIL Image。
+        取 confirm_btn 上方的矩形區域，涵蓋兩行彈窗說明文字。"""
+        if not self.hwnd:
+            return None
+        try:
+            img, w, h = capture_window(self.hwnd)
+            img   = img.convert("RGB")
+            scale = max(w / MOLE_W, h / MOLE_H)
+
+            confirm_btn = self.recipe.get("confirm_btn", DEFAULT_RECIPE["confirm_btn"])
+            cancel_btn  = self.recipe.get("cancel_btn",  DEFAULT_RECIPE["cancel_btn"])
+
+            # 彈窗文字在按鈕上方 ~100-20px（mole 座標）
+            left  = max(0, int((min(confirm_btn[0], cancel_btn[0]) - 160) * scale))
+            right = min(w, int((max(confirm_btn[0], cancel_btn[0]) + 160) * scale))
+            top   = max(0, int((confirm_btn[1] - 110) * scale))
+            bot   = min(h, int((confirm_btn[1] -  15) * scale))
+
+            region = img.crop((left, top, right, bot))
+            self._last_popup_img = region
+            return region
+        except Exception:
+            return None
+
+    def _ocr_image(self, pil_img):
+        """用 Windows 內建 OCR 辨識 PIL Image，回傳文字字串。
+        需要 winsdk 套件（pip install winsdk）；未安裝時回傳空字串。"""
+        try:
+            import asyncio, io
+            import winsdk.windows.media.ocr as ocr
+            import winsdk.windows.globalization as glob
+            import winsdk.windows.graphics.imaging as wgi
+            import winsdk.windows.storage.streams as wss
+
+            async def _run():
+                # PIL → PNG → InMemoryRandomAccessStream
+                buf = io.BytesIO()
+                pil_img.convert("RGB").save(buf, format="PNG")
+                png_bytes = buf.getvalue()
+
+                stream = wss.InMemoryRandomAccessStream()
+                writer = wss.DataWriter(stream)
+                writer.write_bytes(png_bytes)
+                await writer.store_async()
+                stream.seek(0)
+
+                # BitmapDecoder → SoftwareBitmap
+                decoder = await wgi.BitmapDecoder.create_async(stream)
+                bitmap  = await decoder.get_software_bitmap_async()
+                # OCR 要求 BGRA8 格式
+                if bitmap.bitmap_pixel_format != wgi.BitmapPixelFormat.BGRA8:
+                    bitmap = wgi.SoftwareBitmap.convert(
+                        bitmap, wgi.BitmapPixelFormat.BGRA8)
+
+                # 取第一個支援的中文語言
+                for tag in ["zh-Hans-CN", "zh-TW", "zh"]:
+                    lang = glob.Language(tag)
+                    if ocr.OcrEngine.is_language_supported(lang):
+                        engine = ocr.OcrEngine.try_create_from_language(lang)
+                        if engine:
+                            result = await engine.recognize_async(bitmap)
+                            return result.text if result else ""
+                return ""
+
+            loop = asyncio.new_event_loop()
+            try:
+                text = loop.run_until_complete(_run())
+            finally:
+                loop.close()
+            return text
+        except Exception:
+            return ""
+
+    def _detect_popup_type(self):
+        """截圖彈窗文字區 → OCR → 判斷彈窗類型。
+        回傳：'spoiled'（燒糊）、'donation'（捐菜）、None（無法判斷）"""
+        region = self._capture_popup_region()
+        if region is None:
+            return None
+        text = self._ocr_image(region)
+        if not text:
+            return None
+        # 燒糊彈窗關鍵字
+        if any(kw in text for kw in ["燒糊", "處理掉", "燒"]):
+            return "spoiled"
+        # 捐菜彈窗關鍵字
+        if any(kw in text for kw in ["捐", "流浪", "拉姆"]):
+            return "donation"
+        return None
+
+    # ── 快照與除錯 ─────────────────────────────────────────────────────────
 
     def save_live_snapshot(self, label=""):
         """
@@ -772,21 +868,31 @@ class RestaurantBot:
                 self.click_real(*cancel_btn, delay=0.5)
                 return
 
-            # 鍋爐靜止：
-            #   attempt 0 → 取消（關掉可能的捐菜彈窗，或食物剛收走後暫退）
-            #   attempt 1 → 確認（腐壞彈窗清除）
-            #   attempt 2 → 取消保底，跳過
-            if attempt == 0:
-                log("食譜未開，暫退（取消）再試")
-                self.click_real(*cancel_btn, delay=0.5)
-                self.wait(0.5)
-            elif attempt == 1:
-                log("食譜未開，疑似腐壞彈窗，按確認清除")
+            # 鍋爐靜止：截圖 OCR 判斷彈窗類型
+            popup_type = self._detect_popup_type()
+            if popup_type == "spoiled":
+                log("OCR：燒糊彈窗，按確認清除")
                 self.click_real(*confirm_btn, delay=0.5)
                 self.wait(1.5)
-            else:
-                log("三次都無法開食譜，按取消保底，跳過")
+                # 清除後繼續下一輪 attempt 重新點鍋爐
+                continue
+            elif popup_type == "donation":
+                log("OCR：捐菜彈窗，按取消，跳下一爐")
                 self.click_real(*cancel_btn, delay=0.5)
+                return
+            else:
+                # OCR 無結果（winsdk 未安裝或未出彈窗）：保守策略
+                if attempt == 0:
+                    log("食譜未開，無法辨識彈窗，按取消暫退再試")
+                    self.click_real(*cancel_btn, delay=0.5)
+                    self.wait(0.5)
+                elif attempt == 1:
+                    log("食譜未開，嘗試按確認清除腐壞")
+                    self.click_real(*confirm_btn, delay=0.5)
+                    self.wait(1.5)
+                else:
+                    log("三次都無法開食譜，按取消保底，跳過")
+                    self.click_real(*cancel_btn, delay=0.5)
 
         log(f"鍋爐 ({sx},{sy}) 無法開食譜，跳過")
 
