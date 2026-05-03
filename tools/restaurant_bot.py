@@ -883,31 +883,8 @@ class RestaurantBot:
             time.sleep(delay)
 
     def click_real(self, mole_x, mole_y, delay=0.1):
-        """移動游標到位置後 SendMessage（不搶視窗焦點，但游標會移動）"""
-        if not self.hwnd:
-            return
-        rect  = win32gui.GetClientRect(self.hwnd)
-        w, h  = rect[2], rect[3]
-        scale = max(w / MOLE_W, h / MOLE_H)
-        cx, cy = int(mole_x * scale), int(mole_y * scale)
-        lp = (cy << 16) | (cx & 0xFFFF)
-        try:
-            # 用 GetWindowRect 算螢幕位置，避免 DPI 縮放問題
-            wr = win32gui.GetWindowRect(self.hwnd)
-            cr = win32gui.GetClientRect(self.hwnd)
-            # client area 相對於 window 的偏移 = (wr.right-wr.left-cr.right)//2 為邊框寬
-            border_x = (wr[2] - wr[0] - cr[2]) // 2
-            border_y = (wr[3] - wr[1] - cr[3]) - border_x
-            sx = wr[0] + border_x + cx
-            sy = wr[1] + border_y + cy
-            win32api.SetCursorPos((sx, sy))
-            time.sleep(0.05)
-        except Exception:
-            pass
-        win32api.SendMessage(self.hwnd, 0x201, 1, lp)
-        win32api.SendMessage(self.hwnd, 0x202, 0, lp)
-        if delay > 0:
-            time.sleep(delay)
+        """背景點擊（與 click 相同，保留名稱以相容舊呼叫）"""
+        self.click(mole_x, mole_y, delay)
 
     def wait(self, seconds):
         for _ in range(int(seconds * 10)):
