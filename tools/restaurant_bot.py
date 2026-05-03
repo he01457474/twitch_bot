@@ -437,14 +437,12 @@ class RestaurantBot:
 
     def detect_stove_state(self, sx, sy):
         """
-        比對鍋爐狀態，回傳 "done" / "cooking" / "spoiled" / "unknown"。
+        比對鍋爐狀態，回傳 "done" / "cooking" / "unknown"。
+        腐壞不在此處偵測，改由 _open_recipe_and_cook 點擊後判斷彈窗類型處理。
 
-        優先使用多點格式（done_points / clock_points / spoiled_points），
-        每個校準點格式為 [dx, dy, r, g, b]，任一符合即視為偵測到該狀態。
-        若多點列表為空，則 fallback 至舊的單點格式（*_color + *_offset）。
-
-        每個校準點還會在周邊十字取樣 5 個點取最小色差，
-        對 NPC 對話框或坐騎遮擋一部分時有更強的容錯。
+        done：時鐘填滿（白色扇形消失）或 done_hsv_list / done_points 命中
+        cooking：時鐘邊框命中且內部仍有白色扇形
+        unknown：以上皆不符合（空鍋爐 / 腐壞 / 偵測失敗）
         """
         threshold = self.settings.get("state_threshold", 40)
 
@@ -634,9 +632,6 @@ class RestaurantBot:
             self._debug_capture(f"done_{sx}_{sy}", markers)
         return best
 
-    def is_stove_spoiled(self, sx, sy):
-        return self.detect_stove_state(sx, sy) == "spoiled"
-
     def _detect_safe(self, sx, sy):
         """
         嚴謹版狀態偵測：連偵測兩次（間隔 0.3 秒），採保守判斷。
@@ -675,92 +670,13 @@ class RestaurantBot:
         threshold = self.settings.get("state_threshold", 40)
         return self.color_diff(current, tuple(self._recipe_closed_baseline)) > threshold
 
-    # ── 鍋爐動作：收菜 / 清除腐壞 / 做菜步驟 ────────────
+    # ── 鍋爐動作：收菜 / 做菜步驟 ────────────────────────
 
     def _collect_food(self, sx, sy, log):
         """收菜（食物做好時點鍋爐）"""
         log("收菜…")
         self.click(sx, sy, delay=0.5)
         self.wait(1.5)
-
-    def _has_smoke(self, stove_index):
-        """
-        偵測第 stove_index 號鍋爐是否有黑煙。
-        使用區域掃描（8px 半徑）取代單點，對位置偏移更有容錯。
-        回傳 True/False，或 None（未校準 smoke_offsets）。
-        """
-        offsets       = self.settings.get("smoke_offsets") or []
-        v_threshold   = self.settings.get("smoke_threshold",     30)
-        pct_threshold = self.settings.get("smoke_pct_threshold", 0.15)
-        if not offsets or stove_index >= len(offsets):
-            return None
-        off = offsets[stove_index]
-        if not off:
-            return None
-        sx0, sy0 = self.stoves[stove_index]
-        try:
-            raw_img, w, h = capture_window(self.hwnd)
-            img   = raw_img.convert("RGB")
-            scale = max(w / MOLE_W, h / MOLE_H)
-        except Exception:
-            return None
-        dark_pct = _hsv_match_pct(img, scale,
-                                  sx0 + off[0], sy0 + off[1],
-                                  radius=8,
-                                  h_range=[0, 360],
-                                  s_range=[0, 100],
-                                  v_range=[0, v_threshold])
-        return dark_pct >= pct_threshold
-
-    def _clear_spoiled_smoke(self, sx, sy, log):
-        """
-        清除燒糊（黑煙偵測確認後呼叫）。
-        點鍋爐 → 等彈窗 → 按確認。
-        若意外開了食譜（誤判）→ 關閉並回傳 False。
-        """
-        confirm_btn = self.recipe.get("confirm_btn", DEFAULT_RECIPE["confirm_btn"])
-        close_btn   = self.recipe.get("close",       DEFAULT_RECIPE["close"])
-        log("偵測到黑煙，清除燒糊…")
-        self.click(sx, sy, delay=0.5)
-        self.wait(0.8)
-        if self.is_recipe_open():
-            log("意外開啟食譜（黑煙誤判），關閉")
-            self.click_real(*close_btn, delay=0.5)
-            return False
-        self.click_real(*confirm_btn, delay=0.5)
-        self.wait(1.5)
-        return True
-
-    def _clear_spoiled(self, sx, sy, log):
-        """
-        清除腐壞食物。最多試 2 次，成功回傳 True。
-        流程：確認腐壞 → 點鍋爐 → 等彈窗 → 點確認 → 確認是否清除成功。
-        點確認前會先偵測有沒有意外開食譜，避免 confirm_btn 座標點到食譜菜色。
-        """
-        confirm_btn = self.recipe.get("confirm_btn", DEFAULT_RECIPE["confirm_btn"])
-        close_btn   = self.recipe.get("close",       DEFAULT_RECIPE["close"])
-        for _try in range(2):
-            # 點確認前再確認一次腐壞狀態，偵測失準時不誤按
-            time.sleep(0.2)
-            if self.detect_stove_state(sx, sy) != "spoiled":
-                log("腐壞狀態已消失，不需清除")
-                return True
-            log("腐壞確認，清除…")
-            self.click(sx, sy, delay=0.5)
-            self.wait(0.8)
-            # 若意外開了食譜（stove 實際非腐壞），先關掉食譜再跳過
-            # 避免 confirm_btn 座標誤點到食譜裡的菜色
-            if self.is_recipe_open():
-                log("意外開啟食譜（非腐壞彈窗），關閉並跳過")
-                self.click_real(*close_btn, delay=0.5)
-                return False
-            self.click_real(*confirm_btn, delay=0.5)
-            if self._stop.is_set(): return False
-            self.wait(1.5)
-            if self.detect_stove_state(sx, sy) != "spoiled":
-                return True
-            log("清除後仍偵測到腐壞，重試…")
-        return False
 
     def _do_steps(self, sx, sy, log):
         """
@@ -1261,8 +1177,7 @@ class App:
         ttk.Label(row_c2, text="偵測：", width=5, foreground="gray").pack(side=tk.LEFT)
         self.calib_sp     = ttk.Button(row_c2, text="狀態色", command=self._calib_state_colors)
         self.calib_clk_in = ttk.Button(row_c2, text="時鐘內部", command=self._calib_clock_interior)
-        self.calib_smoke  = ttk.Button(row_c2, text="黑煙",   command=self._calib_smoke)
-        for btn in (self.calib_sp, self.calib_clk_in, self.calib_smoke):
+        for btn in (self.calib_sp, self.calib_clk_in):
             btn.pack(side=tk.LEFT, padx=3)
 
         # 校準狀態指示列
@@ -1271,8 +1186,7 @@ class App:
         row_cs.pack(fill=tk.X, pady=(3, 4))
         for key, title in (("stoves", "鍋爐"), ("recipe", "食譜"), ("cancel", "彈窗"),
                             ("door", "門口"), ("restaurant", "餐廳"),
-                            ("state", "狀態色"), ("clk_interior", "時鐘內"),
-                            ("smoke", "黑煙")):
+                            ("state", "狀態色"), ("clk_interior", "時鐘內")):
             lbl = ttk.Label(row_cs, text=f"▸{title}", font=("", 8))
             lbl.pack(side=tk.LEFT, padx=(2, 8))
             self._calib_lbl[key] = lbl
@@ -1325,15 +1239,12 @@ class App:
             "clk_interior": bool(s.get("clock_interior_offsets") and
                                   len(s["clock_interior_offsets"]) == len(self.stoves) and
                                   any(o for o in s["clock_interior_offsets"])),
-            "smoke":      bool(s.get("smoke_offsets") and
-                               len(s["smoke_offsets"]) == len(self.stoves) and
-                               any(o for o in s["smoke_offsets"])),
             "door":       bool(s.get("door_out") and s.get("door_in")),
             "restaurant": bool(s.get("restaurant_pt") and s.get("restaurant_color")),
         }
         titles = {"stoves": "鍋爐", "recipe": "食譜", "cancel": "彈窗",
                   "state": "狀態色", "clk_interior": "時鐘內",
-                  "smoke": "黑煙", "door": "門口", "restaurant": "餐廳"}
+                  "door": "門口", "restaurant": "餐廳"}
         for key, done in checks.items():
             lbl = self._calib_lbl.get(key)
             if not lbl:
@@ -1362,7 +1273,7 @@ class App:
         sb = tk.NORMAL   if running else tk.DISABLED
         for btn in (self.start_btn, self.calib_s, self.calib_r,
                     self.calib_c, self.calib_sp, self.calib_clk_in,
-                    self.calib_smoke, self.calib_door, self.calib_rest,
+                    self.calib_door, self.calib_rest,
                     self.testnav_btn, self.testdet_btn, self.preview_btn, self.snap_btn):
             btn.config(state=sa)
         self.stop_btn.config(state=sb)
@@ -2269,9 +2180,8 @@ class App:
 
         # (顯示名稱, 說明, 顏色key, 偏移key或None)
         states = [
-            ("腐壞",       "食物腐壞特徵點 → 自動清除",             "spoiled_color", "spoiled_offset"),
-            ("時鐘（烹飪）", "橙色圓形時鐘 → 烹飪中跳過",           "clock_color",   "clock_offset"),
-            ("做完（黃光）", "食物做好黃光 → 自動收菜再重做",         "done_color",    "done_offset"),
+            ("時鐘（烹飪）", "橙色圓形時鐘 → 烹飪中跳過",     "clock_color",   "clock_offset"),
+            ("做完（黃光）", "食物做好黃光 → 自動收菜再重做", "done_color",    "done_offset"),
         ]
 
         for label, hint, color_key, offset_key in states:
@@ -2706,7 +2616,7 @@ class App:
         frame.pack(fill=tk.BOTH)
 
         # 表頭
-        headers = ["鍋爐", "座標", "狀態", "做完", "時鐘", "腐壞"]
+        headers = ["鍋爐", "座標", "狀態", "做完", "時鐘"]
         for col, h in enumerate(headers):
             ttk.Label(frame, text=h, font=("", 9, "bold"),
                       padding=(6, 2)).grid(row=0, column=col, sticky=tk.W)
@@ -2817,35 +2727,24 @@ class App:
                     if stop_event.is_set():
                         break
 
-                    done_txt,    _ = state_score("done_hsv_list",    "done_points",    "done_color",    "done_offset",    4, sx, sy, i)
-                    clock_txt,   _ = state_score("clock_hsv_list",   "clock_points",   "clock_color",   "clock_offset",   4, sx, sy, i)
-                    spoiled_txt, _ = state_score("spoiled_hsv_list", "spoiled_points", "spoiled_color", "spoiled_offset", 6, sx, sy, i)
+                    done_txt,  _ = state_score("done_hsv_list",  "done_points",  "done_color",  "done_offset",  4, sx, sy, i)
+                    clock_txt, _ = state_score("clock_hsv_list", "clock_points", "clock_color", "clock_offset", 4, sx, sy, i)
 
-                    _, done_hit    = parse_score(done_txt)
-                    _, clock_hit   = parse_score(clock_txt)
-                    _, spoiled_hit = parse_score(spoiled_txt)
+                    _, done_hit  = parse_score(done_txt)
+                    _, clock_hit = parse_score(clock_txt)
 
-                    hits = {}
-                    if done_hit:    hits["done"]    = 1
-                    if clock_hit:   hits["cooking"] = 1
-                    if spoiled_hit: hits["spoiled"] = 1
-                    conflict = len(hits) > 1
-
-                    if not hits:
-                        state = "unknown"
-                    elif "cooking" in hits:
-                        state = "cooking"
-                    elif "done" in hits and "spoiled" in hits:
+                    if done_hit:
                         state = "done"
+                    elif clock_hit:
+                        state = "cooking"
                     else:
-                        state = next(iter(hits))
+                        state = "unknown"
 
-                    state_txt = f"{state} ⚠" if conflict else state
                     sc = {"cooking": "blue", "done": "orange",
-                          "spoiled": "red",  "unknown": "gray"}.get(state, "gray")
+                          "unknown": "gray"}.get(state, "gray")
 
-                    def update_row(idx=i, st=state_txt, fg=sc,
-                                   dd=done_txt, cd=clock_txt, sd=spoiled_txt):
+                    def update_row(idx=i, st=state, fg=sc,
+                                   dd=done_txt, cd=clock_txt):
                         if not win.winfo_exists():
                             return
                         row_labels[idx][0].config(text=str(idx+1))
@@ -2853,7 +2752,6 @@ class App:
                         row_labels[idx][2].config(text=st, foreground=fg)
                         row_labels[idx][3].config(text=dd)
                         row_labels[idx][4].config(text=cd)
-                        row_labels[idx][5].config(text=sd)
 
                     win.after(0, update_row)
 
