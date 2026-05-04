@@ -1231,8 +1231,13 @@ asyncio.run(run())
         btn_quick = tuple(self.settings.get("btn_quick_start", [456, 517]))
         deadline = time.time() + 90
         last_action = None
-        unknown_since = None
-        start_fallback_clicked = False
+        unknown_since = time.time()
+        fallback_steps = [
+            ("start_fallback", btn_start, "開始"),
+            ("login_fallback", btn_login, "登入"),
+            ("quick_start_fallback", btn_quick, "快速開始"),
+        ]
+        fallback_index = 0
 
         while time.time() < deadline:
             if self._stop.is_set():
@@ -1253,33 +1258,34 @@ asyncio.run(run())
                 return self._navigate_to_restaurant_after_login(on_status)
 
             if any(kw in text for kw in ["選擇伺服器", "快速"]):
-                unknown_since = None
+                unknown_since = time.time()
+                fallback_index = max(fallback_index, 2)
                 on_status("偵測到選伺服器畫面，點選「快速開始」…")
                 self.click(*btn_quick, delay=3.0)
                 last_action = "quick_start"
                 continue
 
             if any(kw in text for kw in ["登入", "密碼"]):
-                unknown_since = None
+                unknown_since = time.time()
+                fallback_index = max(fallback_index, 1)
                 on_status("偵測到登入畫面，點選「登入」…")
                 self.click(*btn_login, delay=2.0)
                 last_action = "login"
                 continue
 
             if any(kw in text for kw in ["摩爾莊園", "mole.61"]):
-                unknown_since = None
+                unknown_since = time.time()
                 on_status("偵測到主畫面，點選「開始」…")
                 self.click(*btn_start, delay=2.0)
                 last_action = "start"
                 continue
 
-            if unknown_since is None:
-                unknown_since = time.time()
-            elif not start_fallback_clicked and time.time() - unknown_since >= 8:
-                on_status("無法辨識目前畫面，嘗試點一次「開始」…")
-                self.click(*btn_start, delay=2.0)
-                last_action = "start_fallback"
-                start_fallback_clicked = True
+            if fallback_index < len(fallback_steps) and time.time() - unknown_since >= 8:
+                action, btn, label = fallback_steps[fallback_index]
+                on_status(f"無法辨識目前畫面，嘗試點一次「{label}」…")
+                self.click(*btn, delay=2.5)
+                last_action = action
+                fallback_index += 1
                 unknown_since = time.time()
                 continue
 
