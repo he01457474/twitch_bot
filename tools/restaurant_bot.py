@@ -619,6 +619,40 @@ asyncio.run(run())
                 break
         return True
 
+    def _clear_blocking_overlays(self, log=None, close_recipe=False, attempts=3):
+        handled = False
+
+        def _log(msg):
+            if log:
+                log(msg)
+
+        for _ in range(max(1, attempts)):
+            if self._stop.is_set():
+                break
+
+            if self._handle_known_notice_popup(log):
+                handled = True
+                continue
+
+            if self._close_happy_spin_popup(log):
+                handled = True
+                continue
+
+            popup_result = self._handle_popup_guard(_log, allow_unknown=False)
+            if popup_result:
+                handled = True
+                continue
+
+            if close_recipe and self._is_recipe_open_fast():
+                _log("\u5075\u6e2c\u5230\u98df\u8b5c\u906e\u64cb\uff0c\u5148\u95dc\u9589")
+                self.click_real(*self.recipe["close"], delay=0.35)
+                handled = True
+                continue
+
+            break
+
+        return handled
+
     def _progress_bar_score(self, sx, sy):
         if not self.hwnd:
             return 0.0
@@ -1525,6 +1559,7 @@ asyncio.run(run())
             if (interval_seconds > 0 and elapsed < total_seconds and
                     time.time() - self._last_antlag >= interval_seconds):
                 self.leave_and_return(on_status)
+                self._clear_blocking_overlays(on_status, close_recipe=True)
                 if not self._is_in_restaurant():
                     on_status("防卡頓後未偵測到餐廳，30 秒後重試…")
         return not self._stop.is_set()
@@ -1762,6 +1797,7 @@ asyncio.run(run())
 
             # ── 啟動初始化 ──
             on_status("初始化中…")
+            self._clear_blocking_overlays(on_status, close_recipe=True)
 
             # 1. 若食譜開著，先關掉再取基準色
             #    先用 check_pt 暖色判斷（食譜標題為橙金色），不靠基準色
@@ -1774,12 +1810,14 @@ asyncio.run(run())
             self._recipe_closed_baseline = list(self.get_pixel(*self.recipe["check_pt"]))
 
             # 2. 若不在餐廳，嘗試導航過去
+            self._clear_blocking_overlays(on_status, close_recipe=True)
             if not self._is_in_restaurant():
                 on_status("初始化：不在餐廳，嘗試導航…")
                 if not self._navigate_to_restaurant(on_status):
                     return
                 if self._stop.is_set(): return
                 self.wait(2.0)
+                self._clear_blocking_overlays(on_status, close_recipe=True)
                 if not self._is_in_restaurant():
                     on_status("初始化：無法確認在餐廳，請手動前往後重啟", error=True)
                     return
@@ -1828,18 +1866,22 @@ asyncio.run(run())
 
                 # 掃描前防卡頓：若距上次防卡頓已超過設定間隔，先出去繞一圈再掃
                 # 這樣即使掃描本身耗時，Flash Player 也不會在掃描前就已經積累太久
+                self._clear_blocking_overlays(on_status, close_recipe=True)
                 if antlag_sec > 0 and time.time() - self._last_antlag >= antlag_sec:
                     on_status("掃描前防卡頓…")
                     self.leave_and_return(on_status)
                     if self._stop.is_set(): break
+                    self._clear_blocking_overlays(on_status, close_recipe=True)
 
                 # 確認在餐廳內，否則嘗試導航回來
+                self._clear_blocking_overlays(on_status, close_recipe=True)
                 if not self._is_in_restaurant():
                     on_status("不在餐廳，嘗試返回…")
                     if not self._navigate_to_restaurant(on_status):
                         break
                     if self._stop.is_set(): break
                     self.wait(2.0)
+                    self._clear_blocking_overlays(on_status, close_recipe=True)
                     if not self._is_in_restaurant():
                         on_status("無法確認在餐廳，跳過本輪掃描")
                         if not self.wait_with_antlag(scan_interval, antlag_sec, on_status, "等待重試"): break
@@ -1855,6 +1897,7 @@ asyncio.run(run())
                 if self._debug:
                     self.save_live_snapshot("掃描前")
                 for i, (sx, sy) in enumerate(self.stoves):
+                    self._clear_blocking_overlays(on_status, close_recipe=True)
                     if self._stop.is_set(): break
                     on_status(f"【鍋爐 {i+1}/{n}】掃描中…")
                     self.setup_stove(sx, sy, page, dish, on_status)
