@@ -1756,13 +1756,14 @@ asyncio.run(run())
                 # 掃描所有鍋爐：已完成→收菜並重新做，烹飪中→跳過
                 n = len(self.stoves)
                 on_status(f"開始掃描（共 {n} 個鍋爐）…")
-                self.save_live_snapshot("掃描前")   # 存桌面快照供除錯
+                if self._debug:
+                    self.save_live_snapshot("掃描前")
                 for i, (sx, sy) in enumerate(self.stoves):
                     if self._stop.is_set(): break
                     on_status(f"【鍋爐 {i+1}/{n}】掃描中…")
                     self.setup_stove(sx, sy, page, dish, on_status)
                     on_status(f"【鍋爐 {i+1}/{n}】完成")
-                    if not self.wait(1.0): break
+                    if not self.wait(0.5): break
 
                 if self._stop.is_set(): break
 
