@@ -103,7 +103,7 @@ def load_config():
     data = {}
     if os.path.exists(CONFIG_FILE):
         try:
-            with open(CONFIG_FILE, "r") as f:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
         except Exception:
             pass
@@ -129,11 +129,12 @@ def load_config():
 
 
 def save_config(stoves, recipe, settings):
-    try:
-        with open(CONFIG_FILE, "w") as f:
-            json.dump({"stoves": stoves, "recipe": recipe, "settings": settings}, f, indent=2)
-    except Exception:
-        pass
+    payload = {"stoves": stoves, "recipe": recipe, "settings": settings}
+    tmp_file = CONFIG_FILE + ".tmp"
+    with open(tmp_file, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+    os.replace(tmp_file, CONFIG_FILE)
 
 
 # ── 截圖 ─────────────────────────────────────────────
@@ -1026,7 +1027,7 @@ asyncio.run(run())
         win32api.SendMessage(self.hwnd, 0x201, 0, lp)
         win32api.SendMessage(self.hwnd, 0x202, 0, lp)
         if delay > 0:
-            time.sleep(delay)
+            self.wait(delay)
 
     def click_real(self, mole_x, mole_y, delay=0.1):
         """背景點擊（與 click 相同，保留名稱以相容舊呼叫）"""
@@ -1174,7 +1175,8 @@ asyncio.run(run())
                 return True
             if on_status:
                 on_status(f"等待畫面「{msg}」…")
-            time.sleep(1.5)
+            if not self.wait(1.5):
+                return False
         return False
 
     def _handle_notice_popup(self, on_status):
@@ -1193,60 +1195,72 @@ asyncio.run(run())
         btn_quick = tuple(self.settings.get("btn_quick_start", [456, 517]))
 
         # Step 1：等主畫面 → 點「開始」
-        self._wait_for_screen(["摩爾莊園", "mole.61"], timeout=25, on_status=on_status)
+        if not self._wait_for_screen(["摩爾莊園", "mole.61"], timeout=25, on_status=on_status):
+            on_status("等待主畫面逾時，停止登入流程", error=True)
+            return False
         on_status("點選「開始」…")
         self.click(*btn_start, delay=2.0)
+        if self._stop.is_set(): return False
 
         # Step 2：等登入畫面 → 點「登入」（密碼已記住）
-        self._wait_for_screen(["登入", "密碼"], timeout=12, on_status=on_status)
+        if not self._wait_for_screen(["登入", "密碼"], timeout=12, on_status=on_status):
+            on_status("等待登入畫面逾時，停止登入流程", error=True)
+            return False
         on_status("點選「登入」…")
         self.click(*btn_login, delay=2.0)
+        if self._stop.is_set(): return False
 
         # Step 3：等選伺服器 → 點「快速開始」
-        self._wait_for_screen(["選擇伺服器", "快速"], timeout=12, on_status=on_status)
+        if not self._wait_for_screen(["選擇伺服器", "快速"], timeout=12, on_status=on_status):
+            on_status("等待選伺服器畫面逾時，停止登入流程", error=True)
+            return False
         on_status("點選「快速開始」…")
         self.click(*btn_quick, delay=3.0)
+        if self._stop.is_set(): return False
 
         # Step 4：等待進入遊戲（偵測底部工具列出現）
         on_status("等待進入遊戲…")
-        self.wait(3.0)   # 先等過場，避免截到 loading 畫面誤判
-        if self._stop.is_set(): return
+        if not self.wait(3.0):   # 先等過場，避免截到 loading 畫面誤判
+            return False
         ok = self._wait_for_screen(
             ["動作", "背包", "廣場", "地圖", "設置"],
             region=(0, 460, 960, 560),   # 只掃底部工具列區域
             timeout=45.0, on_status=on_status
         )
         if not ok:
-            on_status("等待進入遊戲逾時，嘗試繼續…")
-        if self._stop.is_set(): return
+            on_status("等待進入遊戲逾時，停止登入流程", error=True)
+            return False
+        if self._stop.is_set(): return False
 
         # Step 5：處理可能的系統提示彈窗
         self._handle_notice_popup(on_status)
-        self.wait(1.0)
+        if not self.wait(1.0):
+            return False
 
         # Step 6：導航到餐廳
-        if not self._is_in_restaurant():
-            on_status("導航至餐廳…")
-            # 使用地圖/家園按鈕導航
-            self.click(*MAP_BTN, delay=3.0)
-            if self._stop.is_set(): return
-            self.click(*HOME_BTN, delay=1.0)
-            self.click(*RESTAURANT_BTN, delay=4.0)
+        on_status("導航至餐廳…")
+        self.click(*MAP_BTN, delay=3.0)
+        if self._stop.is_set(): return False
+        self.click(*HOME_BTN, delay=1.0)
+        if self._stop.is_set(): return False
+        self.click(*RESTAURANT_BTN, delay=4.0)
+        if self._stop.is_set(): return False
 
         # 重取食譜基準色
         if self.hwnd:
             self._recipe_closed_baseline = list(self.get_pixel(*self.recipe["check_pt"]))
-        on_status("重連完成，恢復掃描…")
+        on_status("登入完成，已導航至餐廳…")
+        return True
 
     def _launch_flash_and_login(self, on_status):
         """Flash 閃退：重啟 exe → 開啟遊戲 URL → 走登入流程。"""
-        import subprocess, ctypes
+        import subprocess
         exe  = self.settings.get("flash_exe_path", r"D:\下載\Win登入器\flashplayer_32_sa.exe")
         url  = self.settings.get("game_url", "http://mole.61.com.tw/Client.swf")
 
         on_status("重啟 Flash Player…")
         try:
-            subprocess.Popen([exe])
+            subprocess.Popen([exe, url])
         except Exception as e:
             on_status(f"無法啟動 Flash Player：{e}", error=True)
             return False
@@ -1255,7 +1269,8 @@ asyncio.run(run())
         on_status("等待 Flash Player 視窗…")
         for _ in range(40):
             if self._stop.is_set(): return False
-            time.sleep(0.5)
+            if not self.wait(0.5):
+                return False
             hwnd = self.find_window()
             if hwnd:
                 self.hwnd = hwnd
@@ -1263,60 +1278,11 @@ asyncio.run(run())
         else:
             on_status("Flash Player 視窗未出現，停止", error=True)
             return False
-        time.sleep(1.0)
-
-        # 帶到前景，Ctrl+O 開啟 URL 對話框，用剪貼簿貼入網址
-        on_status("輸入遊戲網址…")
-        try:
-            win32gui.SetForegroundWindow(self.hwnd)
-            time.sleep(0.5)
-            VK_CTRL = 0x11; VK_O = 0x4F; VK_V = 0x56; VK_ENTER = 0x0D
-            def _key(vk, up=False):
-                ctypes.windll.user32.keybd_event(vk, 0, 2 if up else 0, 0)
-                time.sleep(0.05)
-
-            # Ctrl+O
-            _key(VK_CTRL); _key(VK_O); _key(VK_O, up=True); _key(VK_CTRL, up=True)
-            time.sleep(1.0)
-
-            # 把網址寫到剪貼簿再 Ctrl+V 貼入
-            import win32clipboard
-            win32clipboard.OpenClipboard()
-            win32clipboard.EmptyClipboard()
-            win32clipboard.SetClipboardText(url)
-            win32clipboard.CloseClipboard()
-
-            # 找對話框 Edit 控件，直接 SetText（最可靠）
-            dialog_edit = None
-            deadline = time.time() + 5
-            while time.time() < deadline:
-                def _cb(hwnd, lst):
-                    if win32gui.IsWindowVisible(hwnd) and hwnd != self.hwnd:
-                        e = win32gui.FindWindowEx(hwnd, 0, "Edit", None)
-                        if e:
-                            lst.append(e)
-                edits = []
-                win32gui.EnumWindows(_cb, edits)
-                if edits:
-                    dialog_edit = edits[0]
-                    break
-                time.sleep(0.3)
-
-            if dialog_edit:
-                win32gui.SendMessage(dialog_edit, win32con.WM_SETTEXT, 0, url)
-                time.sleep(0.2)
-                _key(VK_ENTER); _key(VK_ENTER, up=True)
-            else:
-                # fallback：Ctrl+V 貼入再按 Enter
-                _key(VK_CTRL); _key(VK_V); _key(VK_V, up=True); _key(VK_CTRL, up=True)
-                time.sleep(0.2)
-                _key(VK_ENTER); _key(VK_ENTER, up=True)
-        except Exception as e:
-            on_status(f"開啟 URL 時出錯：{e}")
+        if not self.wait(1.0):
+            return False
 
         # 走登入流程
-        self._login_flow(on_status)
-        return True
+        return self._login_flow(on_status)
 
     def run(self, page, dish, scan_interval, antlag_minutes, on_status):
         self.hwnd = self.find_window()
@@ -1372,7 +1338,8 @@ asyncio.run(run())
                     else:
                         # 視窗沒回來，嘗試自動重啟
                         if not self._stop.is_set() and self.settings.get("flash_exe_path"):
-                            self._launch_flash_and_login(on_status)
+                            if not self._launch_flash_and_login(on_status):
+                                break
                         else:
                             on_status("Flash Player 視窗已關閉，停止機器人", error=True)
                             break
@@ -1386,7 +1353,8 @@ asyncio.run(run())
                     self.click(*btn_confirm, delay=1.5)
                     self.wait(2.0)
                     self._handle_notice_popup(on_status)
-                    self._login_flow(on_status)
+                    if not self._login_flow(on_status):
+                        break
                     if self._stop.is_set(): break
                     continue
 
@@ -1661,10 +1629,20 @@ class App:
         self.stop_btn.config(state=sb)
 
     def _save_all(self):
-        save_config(self.stoves, self.recipe, self._get_settings())
+        try:
+            save_config(self.stoves, self.recipe, self._get_settings())
+            return True
+        except Exception as e:
+            messagebox.showerror(
+                "設定儲存失敗",
+                f"設定沒有寫入檔案，請確認檔案沒有被其他程式鎖住：\n{CONFIG_FILE}\n\n{e}",
+                parent=self.root,
+            )
+            return False
 
     def _start(self):
-        self._save_all()
+        if not self._save_all():
+            return
         s = self._get_settings()
         self.bot.settings.update(s)   # 同步 UI 設定到 bot（含 full_clock_pct 等）
         scan_secs = s["cook_minutes"] * 60 + s["cook_seconds"]
@@ -1849,7 +1827,8 @@ class App:
         def _done(pts):
             self._extra_settings[settings_key] = list(pts[0])
             self.bot.settings[settings_key]    = list(pts[0])
-            self._save_all()
+            if not self._save_all():
+                return
             messagebox.showinfo("完成", f"{done_msg}：{pts[0]}")
         CalibrationWindow(self.root, hwnd, [f"點擊「{title}」按鈕位置"], _done)
 
@@ -1887,8 +1866,11 @@ class App:
         """手動觸發登入流程（不啟動完整掃描），用於測試或手動重連。"""
         hwnd = self._get_hwnd()
         if not hwnd: return
+        if not self._save_all():
+            return
         self.bot.hwnd = hwnd
         self.bot.settings.update(self._get_settings())
+        self.bot._stop.clear()
         self._set_running(True)
         def _run():
             self.bot._login_flow(self._on_status)
@@ -1911,7 +1893,8 @@ class App:
         self.recipe["confirm_btn"] = pts[0]
         self.recipe["cancel_btn"]  = pts[1]
         self.bot.recipe = self.recipe
-        self._save_all()
+        if not self._save_all():
+            return
         self._refresh_calib_status()
         messagebox.showinfo("完成", f"確認：{pts[0]}　取消：{pts[1]}\n已儲存。")
 
@@ -1972,7 +1955,8 @@ class App:
     def _done_door_out(self, pts):
         self._extra_settings["door_out"] = list(pts[0])
         self.bot.settings["door_out"] = list(pts[0])
-        self._save_all()
+        if not self._save_all():
+            return
 
         # 問要不要校準中途走動點
         ans = messagebox.askyesno(
@@ -1997,7 +1981,8 @@ class App:
             # 清除舊的 waypoint（如果之前設過）
             self._extra_settings["door_waypoint"] = None
             self.bot.settings["door_waypoint"] = None
-            self._save_all()
+            if not self._save_all():
+                return
             if messagebox.askyesno("繼續", "請手動走出餐廳後，按「是」截圖校準入口。"):
                 hwnd = self._get_hwnd()
                 if hwnd:
@@ -2006,7 +1991,8 @@ class App:
     def _done_door_waypoint(self, pts):
         self._extra_settings["door_waypoint"] = list(pts[0])
         self.bot.settings["door_waypoint"] = list(pts[0])
-        self._save_all()
+        if not self._save_all():
+            return
         if messagebox.askyesno("繼續", f"走動點已儲存：{pts[0]}\n\n請走到入口位置後，按「是」截圖校準入口。"):
             hwnd = self._get_hwnd()
             if hwnd:
@@ -2015,7 +2001,8 @@ class App:
     def _done_door_in(self, pts):
         self._extra_settings["door_in"] = list(pts[0])
         self.bot.settings["door_in"] = list(pts[0])
-        self._save_all()
+        if not self._save_all():
+            return
         self._refresh_calib_status()
         wp = self._extra_settings.get("door_waypoint")
         extra = f"\n中途走動點：{wp}" if wp else ""
@@ -2076,7 +2063,8 @@ class App:
             self._extra_settings["restaurant_color"] = list(rgb)
             self.bot.settings["restaurant_pt"]    = [mx, my]
             self.bot.settings["restaurant_color"] = list(rgb)
-            self._save_all()
+            if not self._save_all():
+                return
             self._refresh_calib_status()
             win.destroy()
             messagebox.showinfo("完成",
@@ -2334,7 +2322,8 @@ class App:
                 messagebox.showwarning("提示", f"鍋爐 {missing} 尚未校準。"); return
             self._extra_settings[offsets_key] = list(offsets)
             self.bot.settings[offsets_key]    = list(offsets)
-            self._save_all()
+            if not self._save_all():
+                return
             self._refresh_calib_status()
             win.destroy()
             messagebox.showinfo("完成", f"「{title}」已儲存 {n} 個校準點。")
@@ -2350,7 +2339,8 @@ class App:
             for i in range(n): offsets[i] = None
             self._extra_settings[offsets_key] = []
             self.bot.settings[offsets_key]    = []
-            self._save_all()
+            if not self._save_all():
+                return
             info_lbl.config(text="已清空", foreground="gray")
             for j in range(n): update_stove_btn(j)
             select_stove(cur[0])
@@ -2618,7 +2608,8 @@ class App:
             self._extra_settings["smoke_threshold"]  = thr
             self.bot.settings["smoke_offsets"]       = list(offsets)
             self.bot.settings["smoke_threshold"]     = thr
-            self._save_all()
+            if not self._save_all():
+                return
             self._refresh_calib_status()
             win.destroy()
             messagebox.showinfo("完成", f"黑煙校準已儲存（閾值 V < {thr}）。")
@@ -2635,7 +2626,8 @@ class App:
             for i in range(n): offsets[i] = None
             self._extra_settings["smoke_offsets"] = []
             self.bot.settings["smoke_offsets"]    = []
-            self._save_all()
+            if not self._save_all():
+                return
             info_lbl.config(text="已清空所有黑煙校準點", foreground="gray")
             for j in range(n): update_stove_btn(j)
             select_stove(cur[0])
@@ -2967,7 +2959,8 @@ class App:
             for i in range(n): c_pts[i] = None; c_hsv[i] = None
             for k in (points_key, hsv_list_key):
                 self._extra_settings[k] = []; self.bot.settings[k] = []
-            self._save_all()
+            if not self._save_all():
+                return
             pct_lbl.config(text="已清空所有校準點", foreground="gray")
             for j in range(n): update_stove_btn(j)
             select_stove(cur[0])
@@ -2983,7 +2976,8 @@ class App:
             for k in (color_key, offset_key):
                 if k:
                     self._extra_settings[k] = None; self.bot.settings[k] = None
-            self._save_all()
+            if not self._save_all():
+                return
             self._refresh_calib_status()
             win.destroy()
             messagebox.showinfo("完成", f"「{label}」已儲存 {n} 個獨立校準點（含 HSV 區域偵測）。")
@@ -3014,7 +3008,8 @@ class App:
     def _done_stoves(self, pts):
         self.stoves = pts
         self.bot.stoves = pts
-        self._save_all()
+        if not self._save_all():
+            return
         self._refresh_calib_status()
         messagebox.showinfo("完成", "鍋爐座標已儲存！")
 
@@ -3049,7 +3044,8 @@ class App:
             "cancel_btn":  self.recipe.get("cancel_btn",  DEFAULT_RECIPE["cancel_btn"]),
         }
         self.bot.recipe = self.recipe
-        self._save_all()
+        if not self._save_all():
+            return
         self._refresh_calib_status()
         messagebox.showinfo("完成", "食譜座標已儲存！")
 
