@@ -606,14 +606,17 @@ asyncio.run(run())
         if not notice:
             return False
         if notice == "star":
-            btn = (480, 468)
+            buttons = [(480, 468), (480, 462)]
             msg = "\u5075\u6e2c\u5230\u505a\u83dc\u5347\u661f\u901a\u77e5\uff0c\u95dc\u9589"
         else:
-            btn = tuple(self.settings.get("btn_notice_ok", [480, 410]))
+            buttons = [(480, 410), (480, 415), (480, 405)]
             msg = "\u5075\u6e2c\u5230\u6642\u9593\u901a\u77e5\uff0c\u95dc\u9589"
         if log:
             log(msg)
-        self.click(*btn, delay=0.35)
+        for i, btn in enumerate(buttons):
+            self.click_real(*btn, delay=0.25)
+            if i == len(buttons) - 1 or not self._detect_known_notice_popup():
+                break
         return True
 
     def _progress_bar_score(self, sx, sy):
