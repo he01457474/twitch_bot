@@ -1209,7 +1209,7 @@ asyncio.run(run())
             on_status("偵測到系統提示，點知道了…")
             self.click(*btn, delay=1.0)
 
-    def _navigate_to_restaurant_after_login(self, on_status):
+    def _navigate_to_restaurant(self, on_status):
         on_status("導航至餐廳…")
         self.click(*MAP_BTN, delay=3.0)
         if self._stop.is_set(): return False
@@ -1220,8 +1220,14 @@ asyncio.run(run())
 
         if self.hwnd:
             self._recipe_closed_baseline = list(self.get_pixel(*self.recipe["check_pt"]))
-        on_status("登入完成，已導航至餐廳…")
+        on_status("已導航至餐廳…")
         return True
+
+    def _navigate_to_restaurant_after_login(self, on_status):
+        if self._navigate_to_restaurant(on_status):
+            on_status("登入完成，已導航至餐廳…")
+            return True
+        return False
 
     def _login_flow(self, on_status):
         """從主畫面完成整個登入流程直到進入遊戲。
@@ -1229,73 +1235,48 @@ asyncio.run(run())
         btn_start = tuple(self.settings.get("btn_game_start",  [484, 398]))
         btn_login = tuple(self.settings.get("btn_login",       [484, 432]))
         btn_quick = tuple(self.settings.get("btn_quick_start", [456, 517]))
-        deadline = time.time() + 90
-        last_action = None
-        unknown_since = time.time()
-        fallback_steps = [
-            ("start_fallback", btn_start, "開始"),
-            ("login_fallback", btn_login, "登入"),
-            ("quick_start_fallback", btn_quick, "快速開始"),
-        ]
-        fallback_index = 0
+        if self._close_happy_spin_popup(on_status):
+            pass
 
-        while time.time() < deadline:
-            if self._stop.is_set():
-                return False
+        if self._wait_for_screen(
+            ["動作", "背包", "廣場", "地圖", "設置"],
+            region=(0, 460, 960, 560), timeout=2.0, on_status=None
+        ):
+            return self._navigate_to_restaurant_after_login(on_status)
 
-            if self._close_happy_spin_popup(on_status):
-                continue
+        if self._wait_for_screen(["摩爾莊園", "mole.61"], timeout=18, on_status=on_status):
+            on_status("偵測到主畫面，點選「開始」…")
+        else:
+            on_status("未辨識到主畫面，嘗試點一次「開始」…")
+        self.click(*btn_start, delay=2.0)
+        if self._stop.is_set(): return False
 
-            text = self._ocr_screen_region(0, 40, 960, 560)
+        if self._wait_for_screen(["登入", "密碼"], timeout=15, on_status=on_status):
+            on_status("偵測到登入畫面，點選「登入」…")
+        else:
+            on_status("未辨識到登入畫面，嘗試點一次「登入」…")
+        self.click(*btn_login, delay=2.0)
+        if self._stop.is_set(): return False
 
-            if any(kw in text for kw in ["系統提示", "知道了", "休息"]):
-                btn = tuple(self.settings.get("btn_notice_ok", [480, 390]))
-                on_status("偵測到系統提示，點知道了…")
-                self.click(*btn, delay=1.0)
-                continue
+        if self._wait_for_screen(["選擇伺服器", "快速"], timeout=15, on_status=on_status):
+            on_status("偵測到選伺服器畫面，點選「快速開始」…")
+        else:
+            on_status("未辨識到選伺服器畫面，嘗試點一次「快速開始」…")
+        self.click(*btn_quick, delay=3.0)
+        if self._stop.is_set(): return False
 
-            if any(kw in text for kw in ["動作", "背包", "廣場", "地圖", "設置"]):
-                return self._navigate_to_restaurant_after_login(on_status)
+        on_status("等待進入遊戲場景…")
+        if not self._wait_for_screen(
+            ["動作", "背包", "廣場", "地圖", "設置"],
+            region=(0, 460, 960, 560), timeout=45.0, on_status=on_status
+        ):
+            on_status("等待進入遊戲場景逾時，停止登入流程", error=True)
+            return False
 
-            if any(kw in text for kw in ["選擇伺服器", "快速"]):
-                unknown_since = time.time()
-                fallback_index = max(fallback_index, 2)
-                on_status("偵測到選伺服器畫面，點選「快速開始」…")
-                self.click(*btn_quick, delay=3.0)
-                last_action = "quick_start"
-                continue
-
-            if any(kw in text for kw in ["登入", "密碼"]):
-                unknown_since = time.time()
-                fallback_index = max(fallback_index, 1)
-                on_status("偵測到登入畫面，點選「登入」…")
-                self.click(*btn_login, delay=2.0)
-                last_action = "login"
-                continue
-
-            if any(kw in text for kw in ["摩爾莊園", "mole.61"]):
-                unknown_since = time.time()
-                on_status("偵測到主畫面，點選「開始」…")
-                self.click(*btn_start, delay=2.0)
-                last_action = "start"
-                continue
-
-            if fallback_index < len(fallback_steps) and time.time() - unknown_since >= 8:
-                action, btn, label = fallback_steps[fallback_index]
-                on_status(f"無法辨識目前畫面，嘗試點一次「{label}」…")
-                self.click(*btn, delay=2.5)
-                last_action = action
-                fallback_index += 1
-                unknown_since = time.time()
-                continue
-
-            on_status("等待登入畫面變化…")
-            if not self.wait(1.5):
-                return False
-
-        suffix = f"（最後動作：{last_action}）" if last_action else ""
-        on_status(f"登入流程逾時{suffix}", error=True)
-        return False
+        self._handle_notice_popup(on_status)
+        if not self.wait(1.0):
+            return False
+        return self._navigate_to_restaurant_after_login(on_status)
 
     def _launch_flash_and_login(self, on_status):
         """Flash 閃退：重啟 exe → 開啟遊戲 URL → 走登入流程。"""
@@ -1359,7 +1340,8 @@ asyncio.run(run())
             # 2. 若不在餐廳，嘗試導航過去
             if not self._is_in_restaurant():
                 on_status("初始化：不在餐廳，嘗試導航…")
-                self.leave_and_return(on_status)
+                if not self._navigate_to_restaurant(on_status):
+                    return
                 if self._stop.is_set(): return
                 self.wait(2.0)
                 if not self._is_in_restaurant():
@@ -1418,7 +1400,8 @@ asyncio.run(run())
                 # 確認在餐廳內，否則嘗試導航回來
                 if not self._is_in_restaurant():
                     on_status("不在餐廳，嘗試返回…")
-                    self.leave_and_return(on_status)
+                    if not self._navigate_to_restaurant(on_status):
+                        break
                     if self._stop.is_set(): break
                     self.wait(2.0)
                     if not self._is_in_restaurant():
