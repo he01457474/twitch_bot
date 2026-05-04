@@ -564,6 +564,44 @@ asyncio.run(run())
         threshold = self.settings.get("progress_bar_pct_threshold", 0.025)
         return self._progress_bar_score(sx, sy) >= threshold
 
+    def _recipe_panel_score(self):
+        if not self.hwnd:
+            return 0.0
+        try:
+            img, w, h = capture_window(self.hwnd)
+            img = img.convert("RGB")
+            scale = max(w / MOLE_W, h / MOLE_H)
+            # 食譜面板中央到下方有大量穩定橘黃色 UI，餐廳主畫面同區域不會整片命中。
+            left = max(0, int(300 * scale))
+            top = max(0, int(120 * scale))
+            right = min(w, int(865 * scale))
+            bottom = min(h, int(500 * scale))
+            region = img.crop((left, top, right, bottom))
+            total = max(1, region.size[0] * region.size[1])
+            hits = 0
+            for r, g, b in region.getdata():
+                if r >= 190 and 95 <= g <= 215 and b <= 95 and r > g + 20:
+                    hits += 1
+            return hits / total
+        except Exception:
+            return 0.0
+
+    def _is_recipe_open_fast(self):
+        return self._recipe_panel_score() >= 0.12
+
+    def _wait_recipe_closed(self, timeout=2.5):
+        deadline = time.time() + timeout
+        misses = 0
+        while time.time() < deadline and not self._stop.is_set():
+            if self._is_recipe_open_fast():
+                misses = 0
+            else:
+                misses += 1
+                if misses >= 3:
+                    return True
+            time.sleep(0.12)
+        return False
+
     def _wait_for_progress_bar(self, sx, sy, timeout=1.8):
         deadline = time.time() + timeout
         while time.time() < deadline and not self._stop.is_set():
@@ -899,6 +937,8 @@ asyncio.run(run())
         不再用單點像素差異判斷，避免畫面變化時誤判食譜開啟並點到右上活動按鈕。"""
         if not self.hwnd:
             return False
+        if self._is_recipe_open_fast():
+            return True
         try:
             img, w, h = capture_window(self.hwnd)
             img   = img.convert("RGB")
@@ -1308,13 +1348,7 @@ asyncio.run(run())
         pre = self.get_pixel(*check)
         self.click_real(*dish_pt, delay=0.3)
         ok, _, _ = self.wait_for_pixel_change(*check, timeout=1.0, baseline=pre)
-        recipe_closed = False
-        deadline = time.time() + 2.5
-        while time.time() < deadline and not self._stop.is_set():
-            if not self.is_recipe_open():
-                recipe_closed = True
-                break
-            time.sleep(0.2)
+        recipe_closed = self._wait_recipe_closed(timeout=2.5)
         if not recipe_closed:
             log("點菜後食譜仍開著，已關閉並停止本爐，避免誤點其他菜色")
             self.click_real(*self.recipe["close"], delay=0.5)
