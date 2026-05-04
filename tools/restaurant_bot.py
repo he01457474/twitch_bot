@@ -1187,57 +1187,7 @@ asyncio.run(run())
             on_status("偵測到系統提示，點知道了…")
             self.click(*btn, delay=1.0)
 
-    def _login_flow(self, on_status):
-        """從主畫面完成整個登入流程直到進入遊戲。
-        步驟：主畫面開始 → 角色登入 → 選伺服器快速開始 → 導航餐廳"""
-        btn_start = tuple(self.settings.get("btn_game_start",  [484, 398]))
-        btn_login = tuple(self.settings.get("btn_login",       [484, 432]))
-        btn_quick = tuple(self.settings.get("btn_quick_start", [456, 517]))
-
-        # Step 1：等主畫面 → 點「開始」
-        if not self._wait_for_screen(["摩爾莊園", "mole.61"], timeout=25, on_status=on_status):
-            on_status("等待主畫面逾時，停止登入流程", error=True)
-            return False
-        on_status("點選「開始」…")
-        self.click(*btn_start, delay=2.0)
-        if self._stop.is_set(): return False
-
-        # Step 2：等登入畫面 → 點「登入」（密碼已記住）
-        if not self._wait_for_screen(["登入", "密碼"], timeout=12, on_status=on_status):
-            on_status("等待登入畫面逾時，停止登入流程", error=True)
-            return False
-        on_status("點選「登入」…")
-        self.click(*btn_login, delay=2.0)
-        if self._stop.is_set(): return False
-
-        # Step 3：等選伺服器 → 點「快速開始」
-        if not self._wait_for_screen(["選擇伺服器", "快速"], timeout=12, on_status=on_status):
-            on_status("等待選伺服器畫面逾時，停止登入流程", error=True)
-            return False
-        on_status("點選「快速開始」…")
-        self.click(*btn_quick, delay=3.0)
-        if self._stop.is_set(): return False
-
-        # Step 4：等待進入遊戲（偵測底部工具列出現）
-        on_status("等待進入遊戲…")
-        if not self.wait(3.0):   # 先等過場，避免截到 loading 畫面誤判
-            return False
-        ok = self._wait_for_screen(
-            ["動作", "背包", "廣場", "地圖", "設置"],
-            region=(0, 460, 960, 560),   # 只掃底部工具列區域
-            timeout=45.0, on_status=on_status
-        )
-        if not ok:
-            on_status("等待進入遊戲逾時，停止登入流程", error=True)
-            return False
-        if self._stop.is_set(): return False
-
-        # Step 5：處理可能的系統提示彈窗
-        self._handle_notice_popup(on_status)
-        if not self.wait(1.0):
-            return False
-
-        # Step 6：導航到餐廳
+    def _navigate_to_restaurant_after_login(self, on_status):
         on_status("導航至餐廳…")
         self.click(*MAP_BTN, delay=3.0)
         if self._stop.is_set(): return False
@@ -1246,11 +1196,60 @@ asyncio.run(run())
         self.click(*RESTAURANT_BTN, delay=4.0)
         if self._stop.is_set(): return False
 
-        # 重取食譜基準色
         if self.hwnd:
             self._recipe_closed_baseline = list(self.get_pixel(*self.recipe["check_pt"]))
         on_status("登入完成，已導航至餐廳…")
         return True
+
+    def _login_flow(self, on_status):
+        """從主畫面完成整個登入流程直到進入遊戲。
+        步驟：主畫面開始 → 角色登入 → 選伺服器快速開始 → 導航餐廳"""
+        btn_start = tuple(self.settings.get("btn_game_start",  [484, 398]))
+        btn_login = tuple(self.settings.get("btn_login",       [484, 432]))
+        btn_quick = tuple(self.settings.get("btn_quick_start", [456, 517]))
+        deadline = time.time() + 90
+        last_action = None
+
+        while time.time() < deadline:
+            if self._stop.is_set():
+                return False
+
+            text = self._ocr_screen_region(0, 40, 960, 560)
+
+            if any(kw in text for kw in ["系統提示", "知道了", "休息"]):
+                btn = tuple(self.settings.get("btn_notice_ok", [480, 390]))
+                on_status("偵測到系統提示，點知道了…")
+                self.click(*btn, delay=1.0)
+                continue
+
+            if any(kw in text for kw in ["動作", "背包", "廣場", "地圖", "設置"]):
+                return self._navigate_to_restaurant_after_login(on_status)
+
+            if any(kw in text for kw in ["選擇伺服器", "快速"]):
+                on_status("偵測到選伺服器畫面，點選「快速開始」…")
+                self.click(*btn_quick, delay=3.0)
+                last_action = "quick_start"
+                continue
+
+            if any(kw in text for kw in ["登入", "密碼"]):
+                on_status("偵測到登入畫面，點選「登入」…")
+                self.click(*btn_login, delay=2.0)
+                last_action = "login"
+                continue
+
+            if any(kw in text for kw in ["摩爾莊園", "mole.61"]):
+                on_status("偵測到主畫面，點選「開始」…")
+                self.click(*btn_start, delay=2.0)
+                last_action = "start"
+                continue
+
+            on_status("等待登入畫面變化…")
+            if not self.wait(1.5):
+                return False
+
+        suffix = f"（最後動作：{last_action}）" if last_action else ""
+        on_status(f"登入流程逾時{suffix}", error=True)
+        return False
 
     def _launch_flash_and_login(self, on_status):
         """Flash 閃退：重啟 exe → 開啟遊戲 URL → 走登入流程。"""
