@@ -11,7 +11,7 @@ import win32gui
 import win32api
 import win32ui
 import win32con
-from PIL import Image, ImageTk
+from PIL import Image, ImageTk, ImageChops, ImageStat
 
 # 隱藏 CMD 視窗
 try:
@@ -465,6 +465,15 @@ asyncio.run(run())
         self._last_ocr_text = text.strip()
         if not text:
             return None
+        if any(kw in text for kw in [
+            "\u71d2\u7cca", "\u70e7\u7cca", "\u71d2\u58de", "\u70e7\u574f",
+            "\u8150\u58de", "\u8150\u574f", "\u8655\u7406", "\u5904\u7406",
+        ]):
+            return "spoiled"
+        if any(kw in text for kw in [
+            "\u6350", "\u6d41\u6d6a", "\u62c9\u59c6",
+        ]):
+            return "donation"
         # 燒糊彈窗關鍵字
         if any(kw in text for kw in ["燒糊", "處理掉", "燒"]):
             return "spoiled"
@@ -474,6 +483,107 @@ asyncio.run(run())
         return None
 
     # ── 快照與除錯 ─────────────────────────────────────────────────────────
+
+    def _image_diff_score(self, before, after):
+        if before is None or after is None or before.size != after.size:
+            return 999.0
+        diff = ImageChops.difference(before.convert("RGB"), after.convert("RGB"))
+        stat = ImageStat.Stat(diff)
+        return sum(stat.mean) / 3.0
+
+    def _popup_region_changed(self, before, threshold=8.0):
+        after = self._capture_popup_region()
+        return self._image_diff_score(before, after) >= threshold
+
+    def _detect_popup_type_retry(self, attempts=3, delay=0.2):
+        for _ in range(max(1, attempts)):
+            popup_type = self._detect_popup_type()
+            if popup_type:
+                return popup_type
+            if self._stop.is_set():
+                return None
+            time.sleep(delay)
+        return None
+
+    def _handle_popup_guard(self, log, allow_unknown=False):
+        popup_type = self._detect_popup_type_retry(attempts=2, delay=0.15)
+        confirm_btn = self.recipe.get("confirm_btn", DEFAULT_RECIPE["confirm_btn"])
+        cancel_btn = self.recipe.get("cancel_btn", DEFAULT_RECIPE["cancel_btn"])
+
+        if popup_type == "spoiled":
+            log("彈窗守門員：偵測到腐壞，按確認清除")
+            self.click_real(*confirm_btn, delay=0.8)
+            return "spoiled"
+
+        if popup_type == "donation":
+            log("彈窗守門員：偵測到捐菜，按取消")
+            self.click_real(*cancel_btn, delay=0.5)
+            return "donation"
+
+        if not allow_unknown:
+            return None
+
+        before = self._capture_popup_region()
+        if before is None:
+            return None
+        log("彈窗守門員：彈窗文字看不清，先按取消")
+        self.click_real(*cancel_btn, delay=0.5)
+        if self._popup_region_changed(before):
+            return "unknown_cancel"
+
+        log("彈窗守門員：取消無效，改按確認")
+        self.click_real(*confirm_btn, delay=0.8)
+        return "unknown_confirm"
+
+    def _progress_bar_score(self, sx, sy):
+        if not self.hwnd:
+            return 0.0
+        try:
+            img, w, h = capture_window(self.hwnd)
+            img = img.convert("RGB")
+            scale = max(w / MOLE_W, h / MOLE_H)
+            box = self.settings.get("progress_bar_box", [-85, -85, 85, -45])
+            left = max(0, int((sx + box[0]) * scale))
+            top = max(0, int((sy + box[1]) * scale))
+            right = min(w, int((sx + box[2]) * scale))
+            bottom = min(h, int((sy + box[3]) * scale))
+            if right <= left or bottom <= top:
+                return 0.0
+            region = img.crop((left, top, right, bottom))
+            pixels = region.getdata()
+            total = max(1, region.size[0] * region.size[1])
+            hits = 0
+            for r, g, b in pixels:
+                if r >= 185 and g >= 105 and b <= 110 and r > g + 25:
+                    hits += 1
+            return hits / total
+        except Exception:
+            return 0.0
+
+    def _is_progress_bar_visible(self, sx, sy):
+        threshold = self.settings.get("progress_bar_pct_threshold", 0.025)
+        return self._progress_bar_score(sx, sy) >= threshold
+
+    def _wait_for_progress_bar(self, sx, sy, timeout=1.8):
+        deadline = time.time() + timeout
+        while time.time() < deadline and not self._stop.is_set():
+            if self._is_progress_bar_visible(sx, sy):
+                return True
+            time.sleep(0.08)
+        return False
+
+    def _wait_for_progress_bar_gone(self, sx, sy, max_wait=18.0):
+        deadline = time.time() + max_wait
+        misses = 0
+        while time.time() < deadline and not self._stop.is_set():
+            if self._is_progress_bar_visible(sx, sy):
+                misses = 0
+            else:
+                misses += 1
+                if misses >= 3:
+                    return True
+            time.sleep(0.1)
+        return not self._stop.is_set()
 
     def save_live_snapshot(self, label=""):
         """
@@ -815,7 +925,49 @@ asyncio.run(run())
         self.click(sx, sy, delay=0.5)
         self.wait(1.5)
 
+    def _do_steps_progress(self, sx, sy, log):
+        labels = ["製作餐具", "放食材", "開始烹飪"]
+
+        for step, label in enumerate(labels):
+            if self._stop.is_set():
+                return
+
+            log(f"{label}...")
+            bar_seen = False
+            for click_try in range(2):
+                self.click(sx, sy, delay=0.08)
+                if self._wait_for_progress_bar(sx, sy, timeout=1.6):
+                    bar_seen = True
+                    break
+
+                popup_result = self._handle_popup_guard(log, allow_unknown=True)
+                if popup_result in ("donation", "unknown_cancel"):
+                    log("彈窗已關閉，這爐跳過")
+                    return
+                if popup_result in ("spoiled", "unknown_confirm"):
+                    log("腐壞已清除，這爐下輪重試")
+                    return
+
+                if click_try == 0:
+                    log(f"{label}：沒看到讀條，補點一次")
+                    time.sleep(0.25)
+
+            if not bar_seen:
+                log(f"{label}：兩次都沒看到讀條，跳過這爐")
+                self._debug_capture(f"no_progress_{sx}_{sy}_step{step+1}")
+                return
+
+            log(f"{label}：讀條中")
+            self._wait_for_progress_bar_gone(sx, sy, max_wait=18.0)
+
+            if step == 2:
+                log("已進入烹飪倒數")
+                return
+
+            time.sleep(0.25)
+
     def _do_steps(self, sx, sy, log):
+        return self._do_steps_progress(sx, sy, log)
         """
         執行 3 個烹飪步驟（製作餐具、放食材、開始烹飪）。
         純靠讀條（像素變化）判斷每步是否完成，不做額外狀態偵測：
@@ -917,6 +1069,19 @@ asyncio.run(run())
             return
 
         # 食譜沒開──偵測像素動畫（烹飪中 or 靜止）
+        popup_result = self._handle_popup_guard(log, allow_unknown=True)
+        if popup_result in ("donation", "unknown_cancel"):
+            return
+        if popup_result in ("spoiled", "unknown_confirm"):
+            log(f"等待 {harvest_wait} 秒後重試開食譜...")
+            if not self.wait(harvest_wait): return
+            if _click_and_wait_recipe():
+                log("清除後食譜開啟 ✓")
+                _do_cook()
+            else:
+                log("清除後仍無法開食譜，跳過")
+            return
+
         time.sleep(0.2)
         p1 = self.get_pixel(sx, sy)
         time.sleep(0.5)
@@ -1550,6 +1715,7 @@ class App:
         self.calib_clk_in = ttk.Button(row_c2, text="時鐘內部", command=self._calib_clock_interior)
         for btn in (self.calib_sp, self.calib_clk_in):
             btn.pack(side=tk.LEFT, padx=3)
+        row_c2.pack_forget()
 
         # 第三列：重連按鈕座標校準
         row_c3 = ttk.Frame(grp_cal)
@@ -1608,7 +1774,7 @@ class App:
         self.debug_btn   = ttk.Checkbutton(grp_tool, text="Debug 截圖",
                                            variable=self._debug_var,
                                            command=self._toggle_debug)
-        for btn in (self.testdet_btn, self.preview_btn, self.snap_btn,
+        for btn in (self.preview_btn, self.snap_btn,
                     self.testnav_btn, self.debug_btn):
             btn.pack(side=tk.LEFT, padx=3, pady=4)
 
