@@ -1257,6 +1257,9 @@ asyncio.run(run())
         import subprocess
         exe  = self.settings.get("flash_exe_path", r"D:\下載\Win登入器\flashplayer_32_sa.exe")
         url  = self.settings.get("game_url", "http://mole.61.com.tw/Client.swf")
+        if not exe or not os.path.exists(exe):
+            on_status(f"Flash Player 路徑不存在：{exe}", error=True)
+            return False
 
         on_status("重啟 Flash Player…")
         try:
@@ -1285,12 +1288,13 @@ asyncio.run(run())
         return self._login_flow(on_status)
 
     def run(self, page, dish, scan_interval, antlag_minutes, on_status):
+        self._stop.clear()
         self.hwnd = self.find_window()
         if not self.hwnd:
-            on_status("找不到 Flash Player 視窗", error=True)
-            return
+            on_status("找不到 Flash Player 視窗，嘗試自動開啟…")
+            if not self._launch_flash_and_login(on_status):
+                return
 
-        self._stop.clear()
         try:
             antlag_sec = antlag_minutes * 60   # 0 = 完全關閉防卡頓
 
@@ -1331,7 +1335,8 @@ asyncio.run(run())
                     on_status(f"Flash Player 視窗消失，等待 {wait_sec} 秒…")
                     deadline = time.time() + wait_sec
                     while time.time() < deadline and not self._stop.is_set():
-                        time.sleep(1.0)
+                        if not self.wait(1.0):
+                            break
                         if self._is_window_alive():
                             on_status("視窗已恢復，繼續掃描…")
                             break
@@ -1864,17 +1869,22 @@ class App:
 
     def _manual_login(self):
         """手動觸發登入流程（不啟動完整掃描），用於測試或手動重連。"""
-        hwnd = self._get_hwnd()
-        if not hwnd: return
         if not self._save_all():
             return
-        self.bot.hwnd = hwnd
         self.bot.settings.update(self._get_settings())
         self.bot._stop.clear()
         self._set_running(True)
         def _run():
-            self.bot._login_flow(self._on_status)
-            self.root.after(0, lambda: self._set_running(False))
+            try:
+                hwnd = self.bot.find_window()
+                if hwnd:
+                    self.bot.hwnd = hwnd
+                    self.bot._login_flow(self._on_status)
+                else:
+                    self._on_status("找不到 Flash Player 視窗，嘗試自動開啟…")
+                    self.bot._launch_flash_and_login(self._on_status)
+            finally:
+                self.root.after(0, lambda: self._set_running(False))
         threading.Thread(target=_run, daemon=True).start()
 
     def _calib_cancel(self):
