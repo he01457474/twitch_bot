@@ -602,6 +602,57 @@ asyncio.run(run())
             time.sleep(0.12)
         return False
 
+    def _wait_recipe_closed_and_first_progress(self, sx, sy, timeout=2.0):
+        deadline = time.time() + timeout
+        misses = 0
+        first_bar_seen = False
+        bar_threshold = self.settings.get("progress_bar_pct_threshold", 0.025)
+        while time.time() < deadline and not self._stop.is_set():
+            try:
+                img, w, h = capture_window(self.hwnd)
+                img = img.convert("RGB")
+                scale = max(w / MOLE_W, h / MOLE_H)
+
+                box = self.settings.get("progress_bar_box", [-85, -85, 85, -45])
+                left = max(0, int((sx + box[0]) * scale))
+                top = max(0, int((sy + box[1]) * scale))
+                right = min(w, int((sx + box[2]) * scale))
+                bottom = min(h, int((sy + box[3]) * scale))
+                if right > left and bottom > top:
+                    region = img.crop((left, top, right, bottom))
+                    total = max(1, region.size[0] * region.size[1])
+                    hits = 0
+                    for r, g, b in region.getdata():
+                        if r >= 185 and g >= 105 and b <= 110 and r > g + 25:
+                            hits += 1
+                    if hits / total >= bar_threshold:
+                        first_bar_seen = True
+
+                left = max(0, int(300 * scale))
+                top = max(0, int(120 * scale))
+                right = min(w, int(865 * scale))
+                bottom = min(h, int(500 * scale))
+                recipe_open = False
+                if right > left and bottom > top:
+                    region = img.crop((left, top, right, bottom))
+                    total = max(1, region.size[0] * region.size[1])
+                    hits = 0
+                    for r, g, b in region.getdata():
+                        if r >= 190 and 95 <= g <= 215 and b <= 95 and r > g + 20:
+                            hits += 1
+                    recipe_open = hits / total >= 0.12
+            except Exception:
+                recipe_open = self._is_recipe_open_fast()
+
+            if recipe_open:
+                misses = 0
+            else:
+                misses += 1
+                if misses >= 2:
+                    return True, first_bar_seen
+            time.sleep(0.05)
+        return False, first_bar_seen
+
     def _game_scene_score(self):
         if not self.hwnd:
             return 0.0
@@ -632,12 +683,16 @@ asyncio.run(run())
                     ):
                         hits += 1
                 scores.append(hits / total)
-            return max(scores) if scores else 0.0
+            if not scores:
+                return 0.0
+            bottom_bar_ok = scores[0] >= 0.025
+            other_ui_ok = any(score >= 0.025 for score in scores[1:])
+            return 1.0 if bottom_bar_ok and other_ui_ok else 0.0
         except Exception:
             return 0.0
 
     def _is_game_scene_loaded_fast(self):
-        return self._game_scene_score() >= 0.025
+        return self._game_scene_score() >= 0.50
 
     def _is_game_scene_loaded(self):
         if self._is_game_scene_loaded_fast():
@@ -658,15 +713,17 @@ asyncio.run(run())
                 return False
         return False
 
-    def _wait_for_progress_bar(self, sx, sy, timeout=1.8):
+    def _wait_for_progress_bar(self, sx, sy, timeout=1.0):
         deadline = time.time() + timeout
         while time.time() < deadline and not self._stop.is_set():
             if self._is_progress_bar_visible(sx, sy):
                 return True
-            time.sleep(0.08)
+            time.sleep(0.05)
         return False
 
-    def _wait_for_progress_bar_gone(self, sx, sy, max_wait=18.0):
+    def _wait_for_progress_bar_gone(self, sx, sy, max_wait=None):
+        if max_wait is None:
+            max_wait = float(self.settings.get("progress_bar_max_wait", 5.0))
         deadline = time.time() + max_wait
         misses = 0
         while time.time() < deadline and not self._stop.is_set():
@@ -1021,7 +1078,7 @@ asyncio.run(run())
         self.click(sx, sy, delay=0.5)
         self.wait(1.5)
 
-    def _do_steps_progress(self, sx, sy, log):
+    def _do_steps_progress(self, sx, sy, log, first_step_seen=False):
         labels = ["製作餐具", "放食材", "開始烹飪"]
 
         for step, label in enumerate(labels):
@@ -1030,9 +1087,17 @@ asyncio.run(run())
 
             log(f"{label}...")
             bar_seen = False
-            for click_try in range(2):
-                self.click(sx, sy, delay=0.08)
-                if self._wait_for_progress_bar(sx, sy, timeout=1.6):
+            tries = 1 if first_step_seen and step == 0 else 2
+            for click_try in range(tries):
+                if first_step_seen and step == 0:
+                    if self._is_progress_bar_visible(sx, sy):
+                        bar_seen = True
+                        break
+                    bar_seen = True
+                    break
+
+                self.click(sx, sy, delay=0.04)
+                if self._wait_for_progress_bar(sx, sy, timeout=1.0):
                     bar_seen = True
                     break
 
@@ -1054,7 +1119,7 @@ asyncio.run(run())
                 return
 
             log(f"{label}：讀條中")
-            self._wait_for_progress_bar_gone(sx, sy, max_wait=18.0)
+            self._wait_for_progress_bar_gone(sx, sy)
 
             if step == 2:
                 log("已進入烹飪倒數")
@@ -1062,8 +1127,8 @@ asyncio.run(run())
 
             time.sleep(0.25)
 
-    def _do_steps(self, sx, sy, log):
-        return self._do_steps_progress(sx, sy, log)
+    def _do_steps(self, sx, sy, log, first_step_seen=False):
+        return self._do_steps_progress(sx, sy, log, first_step_seen=first_step_seen)
         """
         執行 3 個烹飪步驟（製作餐具、放食材、開始烹飪）。
         純靠讀條（像素變化）判斷每步是否完成，不做額外狀態偵測：
@@ -1131,10 +1196,10 @@ asyncio.run(run())
         cancel_btn   = self.recipe.get("cancel_btn",  DEFAULT_RECIPE["cancel_btn"])
         harvest_wait = self.settings.get("harvest_wait", 3)
 
-        def _click_and_wait_recipe():
+        def _click_and_wait_recipe(timeout=2.5):
             """點一次鍋爐，等食譜開啟，回傳是否開啟"""
             self.click(sx, sy, delay=0.3)
-            deadline = time.time() + 2.5
+            deadline = time.time() + timeout
             while time.time() < deadline:
                 if self._stop.is_set():
                     return False
@@ -1146,9 +1211,9 @@ asyncio.run(run())
             return False
 
         def _do_cook():
-            if self._select_dish(page, dish, check, log):
-                self.wait(0.8)
-                self._do_steps(sx, sy, log)
+            select_result = self._select_dish(sx, sy, page, dish, check, log)
+            if select_result:
+                self._do_steps(sx, sy, log, first_step_seen=(select_result == "first_bar"))
 
         # 食譜已開著（例如上輪未關），直接選菜
         if self._close_happy_spin_popup(log):
@@ -1170,7 +1235,7 @@ asyncio.run(run())
             return
         if popup_result in ("spoiled", "unknown_confirm"):
             log(f"等待 {harvest_wait} 秒後重試開食譜...")
-            if not self.wait(harvest_wait): return
+            if not self.wait(min(0.5, harvest_wait)): return
             if _click_and_wait_recipe():
                 log("清除後食譜開啟 ✓")
                 _do_cook()
@@ -1198,7 +1263,7 @@ asyncio.run(run())
             log("OCR：燒糊彈窗，按確認清除")
             self.click_real(*confirm_btn, delay=0.5)
             log(f"等待 {harvest_wait} 秒清除動畫…")
-            if not self.wait(harvest_wait): return
+            if not self.wait(min(0.5, harvest_wait)): return
             if _click_and_wait_recipe():
                 log("清除後食譜開啟 ✓")
                 _do_cook()
@@ -1212,7 +1277,7 @@ asyncio.run(run())
         else:
             # 無彈窗：可能剛收菜完，鍋爐需要稍等才能再開食譜
             log(f"無彈窗，等待 {harvest_wait} 秒後重新點鍋爐…")
-            if not self.wait(harvest_wait): return
+            if not self.wait(min(0.5, harvest_wait)): return
             if _click_and_wait_recipe():
                 log("收菜後食譜開啟 ✓")
                 _do_cook()
@@ -1385,7 +1450,7 @@ asyncio.run(run())
 
         time.sleep(0.5)  # 等頁面渲染完成（從 0.3 加長）
 
-    def _select_dish(self, page, dish, check, log):
+    def _select_dish(self, sx, sy, page, dish, check, log):
         """換頁 + 點菜色 + 等食譜關閉。成功回傳 True。"""
         log(f"切換到第 {page} 頁…")
         self.navigate_to_page(page)
@@ -1402,9 +1467,9 @@ asyncio.run(run())
         dish_pt = dishes[dish - 1]
         log(f"點菜色 {dish}…")
         pre = self.get_pixel(*check)
-        self.click_real(*dish_pt, delay=0.3)
-        ok, _, _ = self.wait_for_pixel_change(*check, timeout=1.0, baseline=pre)
-        recipe_closed = self._wait_recipe_closed(timeout=2.5)
+        self.click_real(*dish_pt, delay=0.02)
+        recipe_closed, first_bar_seen = self._wait_recipe_closed_and_first_progress(sx, sy, timeout=2.0)
+        ok, _, _ = self.wait_for_pixel_change(*check, timeout=0.2, baseline=pre)
         if not recipe_closed:
             log("點菜後食譜仍開著，已關閉並停止本爐，避免誤點其他菜色")
             self.click_real(*self.recipe["close"], delay=0.5)
@@ -1414,7 +1479,7 @@ asyncio.run(run())
         log("食譜已關閉 ✓")
         # 食譜剛關閉，順便更新基準色（最準確的時機）
         self._recipe_closed_baseline = list(self.get_pixel(*check))
-        return True
+        return "first_bar" if first_bar_seen else True
 
     # ── 斷線 / 閃退重連 ──────────────────────────────────
 
@@ -1518,21 +1583,21 @@ asyncio.run(run())
         if self._wait_for_game_scene(timeout=0.8, on_status=None):
             return self._navigate_to_restaurant_after_login(on_status)
 
-        if self._wait_for_screen(["摩爾莊園", "mole.61"], timeout=6, on_status=on_status):
+        if self._wait_for_screen(["摩爾莊園"], region=(80, 40, 880, 440), timeout=3, on_status=on_status):
             on_status("偵測到主畫面，點選「開始」…")
         else:
             on_status("未辨識到主畫面，嘗試點一次「開始」…")
         self.click(*btn_start, delay=0.7)
         if self._stop.is_set(): return False
 
-        if self._wait_for_screen(["登入", "密碼"], timeout=6, on_status=on_status):
+        if self._wait_for_screen(["登入", "密碼"], timeout=4, on_status=on_status):
             on_status("偵測到登入畫面，點選「登入」…")
         else:
             on_status("未辨識到登入畫面，嘗試點一次「登入」…")
         self.click(*btn_login, delay=0.7)
         if self._stop.is_set(): return False
 
-        if self._wait_for_screen(["選擇伺服器", "快速"], timeout=6, on_status=on_status):
+        if self._wait_for_screen(["選擇伺服器", "快速"], timeout=4, on_status=on_status):
             on_status("偵測到選伺服器畫面，點選「快速開始」…")
         else:
             on_status("未辨識到選伺服器畫面，嘗試點一次「快速開始」…")
@@ -1847,6 +1912,10 @@ class App:
             lbl = ttk.Label(row_cs, text=f"▸{title}", font=("", 8))
             lbl.pack(side=tk.LEFT, padx=(2, 8))
             self._calib_lbl[key] = lbl
+        for unused in ("state", "clk_interior"):
+            lbl = self._calib_lbl.pop(unused, None)
+            if lbl:
+                lbl.destroy()
         self._refresh_calib_status()
 
         # ── 狀態 ─────────────────────────────────────────
