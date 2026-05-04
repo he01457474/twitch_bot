@@ -92,6 +92,8 @@ DEFAULT_SETTINGS = {
     "btn_login":              [484, 432],  # 角色選擇「登入」
     "btn_quick_start":        [456, 517],  # 選伺服器「快速開始」
     "btn_happy_spin_close":   [705, 105],  # 歡樂轉轉彈窗關閉
+    "btn_land":               [880, 538],  # 遊戲內右下角「地盤」
+    "btn_land_restaurant":    [880, 449],  # 地盤選單 / 場景中的「餐廳」
 }
 MAP_BTN        = (33,  505)
 HOME_BTN       = (880, 538)
@@ -1067,12 +1069,13 @@ asyncio.run(run())
                     self.get_pixel(*self.recipe["check_pt"])
                 )
         else:
-            on_status("防卡頓：前往地圖…")
-            self.click(*MAP_BTN, delay=3.0)
+            btn_land = tuple(self.settings.get("btn_land", HOME_BTN))
+            btn_restaurant = tuple(self.settings.get("btn_land_restaurant", RESTAURANT_BTN))
+            on_status("防卡頓：開啟地盤…")
+            self.click(*btn_land, delay=1.5)
             if self._stop.is_set(): return
             on_status("防卡頓：回到餐廳…")
-            self.click(*HOME_BTN, delay=1.0)
-            self.click(*RESTAURANT_BTN, delay=3.0)
+            self.click(*btn_restaurant, delay=3.0)
         self._last_antlag = time.time()   # 記錄完成時間，供全局計時使用
 
     def wait_with_antlag(self, total_seconds, interval_seconds, on_status, msg):
@@ -1210,12 +1213,13 @@ asyncio.run(run())
             self.click(*btn, delay=1.0)
 
     def _navigate_to_restaurant(self, on_status):
-        on_status("導航至餐廳…")
-        self.click(*MAP_BTN, delay=3.0)
+        btn_land = tuple(self.settings.get("btn_land", HOME_BTN))
+        btn_restaurant = tuple(self.settings.get("btn_land_restaurant", RESTAURANT_BTN))
+        on_status("導航至餐廳：開啟地盤…")
+        self.click(*btn_land, delay=1.5)
         if self._stop.is_set(): return False
-        self.click(*HOME_BTN, delay=1.0)
-        if self._stop.is_set(): return False
-        self.click(*RESTAURANT_BTN, delay=4.0)
+        on_status("導航至餐廳：點選餐廳…")
+        self.click(*btn_restaurant, delay=4.0)
         if self._stop.is_set(): return False
 
         if self.hwnd:
@@ -1458,7 +1462,8 @@ class App:
                        "game_url",
                        "btn_disconnect_confirm", "btn_notice_ok",
                        "btn_game_start", "btn_login", "btn_quick_start",
-                       "btn_happy_spin_close")
+                       "btn_happy_spin_close",
+                       "btn_land", "btn_land_restaurant")
         self._extra_settings = {k: settings[k] for k in _extra_keys}
         self.bot = RestaurantBot(self.stoves, self.recipe, settings)
         self._build_ui(settings)
@@ -1556,9 +1561,11 @@ class App:
         self.calib_btn_li  = ttk.Button(row_c3, text="角色登入",   command=self._calib_btn_login)
         self.calib_btn_qs  = ttk.Button(row_c3, text="快速開始",   command=self._calib_btn_quick_start)
         self.calib_btn_hs  = ttk.Button(row_c3, text="轉轉關閉",   command=self._calib_btn_happy_spin_close)
+        self.calib_btn_land = ttk.Button(row_c3, text="地盤",       command=self._calib_btn_land)
+        self.calib_btn_lres = ttk.Button(row_c3, text="地盤餐廳",   command=self._calib_btn_land_restaurant)
         for btn in (self.calib_btn_dc, self.calib_btn_no,
                     self.calib_btn_gs, self.calib_btn_li, self.calib_btn_qs,
-                    self.calib_btn_hs):
+                    self.calib_btn_hs, self.calib_btn_land, self.calib_btn_lres):
             btn.pack(side=tk.LEFT, padx=3)
 
         # 校準狀態指示列
@@ -1567,6 +1574,7 @@ class App:
         row_cs.pack(fill=tk.X, pady=(3, 4))
         for key, title in (("stoves", "鍋爐"), ("recipe", "食譜"), ("cancel", "彈窗"),
                             ("door", "門口"), ("restaurant", "餐廳"),
+                            ("nav", "導航"),
                             ("state", "狀態色"), ("clk_interior", "時鐘內")):
             lbl = ttk.Label(row_cs, text=f"▸{title}", font=("", 8))
             lbl.pack(side=tk.LEFT, padx=(2, 8))
@@ -1624,10 +1632,11 @@ class App:
                                   any(o for o in s["clock_interior_offsets"])),
             "door":       bool(s.get("door_out") and s.get("door_in")),
             "restaurant": bool(s.get("restaurant_pt") and s.get("restaurant_color")),
+            "nav":        bool(s.get("btn_land") and s.get("btn_land_restaurant")),
         }
         titles = {"stoves": "鍋爐", "recipe": "食譜", "cancel": "彈窗",
                   "state": "狀態色", "clk_interior": "時鐘內",
-                  "door": "門口", "restaurant": "餐廳"}
+                  "door": "門口", "restaurant": "餐廳", "nav": "導航"}
         for key, done in checks.items():
             lbl = self._calib_lbl.get(key)
             if not lbl:
@@ -1660,6 +1669,7 @@ class App:
                     self.calib_door, self.calib_rest,
                     self.calib_btn_dc, self.calib_btn_no,
                     self.calib_btn_gs, self.calib_btn_li, self.calib_btn_qs, self.calib_btn_hs,
+                    self.calib_btn_land, self.calib_btn_lres,
                     self.testnav_btn, self.testdet_btn, self.preview_btn, self.snap_btn):
             btn.config(state=sa)
         self.stop_btn.config(state=sb)
@@ -1797,6 +1807,12 @@ class App:
             if s.get("restaurant_pt"):
                 square(*s["restaurant_pt"],  "#ff6090", "餐廳", r=8)
 
+            # 登入後導航點
+            if s.get("btn_land"):
+                dot(*s["btn_land"], "#30a0ff", "地盤")
+            if s.get("btn_land_restaurant"):
+                dot(*s["btn_land_restaurant"], "#30a0ff", "地盤餐廳")
+
             # 縮放顯示
             disp_scale = min(900/game_w, 580/game_h, 1.0)
             disp_w = int(game_w * disp_scale)
@@ -1836,6 +1852,7 @@ class App:
             ("#9060d0", "● 取消"),
             ("#7090ff", "◆ 門口"),
             ("#ff6090", "■ 餐廳"),
+            ("#30a0ff", "● 導航"),
         ]
         legend_frame = ttk.Frame(win)
         legend_frame.pack(side=tk.TOP, fill=tk.X, padx=8, pady=(0, 2))
@@ -1903,6 +1920,18 @@ class App:
             "轉轉關閉",
             "請讓「歡樂轉轉」彈窗出現在遊戲畫面，\n再按確定截圖，然後點彈窗右上方的關閉按鈕。",
             "btn_happy_spin_close", "歡樂轉轉關閉按鈕")
+
+    def _calib_btn_land(self):
+        self._calib_one_btn(
+            "地盤",
+            "請切換到已進入遊戲的場景，\n再按確定截圖，然後點右下角「地盤」按鈕。",
+            "btn_land", "地盤按鈕")
+
+    def _calib_btn_land_restaurant(self):
+        self._calib_one_btn(
+            "地盤餐廳",
+            "請先點開右下角「地盤」，讓餐廳目標出現在畫面上，\n再按確定截圖，然後點「餐廳」的位置。",
+            "btn_land_restaurant", "地盤餐廳按鈕")
 
     def _manual_login(self):
         """手動觸發登入流程（不啟動完整掃描），用於測試或手動重連。"""
