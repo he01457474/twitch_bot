@@ -535,6 +535,87 @@ asyncio.run(run())
         self.click_real(*confirm_btn, delay=0.8)
         return "unknown_confirm"
 
+    def _region_light_ratio(self, img, w, h, box, predicate):
+        scale = max(w / MOLE_W, h / MOLE_H)
+        x1, y1, x2, y2 = box
+        left = max(0, int(x1 * scale))
+        top = max(0, int(y1 * scale))
+        right = min(w, int(x2 * scale))
+        bottom = min(h, int(y2 * scale))
+        if right <= left or bottom <= top:
+            return 0.0
+        region = img.crop((left, top, right, bottom))
+        total = max(1, region.size[0] * region.size[1])
+        hits = 0
+        for r, g, b in region.getdata():
+            if predicate(r, g, b):
+                hits += 1
+        return hits / total
+
+    def _detect_known_notice_popup(self):
+        if not self.hwnd:
+            return None
+        try:
+            img, w, h = capture_window(self.hwnd)
+            img = img.convert("RGB")
+
+            center_white = self._region_light_ratio(
+                img, w, h, (360, 245, 600, 365),
+                lambda r, g, b: r >= 235 and g >= 225 and b >= 185,
+            )
+            star_left = self._region_light_ratio(
+                img, w, h, (290, 225, 475, 425),
+                lambda r, g, b: r >= 235 and g >= 225 and b >= 175,
+            )
+            star_right = self._region_light_ratio(
+                img, w, h, (495, 210, 685, 440),
+                lambda r, g, b: r >= 235 and g >= 225 and b >= 175,
+            )
+
+            text = ""
+            if center_white >= 0.45 or (star_left >= 0.35 and star_right >= 0.35):
+                text = self._ocr_screen_region(300, 180, 700, 490)
+
+            if text:
+                if any(kw in text for kw in [
+                    "\u7d2f\u8a08", "\u7d2f\u8ba1", "\u5728\u7dda", "\u5728\u7ebf",
+                    "\u5c0f\u6642", "\u5c0f\u65f6",
+                ]):
+                    return "time"
+                if any(kw in text for kw in [
+                    "\u606d\u559c", "\u5eda\u85dd", "\u53a8\u827a",
+                    "\u63d0\u9ad8", "\u734e\u52f5", "\u5956\u52b1",
+                ]):
+                    return "star"
+                if "\u77e5\u9053" in text:
+                    if star_left >= 0.35 and star_right >= 0.35:
+                        return "star"
+                    if center_white >= 0.45:
+                        return "time"
+
+            if center_white >= 0.62:
+                return "time"
+            if star_left >= 0.45 and star_right >= 0.45:
+                return "star"
+        except Exception:
+            return None
+        return None
+
+    def _handle_known_notice_popup(self, log=None):
+        notice = self._detect_known_notice_popup()
+        if not notice:
+            return False
+        if notice == "star":
+            btn = (480, 468)
+            msg = "\u5075\u6e2c\u5230\u505a\u83dc\u5347\u661f\u901a\u77e5\uff0c\u95dc\u9589"
+        else:
+            btn = tuple(self.settings.get("btn_notice_ok", [480, 410]))
+            msg = "\u5075\u6e2c\u5230\u6642\u9593\u901a\u77e5\uff0c\u95dc\u9589"
+        if log:
+            log(msg)
+        self.click(*btn, delay=0.35)
+        return True
+
     def _progress_bar_score(self, sx, sy):
         if not self.hwnd:
             return 0.0
@@ -1048,7 +1129,11 @@ asyncio.run(run())
             return True
         threshold = self.settings.get("state_threshold", 40)
         current = self.get_pixel(*pt)
-        return self.color_diff(current, tuple(color)) < threshold
+        if self.color_diff(current, tuple(color)) < threshold:
+            return True
+        if self._is_recipe_open_fast():
+            return True
+        return bool(self._detect_known_notice_popup())
 
     def is_recipe_open(self):
         """OCR 偵測畫面上是否出現「食譜」標題文字。
@@ -1089,6 +1174,7 @@ asyncio.run(run())
         for step, label in enumerate(labels):
             if self._stop.is_set():
                 return
+            self._handle_known_notice_popup(log)
 
             log(f"{label}...")
             bar_seen = False
@@ -1105,6 +1191,9 @@ asyncio.run(run())
                 if self._wait_for_progress_bar(sx, sy, timeout=1.0):
                     bar_seen = True
                     break
+
+                if self._handle_known_notice_popup(log):
+                    return
 
                 popup_result = self._handle_popup_guard(log, allow_unknown=True)
                 if popup_result in ("donation", "unknown_cancel"):
@@ -1210,6 +1299,8 @@ asyncio.run(run())
                     return False
                 if self._close_happy_spin_popup(log):
                     return False
+                if self._handle_known_notice_popup(log):
+                    continue
                 if self.is_recipe_open():
                     return True
                 self.wait(0.3)
@@ -1223,6 +1314,7 @@ asyncio.run(run())
         # 食譜已開著（例如上輪未關），直接選菜
         if self._close_happy_spin_popup(log):
             return
+        self._handle_known_notice_popup(log)
         if self.is_recipe_open():
             log("食譜已開著，直接選菜…")
             _do_cook()
@@ -1460,6 +1552,7 @@ asyncio.run(run())
         log(f"切換到第 {page} 頁…")
         self.navigate_to_page(page)
         if self._stop.is_set(): return False
+        self._handle_known_notice_popup(log)
 
         dishes = self.recipe.get("dishes", DEFAULT_RECIPE["dishes"])
         if not (1 <= dish <= len(dishes)):
