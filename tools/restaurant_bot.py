@@ -87,7 +87,8 @@ DEFAULT_SETTINGS = {
     "game_url":       "http://mole.61.com.tw/Client.swf",
     # 各畫面按鈕座標（遊戲 960×560 坐標系）
     "btn_disconnect_confirm": [478, 382],  # 斷線「確認」按鈕
-    "btn_notice_ok":          [480, 390],  # 系統提示「知道了」
+    "btn_notice_ok":          [480, 390],  # system notice ok
+    "btn_online_time_ok":     [480, 410],  # online time notice ok
     "btn_game_start":         [484, 398],  # 主畫面「開始」
     "btn_login":              [484, 432],  # 角色選擇「登入」
     "btn_quick_start":        [456, 517],  # 選伺服器「快速開始」
@@ -609,7 +610,8 @@ asyncio.run(run())
             buttons = [(480, 468), (480, 462)]
             msg = "\u5075\u6e2c\u5230\u505a\u83dc\u5347\u661f\u901a\u77e5\uff0c\u95dc\u9589"
         else:
-            buttons = [(480, 410), (480, 415), (480, 405)]
+            pt = tuple(self.settings.get("btn_online_time_ok", [480, 410]))
+            buttons = [pt, (pt[0], pt[1] + 5), (pt[0], pt[1] - 5)]
             msg = "\u5075\u6e2c\u5230\u6642\u9593\u901a\u77e5\uff0c\u95dc\u9589"
         if log:
             log(msg)
@@ -1936,7 +1938,7 @@ class App:
                        "cooking_white_threshold", "done_white_threshold",
                        "smoke_offsets", "smoke_threshold", "smoke_pct_threshold",
                        "game_url",
-                       "btn_disconnect_confirm", "btn_notice_ok",
+                       "btn_disconnect_confirm", "btn_notice_ok", "btn_online_time_ok",
                        "btn_game_start", "btn_login", "btn_quick_start",
                        "btn_happy_spin_close",
                        "btn_land", "btn_land_restaurant")
@@ -2034,13 +2036,14 @@ class App:
         ttk.Label(row_c3, text="重連：", width=5, foreground="gray").pack(side=tk.LEFT)
         self.calib_btn_dc  = ttk.Button(row_c3, text="斷線確認",   command=self._calib_btn_disconnect_confirm)
         self.calib_btn_no  = ttk.Button(row_c3, text="系統提示",   command=self._calib_btn_notice_ok)
+        self.calib_btn_ot  = ttk.Button(row_c3, text="在線時間",   command=self._calib_btn_online_time_ok)
         self.calib_btn_gs  = ttk.Button(row_c3, text="主畫面開始", command=self._calib_btn_game_start)
         self.calib_btn_li  = ttk.Button(row_c3, text="角色登入",   command=self._calib_btn_login)
         self.calib_btn_qs  = ttk.Button(row_c3, text="快速開始",   command=self._calib_btn_quick_start)
         self.calib_btn_hs  = ttk.Button(row_c3, text="轉轉關閉",   command=self._calib_btn_happy_spin_close)
         self.calib_btn_land = ttk.Button(row_c3, text="地盤",       command=self._calib_btn_land)
         self.calib_btn_lres = ttk.Button(row_c3, text="地盤餐廳",   command=self._calib_btn_land_restaurant)
-        for btn in (self.calib_btn_dc, self.calib_btn_no,
+        for btn in (self.calib_btn_dc, self.calib_btn_no, self.calib_btn_ot,
                     self.calib_btn_gs, self.calib_btn_li, self.calib_btn_qs,
                     self.calib_btn_hs, self.calib_btn_land, self.calib_btn_lres):
             btn.pack(side=tk.LEFT, padx=3)
@@ -2148,7 +2151,7 @@ class App:
                     self.calib_s, self.calib_r,
                     self.calib_c, self.calib_sp, self.calib_clk_in,
                     self.calib_door, self.calib_rest,
-                    self.calib_btn_dc, self.calib_btn_no,
+                    self.calib_btn_dc, self.calib_btn_no, self.calib_btn_ot,
                     self.calib_btn_gs, self.calib_btn_li, self.calib_btn_qs, self.calib_btn_hs,
                     self.calib_btn_land, self.calib_btn_lres,
                     self.testnav_btn, self.testdet_btn, self.preview_btn, self.snap_btn):
@@ -2377,6 +2380,12 @@ class App:
             "知道了",
             "請讓「系統提示」彈窗出現，\n再按確定截圖，然後點「知道了」按鈕。",
             "btn_notice_ok", "系統提示按鈕")
+
+    def _calib_btn_online_time_ok(self):
+        self._calib_one_btn(
+            "在線時間",
+            "請讓「您累計在線時間已滿...」通知彈窗出現，\n再按確定截圖，然後點「知道了」按鈕。",
+            "btn_online_time_ok", "在線時間通知按鈕")
 
     def _calib_btn_game_start(self):
         self._calib_one_btn(
