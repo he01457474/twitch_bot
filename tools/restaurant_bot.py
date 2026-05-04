@@ -694,14 +694,16 @@ asyncio.run(run())
     def _is_game_scene_loaded_fast(self):
         return self._game_scene_score() >= 0.50
 
-    def _is_game_scene_loaded(self):
-        if self._is_game_scene_loaded_fast():
-            return True
-        text = self._ocr_screen_region(500, 475, 960, 560)
+    def _has_game_action_bar_text(self):
+        text = self._ocr_screen_region(520, 495, 950, 560)
         return any(kw in text for kw in [
-            "動作", "導航", "背包", "好友", "家園", "地盤", "商城", "VIP"
+            "\u52d5\u4f5c", "\u5c0e\u822a", "\u80cc\u5305", "\u597d\u53cb", "\u5bb6\u5712", "\u5730\u76e4", "\u5546\u57ce"
         ])
 
+    def _is_game_scene_loaded(self):
+        if self._is_game_scene_loaded_fast() and self._has_game_action_bar_text():
+            return True
+        return self._has_game_action_bar_text()
     def _wait_for_game_scene(self, timeout=12.0, on_status=None):
         deadline = time.time() + timeout
         while time.time() < deadline and not self._stop.is_set():
