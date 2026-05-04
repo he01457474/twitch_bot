@@ -700,14 +700,17 @@ asyncio.run(run())
             "\u52d5\u4f5c", "\u5c0e\u822a", "\u80cc\u5305", "\u597d\u53cb", "\u5bb6\u5712", "\u5730\u76e4", "\u5546\u57ce"
         ])
 
-    def _is_game_scene_loaded(self):
+    def _is_game_scene_loaded(self, require_text=False):
+        if self._is_game_scene_loaded_fast() and not require_text:
+            return True
         if self._is_game_scene_loaded_fast() and self._has_game_action_bar_text():
             return True
         return self._has_game_action_bar_text()
-    def _wait_for_game_scene(self, timeout=12.0, on_status=None):
+
+    def _wait_for_game_scene(self, timeout=12.0, on_status=None, require_text=False):
         deadline = time.time() + timeout
         while time.time() < deadline and not self._stop.is_set():
-            if self._is_game_scene_loaded():
+            if self._is_game_scene_loaded(require_text=require_text):
                 return True
             if on_status:
                 on_status("等待進入遊戲場景…")
@@ -1582,24 +1585,24 @@ asyncio.run(run())
         if self._close_happy_spin_popup(on_status):
             pass
 
-        if self._wait_for_game_scene(timeout=0.8, on_status=None):
+        if self._wait_for_game_scene(timeout=0.8, on_status=None, require_text=True):
             return self._navigate_to_restaurant_after_login(on_status)
 
-        if self._wait_for_screen(["摩爾莊園"], region=(80, 40, 880, 440), timeout=3, on_status=on_status):
+        if self._wait_for_screen(["摩爾莊園"], region=(80, 40, 880, 440), timeout=1.0, on_status=on_status):
             on_status("偵測到主畫面，點選「開始」…")
         else:
             on_status("未辨識到主畫面，嘗試點一次「開始」…")
         self.click(*btn_start, delay=0.7)
         if self._stop.is_set(): return False
 
-        if self._wait_for_screen(["登入", "密碼"], timeout=4, on_status=on_status):
+        if self._wait_for_screen(["登入", "密碼"], timeout=1.5, on_status=on_status):
             on_status("偵測到登入畫面，點選「登入」…")
         else:
             on_status("未辨識到登入畫面，嘗試點一次「登入」…")
         self.click(*btn_login, delay=0.7)
         if self._stop.is_set(): return False
 
-        if self._wait_for_screen(["選擇伺服器", "快速"], timeout=4, on_status=on_status):
+        if self._wait_for_screen(["選擇伺服器", "快速"], timeout=1.5, on_status=on_status):
             on_status("偵測到選伺服器畫面，點選「快速開始」…")
         else:
             on_status("未辨識到選伺服器畫面，嘗試點一次「快速開始」…")
@@ -1607,9 +1610,8 @@ asyncio.run(run())
         if self._stop.is_set(): return False
 
         on_status("等待進入遊戲場景…")
-        if not self._wait_for_game_scene(timeout=12.0, on_status=on_status):
-            on_status("\u7b49\u5f85\u9032\u5165\u904a\u6232\u5834\u666f\u903e\u6642\uff0c\u505c\u6b62\u767b\u5165\u6d41\u7a0b", error=True)
-            return False
+        if not self._wait_for_game_scene(timeout=8.0, on_status=on_status, require_text=False):
+            on_status("\u9032\u5834\u5075\u6e2c\u672a\u78ba\u8a8d\uff0c\u6539\u7528\u4fdd\u5b88\u5c0e\u822a\u7e7c\u7e8c", error=False)
 
         self._handle_notice_popup(on_status)
         if not self.wait(1.0):
