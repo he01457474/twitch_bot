@@ -27,68 +27,68 @@
   ],
   "recipe": {
     "left_arrow": [
-      121,
-      483
+      120,
+      481
     ],
     "right_arrow": [
-      852,
-      482
+      844,
+      483
     ],
     "close": [
-      855,
-      100
+      860,
+      101
     ],
     "page_tabs": [
       [
-        370,
+        363,
+        482
+      ],
+      [
+        423,
+        477
+      ],
+      [
+        487,
         485
       ],
       [
-        422,
-        485
+        547,
+        480
       ],
       [
-        491,
-        484
-      ],
-      [
-        548,
-        484
-      ],
-      [
-        609,
-        486
+        608,
+        480
       ]
     ],
     "dishes": [
       [
-        387,
-        195
-      ],
-      [
-        582,
-        204
-      ],
-      [
-        776,
-        201
-      ],
-      [
         395,
-        358
+        202
       ],
       [
-        577,
-        345
+        584,
+        200
       ],
       [
-        769,
-        345
+        760,
+        199
+      ],
+      [
+        387,
+        346
+      ],
+      [
+        585,
+        329
+      ],
+      [
+        770,
+        338
       ]
     ],
     "check_pt": [
-      608,
-      100
+      545,
+      109
     ],
     "confirm_btn": [
       423,
@@ -100,11 +100,14 @@
     ]
   },
   "settings": {
-    "page": 1,
-    "dish": 1,
-    "cook_minutes": 0,
+    "page": 6,
+    "dish": 2,
+    "cook_minutes": 2,
     "cook_seconds": 10,
-    "antlag_minutes": 0,
+    "antlag_minutes": 10,
+    "harvest_wait": 4,
+    "restart_wait_seconds": 10,
+    "flash_exe_path": "D:\\下載\\Win登入器\\flashplayer_32_sa.exe",
     "restaurant_pt": [
       461,
       498
@@ -650,6 +653,39 @@
       ]
     ],
     "smoke_threshold": 30,
-    "smoke_pct_threshold": 0.15
+    "smoke_pct_threshold": 0.15,
+    "game_url": "http://mole.61.com.tw/Client.swf",
+    "btn_disconnect_confirm": [
+      478,
+      382
+    ],
+    "btn_notice_ok": [
+      480,
+      390
+    ],
+    "btn_game_start": [
+      477,
+      489
+    ],
+    "btn_login": [
+      477,
+      492
+    ],
+    "btn_quick_start": [
+      615,
+      473
+    ],
+    "btn_happy_spin_close": [
+      705,
+      105
+    ],
+    "btn_land": [
+      880,
+      538
+    ],
+    "btn_land_restaurant": [
+      880,
+      449
+    ]
   }
 }
