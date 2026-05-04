@@ -609,22 +609,35 @@ asyncio.run(run())
             img, w, h = capture_window(self.hwnd)
             img = img.convert("RGB")
             scale = max(w / MOLE_W, h / MOLE_H)
-            left = max(0, int(540 * scale))
-            top = max(0, int(500 * scale))
-            right = min(w, int(950 * scale))
-            bottom = min(h, int(560 * scale))
-            region = img.crop((left, top, right, bottom))
-            total = max(1, region.size[0] * region.size[1])
-            hits = 0
-            for r, g, b in region.getdata():
-                if r >= 175 and 70 <= g <= 210 and b <= 120 and r > g + 25:
-                    hits += 1
-            return hits / total
+            boxes = [
+                (520, 500, 960, 560),  # bottom action bar
+                (650,  40, 960, 170),  # top-right shortcuts
+                (  0, 500, 360, 560),  # bottom-left chat/status bar
+            ]
+            scores = []
+            for x1, y1, x2, y2 in boxes:
+                left = max(0, int(x1 * scale))
+                top = max(0, int(y1 * scale))
+                right = min(w, int(x2 * scale))
+                bottom = min(h, int(y2 * scale))
+                if right <= left or bottom <= top:
+                    continue
+                region = img.crop((left, top, right, bottom))
+                total = max(1, region.size[0] * region.size[1])
+                hits = 0
+                for r, g, b in region.getdata():
+                    if (
+                        (r >= 170 and 60 <= g <= 230 and b <= 150 and r > b + 35) or
+                        (r >= 230 and g >= 220 and b >= 185)
+                    ):
+                        hits += 1
+                scores.append(hits / total)
+            return max(scores) if scores else 0.0
         except Exception:
             return 0.0
 
     def _is_game_scene_loaded_fast(self):
-        return self._game_scene_score() >= 0.035
+        return self._game_scene_score() >= 0.025
 
     def _is_game_scene_loaded(self):
         if self._is_game_scene_loaded_fast():
@@ -634,14 +647,14 @@ asyncio.run(run())
             "動作", "導航", "背包", "好友", "家園", "地盤", "商城", "VIP"
         ])
 
-    def _wait_for_game_scene(self, timeout=22.0, on_status=None):
+    def _wait_for_game_scene(self, timeout=12.0, on_status=None):
         deadline = time.time() + timeout
         while time.time() < deadline and not self._stop.is_set():
             if self._is_game_scene_loaded():
                 return True
             if on_status:
                 on_status("等待進入遊戲場景…")
-            if not self.wait(0.8):
+            if not self.wait(0.45):
                 return False
         return False
 
@@ -1320,10 +1333,10 @@ asyncio.run(run())
             btn_land = tuple(self.settings.get("btn_land", HOME_BTN))
             btn_restaurant = tuple(self.settings.get("btn_land_restaurant", RESTAURANT_BTN))
             on_status("防卡頓：開啟地盤…")
-            self.click(*btn_land, delay=1.0)
+            self.click(*btn_land, delay=0.7)
             if self._stop.is_set(): return
             on_status("防卡頓：回到餐廳…")
-            self.click(*btn_restaurant, delay=2.5)
+            self.click(*btn_restaurant, delay=1.8)
         self._last_antlag = time.time()   # 記錄完成時間，供全局計時使用
 
     def wait_with_antlag(self, total_seconds, interval_seconds, on_status, msg):
@@ -1460,7 +1473,7 @@ asyncio.run(run())
                 return True
             if on_status:
                 on_status(f"等待畫面「{msg}」…")
-            if not self.wait(1.5):
+            if not self.wait(0.7):
                 return False
         return False
 
@@ -1476,10 +1489,10 @@ asyncio.run(run())
         btn_land = tuple(self.settings.get("btn_land", HOME_BTN))
         btn_restaurant = tuple(self.settings.get("btn_land_restaurant", RESTAURANT_BTN))
         on_status("導航至餐廳：開啟地盤…")
-        self.click(*btn_land, delay=1.0)
+        self.click(*btn_land, delay=0.7)
         if self._stop.is_set(): return False
         on_status("導航至餐廳：點選餐廳…")
-        self.click(*btn_restaurant, delay=2.5)
+        self.click(*btn_restaurant, delay=1.8)
         if self._stop.is_set(): return False
 
         if self.hwnd:
@@ -1502,32 +1515,32 @@ asyncio.run(run())
         if self._close_happy_spin_popup(on_status):
             pass
 
-        if self._wait_for_game_scene(timeout=1.5, on_status=None):
+        if self._wait_for_game_scene(timeout=0.8, on_status=None):
             return self._navigate_to_restaurant_after_login(on_status)
 
-        if self._wait_for_screen(["摩爾莊園", "mole.61"], timeout=10, on_status=on_status):
+        if self._wait_for_screen(["摩爾莊園", "mole.61"], timeout=6, on_status=on_status):
             on_status("偵測到主畫面，點選「開始」…")
         else:
             on_status("未辨識到主畫面，嘗試點一次「開始」…")
-        self.click(*btn_start, delay=1.2)
+        self.click(*btn_start, delay=0.7)
         if self._stop.is_set(): return False
 
-        if self._wait_for_screen(["登入", "密碼"], timeout=10, on_status=on_status):
+        if self._wait_for_screen(["登入", "密碼"], timeout=6, on_status=on_status):
             on_status("偵測到登入畫面，點選「登入」…")
         else:
             on_status("未辨識到登入畫面，嘗試點一次「登入」…")
-        self.click(*btn_login, delay=1.2)
+        self.click(*btn_login, delay=0.7)
         if self._stop.is_set(): return False
 
-        if self._wait_for_screen(["選擇伺服器", "快速"], timeout=10, on_status=on_status):
+        if self._wait_for_screen(["選擇伺服器", "快速"], timeout=6, on_status=on_status):
             on_status("偵測到選伺服器畫面，點選「快速開始」…")
         else:
             on_status("未辨識到選伺服器畫面，嘗試點一次「快速開始」…")
-        self.click(*btn_quick, delay=1.5)
+        self.click(*btn_quick, delay=1.0)
         if self._stop.is_set(): return False
 
         on_status("等待進入遊戲場景…")
-        if not self._wait_for_game_scene(timeout=22.0, on_status=on_status):
+        if not self._wait_for_game_scene(timeout=12.0, on_status=on_status):
             on_status("\u7b49\u5f85\u9032\u5165\u904a\u6232\u5834\u666f\u903e\u6642\uff0c\u505c\u6b62\u767b\u5165\u6d41\u7a0b", error=True)
             return False
 
