@@ -1295,14 +1295,32 @@ asyncio.run(run())
         self.navigate_to_page(page)
         if self._stop.is_set(): return False
 
-        dish_pt = self.recipe["dishes"][dish - 1]
+        dishes = self.recipe.get("dishes", DEFAULT_RECIPE["dishes"])
+        if not (1 <= dish <= len(dishes)):
+            log(f"菜色位置 {dish} 超出範圍，請檢查設定")
+            return False
+        if not self.is_recipe_open():
+            log("切頁後沒有確認到食譜開啟，停止本爐")
+            return False
+
+        dish_pt = dishes[dish - 1]
         log(f"點菜色 {dish}…")
         pre = self.get_pixel(*check)
         self.click_real(*dish_pt, delay=0.3)
-        ok, _, _ = self.wait_for_pixel_change(*check, timeout=3.0, baseline=pre)
-        if not ok:
-            log("點菜後食譜沒有關閉，請重新校準菜格座標")
+        ok, _, _ = self.wait_for_pixel_change(*check, timeout=1.0, baseline=pre)
+        recipe_closed = False
+        deadline = time.time() + 2.5
+        while time.time() < deadline and not self._stop.is_set():
+            if not self.is_recipe_open():
+                recipe_closed = True
+                break
+            time.sleep(0.2)
+        if not recipe_closed:
+            log("點菜後食譜仍開著，已關閉並停止本爐，避免誤點其他菜色")
+            self.click_real(*self.recipe["close"], delay=0.5)
             return False
+        if not ok:
+            log("食譜已關閉，但偵測點變化不明顯，先更新基準")
         log("食譜已關閉 ✓")
         # 食譜剛關閉，順便更新基準色（最準確的時機）
         self._recipe_closed_baseline = list(self.get_pixel(*check))
