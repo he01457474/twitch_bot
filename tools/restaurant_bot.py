@@ -91,6 +91,7 @@ DEFAULT_SETTINGS = {
     "btn_game_start":         [484, 398],  # 主畫面「開始」
     "btn_login":              [484, 432],  # 角色選擇「登入」
     "btn_quick_start":        [456, 517],  # 選伺服器「快速開始」
+    "btn_happy_spin_close":   [705, 105],  # 歡樂轉轉彈窗關閉
 }
 MAP_BTN        = (33,  505)
 HOME_BTN       = (880, 538)
@@ -783,7 +784,7 @@ asyncio.run(run())
 
     def is_recipe_open(self):
         """OCR 偵測畫面上是否出現「食譜」標題文字。
-        OCR 不可用（winsdk 未裝）時，fallback 到像素基準色比對。"""
+        不再用單點像素差異判斷，避免畫面變化時誤判食譜開啟並點到右上活動按鈕。"""
         if not self.hwnd:
             return False
         try:
@@ -800,13 +801,6 @@ asyncio.run(run())
             text = self._ocr_image(region)
             if text:
                 return "食譜" in text
-            # OCR 回傳空字串（未安裝 winsdk）→ fallback 像素比對
-            if self._recipe_closed_baseline is not None:
-                px = min(int(cx * scale), w - 1)
-                py = min(int(cy * scale), h - 1)
-                current = img.getpixel((px, py))
-                threshold = self.settings.get("state_threshold", 40)
-                return self.color_diff(current, tuple(self._recipe_closed_baseline)) > threshold
         except Exception:
             pass
         return False
@@ -889,10 +883,17 @@ asyncio.run(run())
 
         def _click_and_wait_recipe():
             """點一次鍋爐，等食譜開啟，回傳是否開啟"""
-            pre = self.get_pixel(*check)
             self.click(sx, sy, delay=0.3)
-            ok, _, _ = self.wait_for_pixel_change(*check, timeout=1.5, baseline=pre)
-            return ok
+            deadline = time.time() + 2.5
+            while time.time() < deadline:
+                if self._stop.is_set():
+                    return False
+                if self._close_happy_spin_popup(log):
+                    return False
+                if self.is_recipe_open():
+                    return True
+                self.wait(0.3)
+            return False
 
         def _do_cook():
             if self._select_dish(page, dish, check, log):
@@ -900,6 +901,8 @@ asyncio.run(run())
                 self._do_steps(sx, sy, log)
 
         # 食譜已開著（例如上輪未關），直接選菜
+        if self._close_happy_spin_popup(log):
+            return
         if self.is_recipe_open():
             log("食譜已開著，直接選菜…")
             _do_cook()
@@ -1163,6 +1166,25 @@ asyncio.run(run())
         text = self._ocr_screen_region(200, 200, 760, 440)
         return "斷開" in text or "重新登" in text
 
+    def _detect_happy_spin_popup(self):
+        """偵測歡樂轉轉彈窗。
+        只把大型彈窗文字算進來，避免右上角小活動圖示被誤認成彈窗。"""
+        text = self._ocr_screen_region(220, 70, 780, 540)
+        if not text:
+            return False
+        has_title = any(kw in text for kw in ["歡樂", "转转", "轉轉", "天天"])
+        has_body = any(kw in text for kw in ["啟動", "启动", "剩餘", "剩余"])
+        return has_title and has_body
+
+    def _close_happy_spin_popup(self, on_status=None):
+        if not self._detect_happy_spin_popup():
+            return False
+        btn = tuple(self.settings.get("btn_happy_spin_close", [705, 105]))
+        if on_status:
+            on_status("偵測到歡樂轉轉彈窗，關閉…")
+        self.click(*btn, delay=0.8)
+        return True
+
     def _wait_for_screen(self, keywords, region=(80, 40, 880, 520), timeout=20.0, on_status=None):
         """輪詢 OCR，等到畫面出現指定關鍵字之一，回傳 True/False。"""
         msg = "/".join(keywords)
@@ -1209,10 +1231,15 @@ asyncio.run(run())
         btn_quick = tuple(self.settings.get("btn_quick_start", [456, 517]))
         deadline = time.time() + 90
         last_action = None
+        unknown_since = None
+        start_fallback_clicked = False
 
         while time.time() < deadline:
             if self._stop.is_set():
                 return False
+
+            if self._close_happy_spin_popup(on_status):
+                continue
 
             text = self._ocr_screen_region(0, 40, 960, 560)
 
@@ -1226,21 +1253,34 @@ asyncio.run(run())
                 return self._navigate_to_restaurant_after_login(on_status)
 
             if any(kw in text for kw in ["選擇伺服器", "快速"]):
+                unknown_since = None
                 on_status("偵測到選伺服器畫面，點選「快速開始」…")
                 self.click(*btn_quick, delay=3.0)
                 last_action = "quick_start"
                 continue
 
             if any(kw in text for kw in ["登入", "密碼"]):
+                unknown_since = None
                 on_status("偵測到登入畫面，點選「登入」…")
                 self.click(*btn_login, delay=2.0)
                 last_action = "login"
                 continue
 
             if any(kw in text for kw in ["摩爾莊園", "mole.61"]):
+                unknown_since = None
                 on_status("偵測到主畫面，點選「開始」…")
                 self.click(*btn_start, delay=2.0)
                 last_action = "start"
+                continue
+
+            if unknown_since is None:
+                unknown_since = time.time()
+            elif not start_fallback_clicked and time.time() - unknown_since >= 8:
+                on_status("無法辨識目前畫面，嘗試點一次「開始」…")
+                self.click(*btn_start, delay=2.0)
+                last_action = "start_fallback"
+                start_fallback_clicked = True
+                unknown_since = time.time()
                 continue
 
             on_status("等待登入畫面變化…")
@@ -1428,7 +1468,8 @@ class App:
                        "smoke_offsets", "smoke_threshold", "smoke_pct_threshold",
                        "game_url",
                        "btn_disconnect_confirm", "btn_notice_ok",
-                       "btn_game_start", "btn_login", "btn_quick_start")
+                       "btn_game_start", "btn_login", "btn_quick_start",
+                       "btn_happy_spin_close")
         self._extra_settings = {k: settings[k] for k in _extra_keys}
         self.bot = RestaurantBot(self.stoves, self.recipe, settings)
         self._build_ui(settings)
@@ -1525,8 +1566,10 @@ class App:
         self.calib_btn_gs  = ttk.Button(row_c3, text="主畫面開始", command=self._calib_btn_game_start)
         self.calib_btn_li  = ttk.Button(row_c3, text="角色登入",   command=self._calib_btn_login)
         self.calib_btn_qs  = ttk.Button(row_c3, text="快速開始",   command=self._calib_btn_quick_start)
+        self.calib_btn_hs  = ttk.Button(row_c3, text="轉轉關閉",   command=self._calib_btn_happy_spin_close)
         for btn in (self.calib_btn_dc, self.calib_btn_no,
-                    self.calib_btn_gs, self.calib_btn_li, self.calib_btn_qs):
+                    self.calib_btn_gs, self.calib_btn_li, self.calib_btn_qs,
+                    self.calib_btn_hs):
             btn.pack(side=tk.LEFT, padx=3)
 
         # 校準狀態指示列
@@ -1627,7 +1670,7 @@ class App:
                     self.calib_c, self.calib_sp, self.calib_clk_in,
                     self.calib_door, self.calib_rest,
                     self.calib_btn_dc, self.calib_btn_no,
-                    self.calib_btn_gs, self.calib_btn_li, self.calib_btn_qs,
+                    self.calib_btn_gs, self.calib_btn_li, self.calib_btn_qs, self.calib_btn_hs,
                     self.testnav_btn, self.testdet_btn, self.preview_btn, self.snap_btn):
             btn.config(state=sa)
         self.stop_btn.config(state=sb)
@@ -1865,6 +1908,12 @@ class App:
             "快速開始",
             "請切換到選擇伺服器畫面，\n再按確定截圖，然後點「快速開始」按鈕。",
             "btn_quick_start", "快速開始按鈕")
+
+    def _calib_btn_happy_spin_close(self):
+        self._calib_one_btn(
+            "轉轉關閉",
+            "請讓「歡樂轉轉」彈窗出現在遊戲畫面，\n再按確定截圖，然後點彈窗右上方的關閉按鈕。",
+            "btn_happy_spin_close", "歡樂轉轉關閉按鈕")
 
     def _manual_login(self):
         """手動觸發登入流程（不啟動完整掃描），用於測試或手動重連。"""
