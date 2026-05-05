@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 import threading
 import time
 import json
@@ -86,7 +86,7 @@ DEFAULT_SETTINGS = {
     "smoke_threshold":    30,    # 暗色像素 V < 此值視為黑煙（0~100）
     "smoke_pct_threshold": 0.15, # 暗色像素佔比超過此值 → 有黑煙
     # 重連 / 閃退設定
-    "flash_exe_path": r"D:\下載\Win登入器\flashplayer_32_sa.exe",
+    "flash_exe_path": "",
     "game_url":       "http://mole.61.com.tw/Client.swf",
     # 各畫面按鈕座標（遊戲 960×560 坐標系）
     "btn_disconnect_confirm": [478, 382],  # 斷線「確認」按鈕
@@ -1781,9 +1781,12 @@ asyncio.run(run())
     def _launch_flash_and_login(self, on_status):
         """Flash 閃退：重啟 exe → 開啟遊戲 URL → 走登入流程。"""
         import subprocess
-        exe  = self.settings.get("flash_exe_path", r"D:\下載\Win登入器\flashplayer_32_sa.exe")
+        exe  = (self.settings.get("flash_exe_path") or "").strip()
         url  = self.settings.get("game_url", "http://mole.61.com.tw/Client.swf")
-        if not exe or not os.path.exists(exe):
+        if not exe:
+            on_status("請先設定 Flash Player 路徑", error=True)
+            return False
+        if not os.path.exists(exe):
             on_status(f"Flash Player 路徑不存在：{exe}", error=True)
             return False
 
@@ -2026,9 +2029,10 @@ class App:
         row4 = ttk.Frame(grp_set)
         row4.pack(fill=tk.X, pady=2)
         ttk.Label(row4, text="Flash Player 路徑", width=17, anchor=tk.W).pack(side=tk.LEFT)
-        v_exe = tk.StringVar(value=settings.get("flash_exe_path",
-                             r"D:\下載\Win登入器\flashplayer_32_sa.exe"))
-        ttk.Entry(row4, textvariable=v_exe, width=48).pack(side=tk.LEFT)
+        v_exe = tk.StringVar(value=settings.get("flash_exe_path", ""))
+        ttk.Entry(row4, textvariable=v_exe, width=42).pack(side=tk.LEFT)
+        self.flash_browse_btn = ttk.Button(row4, text="瀏覽", command=self._browse_flash_exe)
+        self.flash_browse_btn.pack(side=tk.LEFT, padx=(4, 0))
         self.vars["flash_exe_path"] = v_exe
 
         # ── 校準 ─────────────────────────────────────────
@@ -2167,6 +2171,14 @@ class App:
         else:
             messagebox.showinfo("Debug 截圖", "已關閉。")
 
+    def _browse_flash_exe(self):
+        path = filedialog.askopenfilename(
+            title="選擇 Flash Player",
+            filetypes=[("Flash Player", "flashplayer*.exe"), ("執行檔", "*.exe"), ("所有檔案", "*.*")]
+        )
+        if path:
+            self.vars["flash_exe_path"].set(path)
+
     def _get_settings(self):
         s = {k: v.get() for k, v in self.vars.items()}
         s.update(self._extra_settings)  # 合併 spoiled_color / spoiled_threshold
@@ -2182,6 +2194,7 @@ class App:
                     self.calib_btn_dc, self.calib_btn_no, self.calib_btn_ot,
                     self.calib_btn_gs, self.calib_btn_li, self.calib_btn_qs, self.calib_btn_hs,
                     self.calib_btn_land, self.calib_btn_lres,
+                    self.flash_browse_btn,
                     self.testnav_btn, self.testdet_btn, self.preview_btn, self.snap_btn):
             btn.config(state=sa)
         self.stop_btn.config(state=sb)
