@@ -77,6 +77,9 @@ DEFAULT_SETTINGS = {
     "clock_interior_offsets": [],
     "cooking_white_threshold": 0.10,  # 白色 pct 超過此值 → 烹飪中（有白色扇形）
     "done_white_threshold":    0.05,  # 白色 pct 低於此值 → 菜做好（時鐘滿了）
+    "recipe_open_timeout":     1.4,
+    "progress_start_timeout":  0.65,
+    "progress_gone_misses":    2,
     # 黑煙偵測（方案 B）：相對各鍋爐中心的偏移 [dx,dy]，清單長度 = 鍋爐數
     # 若清單為空則 fallback 到 HSV 腐壞偵測
     "smoke_offsets":      [],
@@ -483,6 +486,24 @@ asyncio.run(run())
             return "donation"
         return None
 
+    def _has_popup_panel_fast(self):
+        if not self.hwnd:
+            return False
+        try:
+            img, w, h = capture_window(self.hwnd)
+            img = img.convert("RGB")
+            center_light = self._region_light_ratio(
+                img, w, h, (300, 205, 660, 430),
+                lambda r, g, b: r >= 225 and g >= 205 and b >= 145,
+            )
+            button_orange = self._region_light_ratio(
+                img, w, h, (335, 385, 620, 445),
+                lambda r, g, b: r >= 190 and 70 <= g <= 170 and b <= 80 and r > g + 30,
+            )
+            return center_light >= 0.28 and button_orange >= 0.025
+        except Exception:
+            return False
+
     # ── 快照與除錯 ─────────────────────────────────────────────────────────
 
     def _image_diff_score(self, before, after):
@@ -507,6 +528,8 @@ asyncio.run(run())
         return None
 
     def _handle_popup_guard(self, log, allow_unknown=False):
+        if not self._has_popup_panel_fast():
+            return None
         popup_type = self._detect_popup_type_retry(attempts=2, delay=0.15)
         confirm_btn = self.recipe.get("confirm_btn", DEFAULT_RECIPE["confirm_btn"])
         cancel_btn = self.recipe.get("cancel_btn", DEFAULT_RECIPE["cancel_btn"])
@@ -843,7 +866,7 @@ asyncio.run(run())
         while time.time() < deadline and not self._stop.is_set():
             if self._is_progress_bar_visible(sx, sy):
                 return True
-            time.sleep(0.05)
+            time.sleep(0.04)
         return False
 
     def _wait_for_progress_bar_gone(self, sx, sy, max_wait=None):
@@ -851,14 +874,15 @@ asyncio.run(run())
             max_wait = float(self.settings.get("progress_bar_max_wait", 5.0))
         deadline = time.time() + max_wait
         misses = 0
+        required_misses = max(1, int(self.settings.get("progress_gone_misses", 2)))
         while time.time() < deadline and not self._stop.is_set():
             if self._is_progress_bar_visible(sx, sy):
                 misses = 0
             else:
                 misses += 1
-                if misses >= 3:
+                if misses >= required_misses:
                     return True
-            time.sleep(0.1)
+            time.sleep(0.06)
         return not self._stop.is_set()
 
     def save_live_snapshot(self, label=""):
@@ -1227,7 +1251,8 @@ asyncio.run(run())
                     break
 
                 self.click(sx, sy, delay=0.04)
-                if self._wait_for_progress_bar(sx, sy, timeout=1.0):
+                timeout = float(self.settings.get("progress_start_timeout", 0.65))
+                if self._wait_for_progress_bar(sx, sy, timeout=timeout):
                     bar_seen = True
                     break
 
@@ -1244,7 +1269,7 @@ asyncio.run(run())
 
                 if click_try == 0:
                     log(f"{label}：沒看到讀條，補點一次")
-                    time.sleep(0.25)
+                    time.sleep(0.12)
 
             if not bar_seen:
                 log(f"{label}：兩次都沒看到讀條，跳過這爐")
@@ -1258,7 +1283,7 @@ asyncio.run(run())
                 log("已進入烹飪倒數")
                 return
 
-            time.sleep(0.25)
+            time.sleep(0.12)
 
     def _do_steps(self, sx, sy, log, first_step_seen=False):
         return self._do_steps_progress(sx, sy, log, first_step_seen=first_step_seen)
@@ -1329,9 +1354,11 @@ asyncio.run(run())
         cancel_btn   = self.recipe.get("cancel_btn",  DEFAULT_RECIPE["cancel_btn"])
         harvest_wait = self.settings.get("harvest_wait", 3)
 
-        def _click_and_wait_recipe(timeout=2.5):
+        def _click_and_wait_recipe(timeout=None):
             """點一次鍋爐，等食譜開啟，回傳是否開啟"""
-            self.click(sx, sy, delay=0.3)
+            if timeout is None:
+                timeout = float(self.settings.get("recipe_open_timeout", 1.4))
+            self.click(sx, sy, delay=0.12)
             deadline = time.time() + timeout
             while time.time() < deadline:
                 if self._stop.is_set():
@@ -1340,10 +1367,10 @@ asyncio.run(run())
                     return False
                 if self._handle_known_notice_popup(log):
                     continue
-                if self.is_recipe_open():
+                if self._is_recipe_open_fast():
                     return True
-                self.wait(0.3)
-            return False
+                time.sleep(0.10)
+            return self.is_recipe_open()
 
         def _do_cook():
             select_result = self._select_dish(sx, sy, page, dish, check, log)
@@ -1379,9 +1406,9 @@ asyncio.run(run())
                 log("清除後仍無法開食譜，跳過")
             return
 
-        time.sleep(0.2)
+        time.sleep(0.12)
         p1 = self.get_pixel(sx, sy)
-        time.sleep(0.5)
+        time.sleep(0.22)
         p2 = self.get_pixel(sx, sy)
 
         if self.color_diff(p1, p2) > 15:
@@ -1904,7 +1931,7 @@ asyncio.run(run())
                     on_status(f"【鍋爐 {i+1}/{n}】掃描中…")
                     self.setup_stove(sx, sy, page, dish, on_status)
                     on_status(f"【鍋爐 {i+1}/{n}】完成")
-                    if not self.wait(0.5): break
+                    if not self.wait(0.2): break
 
                 if self._stop.is_set(): break
 
@@ -1936,6 +1963,7 @@ class App:
                        "state_threshold",
                        "clock_interior_offsets",
                        "cooking_white_threshold", "done_white_threshold",
+                       "recipe_open_timeout", "progress_start_timeout", "progress_gone_misses",
                        "smoke_offsets", "smoke_threshold", "smoke_pct_threshold",
                        "game_url",
                        "btn_disconnect_confirm", "btn_notice_ok", "btn_online_time_ok",
