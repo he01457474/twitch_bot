@@ -1949,10 +1949,18 @@ asyncio.run(run())
 
 # ── 主介面 ────────────────────────────────────────────
 
+def _debug_ui_enabled():
+    return "--debug-ui" in sys.argv or os.environ.get("RESTAURANT_BOT_DEBUG_UI") == "1"
+
+
 class App:
-    def __init__(self, root):
+    def __init__(self, root, debug_ui=False):
         self.root = root
-        self.root.title("摩爾莊園｜餐廳自動做菜")
+        self.debug_ui = debug_ui
+        title = "摩爾莊園｜餐廳自動做菜"
+        if self.debug_ui:
+            title += "（除錯版）"
+        self.root.title(title)
         self.root.resizable(False, False)
 
         self.stoves, self.recipe, settings = load_config()
@@ -2049,7 +2057,10 @@ class App:
         self.calib_door = ttk.Button(row_c1, text="門口", command=self._calib_door)
         self.calib_rest = ttk.Button(row_c1, text="餐廳", command=self._calib_restaurant)
         self.calib_ocr  = ttk.Button(row_c1, text="測 OCR", command=self._test_ocr)
-        for btn in (self.calib_s, self.calib_r, self.calib_c, self.calib_door, self.calib_rest, self.calib_ocr):
+        base_calib_buttons = [self.calib_s, self.calib_r, self.calib_c, self.calib_door, self.calib_rest]
+        if self.debug_ui:
+            base_calib_buttons.append(self.calib_ocr)
+        for btn in base_calib_buttons:
             btn.pack(side=tk.LEFT, padx=3)
 
         # 第二列：狀態偵測校準
@@ -2115,7 +2126,8 @@ class App:
 
         # ── 工具 ─────────────────────────────────────────
         grp_tool = ttk.LabelFrame(f, text="工具", padding=(10, 4))
-        grp_tool.pack(fill=tk.X)
+        if self.debug_ui:
+            grp_tool.pack(fill=tk.X)
         self.testdet_btn = ttk.Button(grp_tool, text="偵測測試", command=self._open_detect_test)
         self.preview_btn = ttk.Button(grp_tool, text="預覽座標", command=self._preview_coords)
         self.snap_btn    = ttk.Button(grp_tool, text="立即截圖", command=self._take_live_snap)
@@ -2124,9 +2136,10 @@ class App:
         self.debug_btn   = ttk.Checkbutton(grp_tool, text="Debug 截圖",
                                            variable=self._debug_var,
                                            command=self._toggle_debug)
-        for btn in (self.preview_btn, self.snap_btn,
+        for btn in (self.testdet_btn, self.preview_btn, self.snap_btn,
                     self.testnav_btn, self.debug_btn):
-            btn.pack(side=tk.LEFT, padx=3, pady=4)
+            if self.debug_ui:
+                btn.pack(side=tk.LEFT, padx=3, pady=4)
 
     def _refresh_calib_status(self):
         """更新校準區域下方的 ✓/✗ 狀態指示"""
@@ -2187,15 +2200,20 @@ class App:
     def _set_running(self, running):
         sa = tk.DISABLED if running else tk.NORMAL
         sb = tk.NORMAL   if running else tk.DISABLED
-        for btn in (self.start_btn, self.login_btn,
+        buttons = [self.start_btn, self.login_btn,
                     self.calib_s, self.calib_r,
                     self.calib_c, self.calib_sp, self.calib_clk_in,
                     self.calib_door, self.calib_rest,
                     self.calib_btn_dc, self.calib_btn_no, self.calib_btn_ot,
                     self.calib_btn_gs, self.calib_btn_li, self.calib_btn_qs, self.calib_btn_hs,
                     self.calib_btn_land, self.calib_btn_lres,
-                    self.flash_browse_btn,
-                    self.testnav_btn, self.testdet_btn, self.preview_btn, self.snap_btn):
+                    self.flash_browse_btn]
+        if self.debug_ui:
+            buttons.extend([
+                self.calib_ocr, self.testnav_btn, self.testdet_btn,
+                self.preview_btn, self.snap_btn, self.debug_btn,
+            ])
+        for btn in buttons:
             btn.config(state=sa)
         self.stop_btn.config(state=sb)
 
@@ -3890,7 +3908,9 @@ def _check_ocr_language():
 
 
 if __name__ == "__main__":
+    debug_ui = _debug_ui_enabled()
     root = tk.Tk()
-    app = App(root)
-    root.after(500, _check_ocr_language)   # 視窗開好後再顯示，避免被主視窗蓋住
+    app = App(root, debug_ui=debug_ui)
+    if debug_ui:
+        root.after(500, _check_ocr_language)   # 視窗開好後再顯示，避免被主視窗蓋住
     root.mainloop()
