@@ -7,6 +7,9 @@ Write-Host '=============================' -ForegroundColor Cyan
 Write-Host '   NOALBS 一鍵安裝設定工具   ' -ForegroundColor Cyan
 Write-Host '=============================' -ForegroundColor Cyan
 Write-Host ''
+Write-Host '這是借用者電腦用的工具，只會設定你自己的 OBS / NOALBS。' -ForegroundColor Yellow
+Write-Host '中繼伺服器由管理員提供，不需要在你的電腦安裝 Docker 或 MediaMTX。' -ForegroundColor Yellow
+Write-Host ''
 
 do {
     $twitchId = (Read-Host '① 你的 Twitch ID（英文帳號，例如 kevin123）').Trim().ToLower()
@@ -103,6 +106,12 @@ TWITCH_BOT_OAUTH=$twitchToken
 }
 "@ | Set-Content -Path "$noalbsPath\config.json" -Encoding UTF8
 
+@"
+@echo off
+cd /d "%~dp0"
+start "" noalbs.exe
+"@ | Set-Content -Path (Join-Path $noalbsPath "啟動_NOALBS.bat") -Encoding UTF8
+
 Write-Host ''
 Write-Host '=============================' -ForegroundColor Green
 Write-Host '         安裝完成！          ' -ForegroundColor Green
@@ -112,8 +121,9 @@ Write-Host "設定檔位置：$noalbsPath" -ForegroundColor Cyan
 Write-Host ''
 Write-Host '接下來：' -ForegroundColor Yellow
 Write-Host '  1. 確認 OBS 已開啟且 WebSocket 功能有啟用'
-Write-Host '  2. 雙擊資料夾裡的 noalbs.exe'
-Write-Host '  3. 看到沒有紅色錯誤就代表成功了'
+Write-Host '  2. 雙擊資料夾裡的「啟動_NOALBS.bat」'
+Write-Host '  3. 看到沒有紅色錯誤就代表成功連上 OBS 與中繼伺服器'
+Write-Host '  4. 每次直播時：先開 OBS，再開 NOALBS，手機開始推流後到聊天室打 !start'
 Write-Host ''
 
 Start-Process explorer.exe $noalbsPath

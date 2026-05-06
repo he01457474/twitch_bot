@@ -1,57 +1,100 @@
-﻿# 啟動StreamControl腳本
+﻿# 管理員用：啟動 IRL 中繼伺服器環境
 chcp 65001 | Out-Null
 
-$ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $sizeFile = Join-Path $PSScriptRoot "window_size.txt"
 
-Write-Host "啟動StreamControl..." -ForegroundColor Cyan
+function Test-CommandAvailable {
+    param([string]$Name)
+    return [bool](Get-Command $Name -ErrorAction SilentlyContinue)
+}
 
-# [1/4] Docker Desktop
-Write-Host "[1/4] 檢查 Docker Desktop..."
+function Wait-DockerReady {
+    param([int]$TimeoutSeconds = 60)
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        docker info 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            return $true
+        }
+        Start-Sleep -Seconds 2
+    }
+    return $false
+}
+
+Write-Host "啟動 IRL 中繼伺服器環境..." -ForegroundColor Cyan
+Write-Host "這是管理員端腳本，只負責本機中繼伺服器，不會啟動借用者的 NOALBS。" -ForegroundColor DarkGray
+
+# [1/3] Docker Desktop
+Write-Host "[1/3] 檢查 Docker Desktop..."
 $dockerRunning = Get-Process "Docker Desktop" -ErrorAction SilentlyContinue
 if (-not $dockerRunning) {
+    $dockerDesktop = "C:\Program Files\Docker\Docker\Docker Desktop.exe"
+    if (-not (Test-Path $dockerDesktop)) {
+        Write-Host "[錯誤] 找不到 Docker Desktop：$dockerDesktop" -ForegroundColor Red
+        Write-Host "請先安裝或手動開啟 Docker Desktop。" -ForegroundColor Yellow
+        Read-Host "按 Enter 關閉"
+        exit 1
+    }
     Write-Host "開啟 Docker Desktop..."
-    Start-Process "C:\Program Files\Docker\Docker\Docker Desktop.exe"
-    Write-Host "等待 Docker 啟動，請稍候 20 秒..."
-    Start-Sleep -Seconds 20
+    Start-Process $dockerDesktop
 } else {
     Write-Host "Docker Desktop 已在執行" -ForegroundColor Green
 }
 
-# [2/4] mediamtx 容器
-Write-Host "[2/4] 啟動 mediamtx 容器..."
+if (-not (Test-CommandAvailable "docker")) {
+    Write-Host "[錯誤] 找不到 docker 指令，請確認 Docker Desktop 已安裝完成。" -ForegroundColor Red
+    Read-Host "按 Enter 關閉"
+    exit 1
+}
+
+Write-Host "等待 Docker 可用..."
+if (-not (Wait-DockerReady 60)) {
+    Write-Host "[錯誤] Docker 還沒啟動完成，請稍後重試或手動檢查 Docker Desktop。" -ForegroundColor Red
+    Read-Host "按 Enter 關閉"
+    exit 1
+}
+
+# [2/3] mediamtx 容器
+Write-Host "[2/3] 啟動 mediamtx 容器..."
+$exists = docker ps -a --filter "name=^/mediamtx$" --format "{{.Names}}" 2>&1
+if ($LASTEXITCODE -ne 0 -or $exists -notmatch "^mediamtx$") {
+    Write-Host "[錯誤] 找不到名為 mediamtx 的 Docker 容器。" -ForegroundColor Red
+    Write-Host "請先建立 MediaMTX 容器，或確認容器名稱是否還叫 mediamtx。" -ForegroundColor Yellow
+    Read-Host "按 Enter 關閉"
+    exit 1
+}
+
 docker start mediamtx 2>&1 | Out-Null
-$running = docker ps --filter "name=mediamtx" --filter "status=running" --format "{{.Names}}" 2>&1
+$running = docker ps --filter "name=^/mediamtx$" --filter "status=running" --format "{{.Names}}" 2>&1
 if ($running -match "mediamtx") {
     Write-Host "mediamtx 啟動成功" -ForegroundColor Green
 } else {
-    Write-Host "[警告] mediamtx 啟動失敗，請手動檢查 Docker" -ForegroundColor Yellow
+    Write-Host "[錯誤] mediamtx 啟動失敗，請手動檢查 Docker。" -ForegroundColor Red
+    Read-Host "按 Enter 關閉"
+    exit 1
 }
 
-# [3/4] No-IP DUC
-Write-Host "[3/4] 檢查 No-IP DUC..."
+# [3/3] No-IP DUC
+Write-Host "[3/3] 檢查 No-IP DUC..."
 $ducRunning = Get-Process "DUC40" -ErrorAction SilentlyContinue
 if (-not $ducRunning) {
-    Write-Host "啟動 No-IP DUC..."
-    Start-Process "C:\Program Files (x86)\No-IP\DUC40.exe"
+    $ducExe = "C:\Program Files (x86)\No-IP\DUC40.exe"
+    if (Test-Path $ducExe) {
+        Write-Host "啟動 No-IP DUC..."
+        Start-Process $ducExe
+    } else {
+        Write-Host "[警告] 找不到 No-IP DUC：$ducExe" -ForegroundColor Yellow
+        Write-Host "如果 DDNS 由其他方式維護，可以忽略這個警告。" -ForegroundColor DarkGray
+    }
 } else {
     Write-Host "No-IP DUC 已在執行" -ForegroundColor Green
 }
 
-# [4/5] NOALBS
-Write-Host "[4/5] 啟動 NOALBS..."
-$noalbsDir = Join-Path $ProjectRoot "tools\NOALBS_bbbb123\noalbs-v2.16.1-x86_64-pc-windows-msvc"
-$noalbsExe = "$noalbsDir\noalbs.exe"
-Start-Process $noalbsExe -WorkingDirectory $noalbsDir -WindowStyle Hidden
-
-# [5/5] BRB 伺服器
-Write-Host "[5/5] 啟動 BRB 伺服器..."
-$brbScript = Join-Path $PSScriptRoot "brb_server.ps1"
-Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File `"$brbScript`"" -WindowStyle Hidden
-Write-Host "BRB 伺服器已啟動 (http://localhost:8080/brb-clips.html)" -ForegroundColor Green
-
 Write-Host ""
-Write-Host "全部啟動完成！記得開手機 IRL Pro。" -ForegroundColor Cyan
+Write-Host "中繼伺服器已啟動完成。" -ForegroundColor Cyan
+Write-Host "借用者可以用 srt://flycat.ddns.net:5002 推流。" -ForegroundColor Cyan
+Write-Host "借用者的 NOALBS 監測網址是 http://flycat.ddns.net:9997/v3/paths/get/<Twitch ID>。" -ForegroundColor Cyan
+Write-Host "BRB 剪輯伺服器請另外用「啟動BRB伺服器.bat」開啟。" -ForegroundColor DarkGray
 Read-Host "按 Enter 關閉"
 
 # 儲存視窗大小（像素，不含位置）

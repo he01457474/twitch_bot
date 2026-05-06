@@ -1,21 +1,22 @@
-﻿# 關閉直播環境腳本
+﻿# 管理員用：關閉 IRL 中繼伺服器環境
 chcp 65001 | Out-Null
 
-Write-Host "關閉直播環境..." -ForegroundColor Cyan
-
-# NOALBS
-$noalbs = Get-Process "noalbs" -ErrorAction SilentlyContinue
-if ($noalbs) {
-    Stop-Process -Name "noalbs" -Force
-    Write-Host "NOALBS 已關閉" -ForegroundColor Green
-} else {
-    Write-Host "NOALBS 未在執行" -ForegroundColor DarkGray
-}
+Write-Host "關閉 IRL 中繼伺服器環境..." -ForegroundColor Cyan
+Write-Host "這是管理員端腳本，不會關閉借用者電腦上的 NOALBS。" -ForegroundColor DarkGray
 
 # mediamtx 容器
 Write-Host "停止 mediamtx 容器..."
-docker stop mediamtx 2>&1 | Out-Null
-Write-Host "mediamtx 已停止" -ForegroundColor Green
+if (Get-Command docker -ErrorAction SilentlyContinue) {
+    $exists = docker ps -a --filter "name=^/mediamtx$" --format "{{.Names}}" 2>&1
+    if ($LASTEXITCODE -eq 0 -and $exists -match "^mediamtx$") {
+        docker stop mediamtx 2>&1 | Out-Null
+        Write-Host "mediamtx 已停止" -ForegroundColor Green
+    } else {
+        Write-Host "找不到 mediamtx 容器，略過" -ForegroundColor DarkGray
+    }
+} else {
+    Write-Host "找不到 docker 指令，略過 mediamtx" -ForegroundColor Yellow
+}
 
 # No-IP DUC
 $duc = Get-Process "DUC40" -ErrorAction SilentlyContinue
@@ -30,9 +31,7 @@ if ($duc) {
 $docker = Get-Process "Docker Desktop" -ErrorAction SilentlyContinue
 if ($docker) {
     Write-Host "正在關閉 Docker Desktop..."
-    # 停服務
     Stop-Service "com.docker.service" -Force -ErrorAction SilentlyContinue
-    # 殺所有 Docker 相關程序（backend 會重啟 UI，要一起清）
     $dockerProcs = @("Docker Desktop", "com.docker.backend", "com.docker.build", "docker-sandbox", "dockerd")
     foreach ($proc in $dockerProcs) {
         Stop-Process -Name $proc -Force -ErrorAction SilentlyContinue
@@ -47,24 +46,6 @@ if ($docker) {
     Write-Host "Docker Desktop 未在執行" -ForegroundColor DarkGray
 }
 
-# BRB 伺服器
-$brbProc = Get-Process powershell -ErrorAction SilentlyContinue | Where-Object {
-    $_.MainWindowTitle -eq "" -and ($_ | Select-Object -ExpandProperty CommandLine -ErrorAction SilentlyContinue) -match "brb_server"
-}
-if ($brbProc) {
-    Stop-Process -Id $brbProc.Id -Force
-    Write-Host "BRB 伺服器已關閉" -ForegroundColor Green
-} else {
-    # 用 port 找
-    $brbPid = (netstat -ano | Select-String ":8080.*LISTENING") -replace ".*\s+(\d+)$", '$1' | Select-Object -First 1
-    if ($brbPid) {
-        Stop-Process -Id ([int]$brbPid.Trim()) -Force -ErrorAction SilentlyContinue
-        Write-Host "BRB 伺服器已關閉" -ForegroundColor Green
-    } else {
-        Write-Host "BRB 伺服器未在執行" -ForegroundColor DarkGray
-    }
-}
-
 Write-Host ""
-Write-Host "全部關閉完成！" -ForegroundColor Cyan
+Write-Host "中繼伺服器環境已關閉完成。" -ForegroundColor Cyan
 Start-Sleep -Seconds 8
