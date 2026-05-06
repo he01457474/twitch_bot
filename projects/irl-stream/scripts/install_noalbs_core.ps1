@@ -2,13 +2,24 @@
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
 
+$relayHost = 'flycat.ddns.net'
+$srtPort = 5002
+$statsPort = 9997
+$tokenUrl = 'https://irlhosting.com/tmi/'
+$noalbsUrl = 'https://github.com/NOALBS/nginx-obs-automatic-low-bitrate-switching/releases/download/v2.16.1/noalbs-v2.16.1-x86_64-pc-windows-msvc.zip'
+
 Write-Host ''
 Write-Host '=============================' -ForegroundColor Cyan
-Write-Host '   NOALBS 一鍵安裝設定工具   ' -ForegroundColor Cyan
+Write-Host '   戶外直播一條龍設定工具   ' -ForegroundColor Cyan
 Write-Host '=============================' -ForegroundColor Cyan
 Write-Host ''
-Write-Host '這是借用者電腦用的工具，只會設定你自己的 OBS / NOALBS。' -ForegroundColor Yellow
-Write-Host '中繼伺服器由管理員提供，不需要在你的電腦安裝 Docker 或 MediaMTX。' -ForegroundColor Yellow
+Write-Host '這是借用者電腦用的工具，會幫你產生 NOALBS 設定和直播時要填的網址。' -ForegroundColor Yellow
+Write-Host '中繼伺服器由管理員提供，你的電腦不需要安裝 Docker 或 MediaMTX。' -ForegroundColor Yellow
+Write-Host ''
+Write-Host '開始前先準備好：' -ForegroundColor Cyan
+Write-Host '  1. 你的 Twitch 英文帳號'
+Write-Host '  2. Twitch Bot Token（等等會開網頁讓你拿）'
+Write-Host '  3. OBS WebSocket 密碼'
 Write-Host ''
 
 do {
@@ -18,22 +29,31 @@ do {
 
 Write-Host ''
 Write-Host '② 請到下面這個網址，用你的 Twitch 帳號登入後按 Connect，複製 oauth:... 這段' -ForegroundColor Yellow
-Write-Host '   https://irlhosting.com/tmi/' -ForegroundColor Cyan
+Write-Host "   $tokenUrl" -ForegroundColor Cyan
+Start-Process $tokenUrl
 do {
     $twitchToken = (Read-Host '   貼上你的 Token（oauth:xxxxxxxxxx）').Trim()
-    if (-not $twitchToken) { Write-Host '  請填入 Token' -ForegroundColor Red }
-} while (-not $twitchToken)
+    if (-not $twitchToken) {
+        Write-Host '  請填入 Token' -ForegroundColor Red
+    } elseif ($twitchToken -notlike 'oauth:*') {
+        Write-Host '  Token 應該要以 oauth: 開頭' -ForegroundColor Red
+    }
+} while (-not $twitchToken -or $twitchToken -notlike 'oauth:*')
 
 Write-Host ''
+Write-Host '③ OBS WebSocket 密碼在 OBS → 工具 → WebSocket 伺服器設定。' -ForegroundColor Yellow
 do {
-    $obsPassword = (Read-Host '③ 你的 OBS WebSocket 密碼（OBS → 工具 → WebSocket 伺服器設定）').Trim()
+    $obsPassword = (Read-Host '   貼上你的 OBS WebSocket 密碼').Trim()
     if (-not $obsPassword) { Write-Host '  請填入 OBS WebSocket 密碼' -ForegroundColor Red }
 } while (-not $obsPassword)
 
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $installDir = Join-Path (Join-Path $projectRoot "tools") "NOALBS_$twitchId"
-$zipPath    = "$env:TEMP\noalbs.zip"
-$noalbsUrl  = 'https://github.com/NOALBS/nginx-obs-automatic-low-bitrate-switching/releases/download/v2.16.1/noalbs-v2.16.1-x86_64-pc-windows-msvc.zip'
+$zipPath = "$env:TEMP\noalbs.zip"
+$publishStreamId = "publish:$twitchId"
+$phoneUrl = "srt://$relayHost`:$srtPort"
+$obsInputUrl = "srt://$relayHost`:$srtPort`?streamid=read:$twitchId"
+$statsUrl = "http://$relayHost`:$statsPort/v3/paths/get/$twitchId"
 
 Write-Host ''
 Write-Host '正在下載 NOALBS...' -ForegroundColor Cyan
@@ -75,7 +95,7 @@ TWITCH_BOT_OAUTH=$twitchToken
     "streamServers": [{
       "streamServer": {
         "type": "Mediamtx",
-        "statsUrl": "http://flycat.ddns.net:9997/v3/paths/get/$twitchId"
+        "statsUrl": "$statsUrl"
       },
       "name": "MediaMTX", "priority": 1,
       "overrideScenes": null, "dependsOn": null, "enabled": true
@@ -112,6 +132,60 @@ cd /d "%~dp0"
 start "" noalbs.exe
 "@ | Set-Content -Path (Join-Path $noalbsPath "啟動_NOALBS.bat") -Encoding UTF8
 
+@"
+@echo off
+chcp 65001 > nul
+echo ========================================
+echo   每次直播順序
+echo ========================================
+echo.
+echo 1. 先開 OBS
+echo 2. 確認 OBS 有 IRL / lowB / BRB 三個場景
+echo 3. 手機開始推流
+echo 4. 等手機連上後，回 Twitch 聊天室打 !start
+echo.
+echo 這個視窗會啟動 NOALBS。
+echo 如果 NOALBS 顯示 Connected to OBS，代表連上 OBS。
+echo.
+pause
+start "" "%~dp0啟動_NOALBS.bat"
+"@ | Set-Content -Path (Join-Path $noalbsPath "每次直播開這個.bat") -Encoding UTF8
+
+@"
+戶外直播設定資料
+================
+
+你的 Twitch ID：
+$twitchId
+
+手機推流設定
+------------
+URL：
+$phoneUrl
+
+Stream ID：
+$publishStreamId
+
+OBS 媒體來源
+------------
+輸入：
+$obsInputUrl
+
+NOALBS 監測網址
+---------------
+$statsUrl
+
+每次直播順序
+------------
+1. 開 OBS
+2. 執行「每次直播開這個.bat」
+3. 手機開始推流
+4. Twitch 聊天室打 !start
+
+如果手機一直 Connecting，先問管理員中繼伺服器是否有開。
+如果 NOALBS 連不上 OBS，確認 OBS 已開啟 WebSocket，且密碼填對。
+"@ | Set-Content -Path (Join-Path $noalbsPath "我的直播設定.txt") -Encoding UTF8
+
 Write-Host ''
 Write-Host '=============================' -ForegroundColor Green
 Write-Host '         安裝完成！          ' -ForegroundColor Green
@@ -120,10 +194,16 @@ Write-Host ''
 Write-Host "設定檔位置：$noalbsPath" -ForegroundColor Cyan
 Write-Host ''
 Write-Host '接下來：' -ForegroundColor Yellow
-Write-Host '  1. 確認 OBS 已開啟且 WebSocket 功能有啟用'
-Write-Host '  2. 雙擊資料夾裡的「啟動_NOALBS.bat」'
-Write-Host '  3. 看到沒有紅色錯誤就代表成功連上 OBS 與中繼伺服器'
-Write-Host '  4. 每次直播時：先開 OBS，再開 NOALBS，手機開始推流後到聊天室打 !start'
+Write-Host '  1. 打開「我的直播設定.txt」，照裡面的資料填手機和 OBS'
+Write-Host '  2. 之後每次直播，雙擊「每次直播開這個.bat」'
+Write-Host '  3. 手機開始推流後，到 Twitch 聊天室打 !start'
+Write-Host ''
+Write-Host '手機推流 URL：' -ForegroundColor Cyan
+Write-Host "  $phoneUrl"
+Write-Host '手機 Stream ID：' -ForegroundColor Cyan
+Write-Host "  $publishStreamId"
+Write-Host 'OBS 媒體來源輸入：' -ForegroundColor Cyan
+Write-Host "  $obsInputUrl"
 Write-Host ''
 
 Start-Process explorer.exe $noalbsPath
