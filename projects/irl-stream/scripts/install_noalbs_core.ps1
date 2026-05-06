@@ -50,9 +50,6 @@ do {
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $installDir = Join-Path (Join-Path $projectRoot "tools") "NOALBS_$twitchId"
 $zipPath = "$env:TEMP\noalbs.zip"
-$publishStreamId = "publish:$twitchId"
-$phoneUrl = "srt://$relayHost`:$srtPort"
-$obsInputUrl = "srt://$relayHost`:$srtPort`?streamid=read:$twitchId"
 $statsUrl = "http://$relayHost`:$statsPort/v3/paths/get/$twitchId"
 
 Write-Host ''
@@ -132,60 +129,6 @@ cd /d "%~dp0"
 start "" noalbs.exe
 "@ | Set-Content -Path (Join-Path $noalbsPath "啟動_NOALBS.bat") -Encoding UTF8
 
-@"
-@echo off
-chcp 65001 > nul
-echo ========================================
-echo   每次直播順序
-echo ========================================
-echo.
-echo 1. 先開 OBS
-echo 2. 確認 OBS 有 IRL / lowB / BRB 三個場景
-echo 3. 手機開始推流
-echo 4. 等手機連上後，回 Twitch 聊天室打 !start
-echo.
-echo 這個視窗會啟動 NOALBS。
-echo 如果 NOALBS 顯示 Connected to OBS，代表連上 OBS。
-echo.
-pause
-start "" "%~dp0啟動_NOALBS.bat"
-"@ | Set-Content -Path (Join-Path $noalbsPath "每次直播開這個.bat") -Encoding UTF8
-
-@"
-戶外直播設定資料
-================
-
-你的 Twitch ID：
-$twitchId
-
-手機推流設定
-------------
-URL：
-$phoneUrl
-
-Stream ID：
-$publishStreamId
-
-OBS 媒體來源
-------------
-輸入：
-$obsInputUrl
-
-NOALBS 監測網址
----------------
-$statsUrl
-
-每次直播順序
-------------
-1. 開 OBS
-2. 執行「每次直播開這個.bat」
-3. 手機開始推流
-4. Twitch 聊天室打 !start
-
-如果手機一直 Connecting，先問管理員中繼伺服器是否有開。
-如果 NOALBS 連不上 OBS，確認 OBS 已開啟 WebSocket，且密碼填對。
-"@ | Set-Content -Path (Join-Path $noalbsPath "我的直播設定.txt") -Encoding UTF8
-
 Write-Host ''
 Write-Host '=============================' -ForegroundColor Green
 Write-Host '         安裝完成！          ' -ForegroundColor Green
@@ -194,16 +137,9 @@ Write-Host ''
 Write-Host "設定檔位置：$noalbsPath" -ForegroundColor Cyan
 Write-Host ''
 Write-Host '接下來：' -ForegroundColor Yellow
-Write-Host '  1. 打開「我的直播設定.txt」，照裡面的資料填手機和 OBS'
-Write-Host '  2. 之後每次直播，雙擊「每次直播開這個.bat」'
+Write-Host '  1. 照網頁教學設定手機和 OBS'
+Write-Host '  2. 之後每次直播，先開 OBS，再雙擊「啟動_NOALBS.bat」'
 Write-Host '  3. 手機開始推流後，到 Twitch 聊天室打 !start'
-Write-Host ''
-Write-Host '手機推流 URL：' -ForegroundColor Cyan
-Write-Host "  $phoneUrl"
-Write-Host '手機 Stream ID：' -ForegroundColor Cyan
-Write-Host "  $publishStreamId"
-Write-Host 'OBS 媒體來源輸入：' -ForegroundColor Cyan
-Write-Host "  $obsInputUrl"
 Write-Host ''
 
 Start-Process explorer.exe $noalbsPath
