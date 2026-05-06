@@ -14,13 +14,22 @@ backups/
 logs/
 *.log
 
+# Bot 執行暫存
+donation_state.json
+.chrome_profiles/
+
 # Python 暫存
 __pycache__/
 
 # 餐廳機器人 debug 截圖
-tools/debug/
+projects/restaurant-bot/tools/debug/
+fishing_records.csv
+tools/fishing_records.csv
 *.pyc
 *.pyo
+.tools/
+build/
+dist/
 
 # Claude Code 設定
 .claude/
@@ -39,4 +48,4 @@ Thumbs.db
 *.lnk
 
 # 巢狀 git repo（各自獨立管理）
-docs/srt-relay-guide/
+projects/irl-stream/docs/srt-relay-guide/

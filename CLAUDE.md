@@ -17,10 +17,14 @@
 - 可主動提問以取得所需資訊
 - 新建立的工具腳本一律放在工作目錄 `D:\tset\FlyCatClaude Code`，不放桌面或其他位置
 - 目錄結構規則：
-  - `.bat` 啟動檔 → `launchers/`（方便雙擊）
-  - `.ps1` 腳本 → `scripts/`
-  - 工具程式 → `tools/`
-  - 說明文件、圖片 → `docs/`
+  - 同一個項目的專案檔案集中放在 `projects/<project-name>/`
+  - 專案資料夾內再分 `launchers/`、`scripts/`、`tools/`、`docs/`
+  - `.bat` 啟動檔 → 專案內 `launchers/`（方便雙擊）
+  - `.ps1` 腳本 → 專案內 `scripts/`
+  - 工具程式 → 專案內 `tools/`
+  - 說明文件、圖片 → 專案內 `docs/`
+  - `index.html`、`deploy.bat`、`3.py` 因既有部署流程暫時保留在工作目錄根層
+  - 目前專案：餐廳工具 `projects/restaurant-bot/`、IRL / 直播環境 `projects/irl-stream/`、音訊工具 `projects/audio-tools/`、聊天伺服器 `projects/chat-bot/`
   - `__pycache__` 等快取目錄不納入 git，可直接刪除
 - 有新的偏好規則或權限設定，都寫回 CLAUDE.md
 - **使用量達 95% 時**，強制把所有未完成任務存到 memory，停止繼續執行，等用戶下次使用量重置後再繼續

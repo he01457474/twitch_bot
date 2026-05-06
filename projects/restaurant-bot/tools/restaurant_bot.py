@@ -7,6 +7,8 @@ import os
 import sys
 import ctypes
 import colorsys
+import csv
+import re
 import win32gui
 import win32api
 import win32ui
@@ -30,6 +32,7 @@ if getattr(sys, "frozen", False):
 else:
     _APP_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_FILE = os.path.join(_APP_DIR, "restaurant_config.json")
+FISHING_RECORD_FILE = os.path.join(_APP_DIR, "fishing_records.csv")
 
 # 預設值
 DEFAULT_STOVES = [
@@ -47,7 +50,7 @@ DEFAULT_RECIPE = {
     "cancel_btn":  (540, 415),   # 捐菜彈窗的「取消」按鈕（做菜中，不打擾）
 }
 DEFAULT_SETTINGS = {
-    "page": 6, "dish": 1, "cook_minutes": 20, "cook_seconds": 0,
+    "page": 1, "dish": 1, "cook_minutes": 0, "cook_seconds": 30,
     "antlag_minutes": 5,
     "harvest_wait": 3,         # 收菜後等待秒數，再重新點鍋爐
     "restart_wait_seconds": 15, # 視窗消失後等待重新出現的秒數
@@ -98,6 +101,24 @@ DEFAULT_SETTINGS = {
     "btn_happy_spin_close":   [705, 105],  # 歡樂轉轉彈窗關閉
     "btn_land":               [880, 538],  # 遊戲內右下角「地盤」
     "btn_land_restaurant":    [880, 449],  # 地盤選單 / 場景中的「餐廳」
+    # 釣魚模式：第一版先支援手動站在釣魚地圖後循環釣魚
+    "fishing_seats":           [[370, 488], [420, 446], [495, 423], [568, 399]],
+    "fishing_leave_pts":       [],
+    "fishing_limit_stop_pts":  [[320, 470], [365, 430], [445, 405], [520, 380]],
+    "fishing_cast_pt":         [625, 405],  # 浮標 / 水面點，釣魚中可連點收竿
+    "fishing_cast_pts":        [[430, 500], [495, 455], [560, 430], [625, 405]],
+    "fishing_bobber_pt":       [626, 410],  # 浮標中心，用來監看上鉤變化
+    "fishing_bobber_pts":      [],
+    "fishing_confirm_btn":     [480, 395],  # 釣魚結果 / 失敗彈窗確認
+    "fishing_wait_seconds":    25,
+    "fishing_bite_threshold":  16,
+    "fishing_start_timeout":   3.0,
+    "fishing_motion_threshold": 3.0,
+    "fishing_bobber_move_threshold": 1.2,
+    "fishing_reel_timeout":    3.0,
+    "fishing_popup_close_delay": 0.9,
+    "fishing_reset_delay":     1.2,
+    "fishing_reset_mode":      "delay",
 }
 MAP_BTN        = (33,  505)
 HOME_BTN       = (880, 538)
@@ -108,7 +129,8 @@ RESTAURANT_BTN = (880, 449)
 
 def load_config():
     data = {}
-    if os.path.exists(CONFIG_FILE):
+    config_missing = not os.path.exists(CONFIG_FILE)
+    if not config_missing:
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -131,6 +153,12 @@ def load_config():
 
     s = data.get("settings", {})
     settings = {k: s.get(k, DEFAULT_SETTINGS[k]) for k in DEFAULT_SETTINGS}
+
+    if config_missing:
+        try:
+            save_config(stoves, recipe, settings)
+        except Exception:
+            pass
 
     return stoves, recipe, settings
 
@@ -357,6 +385,13 @@ class RestaurantBot:
         self._last_antlag = 0.0               # 上次執行防卡頓的時間戳記
         self._last_popup_img  = None           # 最近一次彈窗截圖（RAM，程式結束自動清除）
         self._last_ocr_text   = ""             # 最近一次 OCR 辨識文字（供 log 顯示）
+        self.fishing_stats = {"caught": 0, "missed": 0, "unknown": 0, "limit": 0, "total": 0, "last": ""}
+        self._last_fishing_record_key = ""
+        self._last_fishing_record_at = 0.0
+        self._last_fishing_popup_click_at = 0.0
+        self._fishing_record_lock = threading.Lock()
+        self._fishing_popup_handled = False
+        self._fishing_limit_reached = False
 
     def _debug_capture(self, label, markers=None):
         """
@@ -446,7 +481,10 @@ asyncio.run(run())
         try:
             import subprocess, io, sys
             buf = io.BytesIO()
-            pil_img.convert("RGB").save(buf, format="PNG")
+            ocr_img = pil_img.convert("RGB")
+            if ocr_img.width < 700:
+                ocr_img = ocr_img.resize((ocr_img.width * 2, ocr_img.height * 2), Image.Resampling.LANCZOS)
+            ocr_img.save(buf, format="PNG")
             result = subprocess.run(
                 [sys.executable, "-c", _OCR_SCRIPT],
                 input=buf.getvalue(),
@@ -1528,10 +1566,11 @@ asyncio.run(run())
         self.click(mole_x, mole_y, delay)
 
     def wait(self, seconds):
-        for _ in range(int(seconds * 10)):
+        deadline = time.time() + max(0.0, float(seconds))
+        while time.time() < deadline:
             if self._stop.is_set():
                 return False
-            time.sleep(0.1)
+            time.sleep(min(0.1, max(0.01, deadline - time.time())))
         return True
 
     def leave_and_return(self, on_status):
@@ -1592,6 +1631,431 @@ asyncio.run(run())
                 if not self._is_in_restaurant():
                     on_status("防卡頓後未偵測到餐廳，30 秒後重試…")
         return not self._stop.is_set()
+
+    # ── 釣魚模式 ────────────────────────────────────────
+
+    def _capture_mole_region(self, box):
+        if not self.hwnd:
+            return None
+        try:
+            img, w, h = capture_window(self.hwnd)
+            scale = max(w / MOLE_W, h / MOLE_H)
+            x1, y1, x2, y2 = box
+            return img.convert("RGB").crop((
+                max(0, int(x1 * scale)), max(0, int(y1 * scale)),
+                min(w, int(x2 * scale)), min(h, int(y2 * scale)),
+            ))
+        except Exception:
+            return None
+
+    def _fishing_bobber_box(self, pt=None):
+        if pt is None:
+            pt = self.settings.get("fishing_bobber_pt", DEFAULT_SETTINGS["fishing_bobber_pt"])
+        x, y = pt
+        return (x - 34, y - 34, x + 34, y + 34)
+
+    def _detect_fishing_popup(self):
+        if not self._has_popup_panel_fast():
+            return None
+        text = self._ocr_screen_region(320, 210, 640, 430)
+        self._last_ocr_text = text.strip()
+        if any(kw in text for kw in ["釣到", "钓到", "百寶箱", "百宝箱", "魚種", "鱼种"]):
+            return "caught"
+        if any(kw in text for kw in ["錯過", "错过", "魚跑", "鱼跑", "收桿", "收杆", "及時", "及时"]):
+            return "missed"
+        if any(kw in text for kw in ["知道了", "確認", "确定"]):
+            return "unknown"
+        return None
+
+    def _classify_fishing_text(self, text):
+        clean = re.sub(r"\s+", "", text or "")
+        limit_words = ("很多魚", "很多鱼", "生態平衡", "生态平衡", "明天再來", "明天再来",
+                       "ä¾ˆå¤šé­š", "ç”Ÿæ…‹å¹³è¡¡", "æ˜Žå¤©å†ä¾†")
+        caught_words = ("釣到", "钓到", "百寶箱", "百宝箱", "魚種", "鱼种", "é‡£åˆ°", "ç™¾å¯¶ç®±")
+        missed_words = ("錯過", "错过", "魚跑", "鱼跑", "下次收桿", "下次收杆", "及時", "及时", "éŒ¯éŽ", "é­šè·‘")
+        if any(word in clean for word in limit_words):
+            return "limit"
+        if any(word in clean for word in caught_words):
+            return "caught"
+        if any(word in clean for word in missed_words):
+            return "missed"
+        return "unknown"
+
+    def _classify_fishing_image(self, img):
+        """OCR 失敗時的備援：釣到物品圖偏上，魚跑掉角色圖偏下。"""
+        if img is None:
+            return "unknown"
+        try:
+            rgb = img.convert("RGB")
+            w, h = rgb.size
+
+            def color_score(box):
+                x1, y1, x2, y2 = box
+                x1, y1 = max(0, int(x1 * w)), max(0, int(y1 * h))
+                x2, y2 = min(w, int(x2 * w)), min(h, int(y2 * h))
+                if x2 <= x1 or y2 <= y1:
+                    return 0
+                total = 0
+                for y in range(y1, y2, 2):
+                    for x in range(x1, x2, 2):
+                        r, g, b = rgb.getpixel((x, y))
+                        mx, mn = max(r, g, b), min(r, g, b)
+                        if mx < 45 or mx > 248:
+                            continue
+                        sat = (mx - mn) / max(mx, 1)
+                        # 排除文字與白底，留下魚圖 / 角色圖這類彩色區塊。
+                        if sat >= 0.22:
+                            total += 1
+                return total
+
+            top_icon = color_score((0.32, 0.08, 0.68, 0.42))
+            lower_icon = color_score((0.30, 0.36, 0.70, 0.74))
+            if top_icon >= 90 and top_icon >= lower_icon * 0.85:
+                return "caught"
+            if lower_icon >= 90 and lower_icon > top_icon * 1.15:
+                return "missed"
+        except Exception:
+            pass
+        return "unknown"
+
+    def _extract_fishing_item(self, text, result):
+        if result != "caught":
+            return ""
+        clean = re.sub(r"\s+", "", text or "")
+        for prefix in ("釣到一條", "钓到一条", "釣到", "钓到", "é‡£åˆ°"):
+            idx = clean.find(prefix)
+            if idx >= 0:
+                start = idx + len(prefix)
+                ends = [clean.find(marker, start) for marker in ("，", ",", "已經", "已经", "放入", "百寶箱", "百宝箱", "中", "ç™¾å¯¶ç®±")]
+                ends = [pos for pos in ends if pos > start]
+                end = min(ends) if ends else min(len(clean), start + 12)
+                item = clean[start:end].strip("：:。.!！")
+                if item:
+                    return item
+        return ""
+
+    def _record_fishing_result(self, slot_idx, result, text):
+        with self._fishing_record_lock:
+            now = time.time()
+            clean_text = re.sub(r"\s+", " ", (text or "").strip())
+            key = f"{result}|{slot_idx}|{clean_text[:80]}"
+            if key == self._last_fishing_record_key and now - self._last_fishing_record_at < 3.0:
+                return None
+
+            self._last_fishing_record_key = key
+            self._last_fishing_record_at = now
+
+            item = self._extract_fishing_item(clean_text, result)
+            row = {
+                "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "result": result,
+                "item": item,
+                "slot": slot_idx + 1,
+                "ocr_text": clean_text,
+            }
+            try:
+                exists = os.path.exists(FISHING_RECORD_FILE)
+                with open(FISHING_RECORD_FILE, "a", newline="", encoding="utf-8-sig") as f:
+                    writer = csv.DictWriter(f, fieldnames=["time", "result", "item", "slot", "ocr_text"])
+                    if not exists:
+                        writer.writeheader()
+                    writer.writerow(row)
+            except Exception:
+                pass
+
+            self.fishing_stats["total"] += 1
+            if result in self.fishing_stats:
+                self.fishing_stats[result] += 1
+            else:
+                self.fishing_stats["unknown"] += 1
+            if item:
+                label = item
+            elif result == "caught":
+                label = "釣到魚"
+            elif result == "missed":
+                label = "魚跑了"
+            elif result == "limit":
+                label = "今日釣魚上限"
+            else:
+                label = "未知結果"
+            self.fishing_stats["last"] = label
+            return f"釣魚紀錄：成功 {self.fishing_stats['caught']}／失敗 {self.fishing_stats['missed']}／上限 {self.fishing_stats['limit']}／未知 {self.fishing_stats['unknown']}，最近：{label}"
+
+    def _record_fishing_popup_async(self, log, slot_idx, popup_img):
+        def worker():
+            text = self._ocr_image(popup_img) if popup_img is not None else ""
+            self._last_ocr_text = text.strip()
+            result = self._classify_fishing_text(text)
+            visual_result = self._classify_fishing_image(popup_img)
+            if result == "unknown" and visual_result != "unknown":
+                result = visual_result
+                text = (text + f" [visual={visual_result}]").strip()
+            record_msg = self._record_fishing_result(slot_idx, result, text)
+            if result == "limit":
+                self._fishing_limit_reached = True
+                self._stop.set()
+            if log:
+                if result == "limit":
+                    log("釣魚：已達今日上限，停止釣魚")
+                else:
+                    log(record_msg or "釣魚：偵測到結果彈窗，快速按確認")
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _reset_fishing_session_stats(self):
+        with self._fishing_record_lock:
+            self.fishing_stats = {"caught": 0, "missed": 0, "unknown": 0, "limit": 0, "total": 0, "last": ""}
+            self._last_fishing_record_key = ""
+            self._last_fishing_record_at = 0.0
+            self._last_fishing_popup_click_at = 0.0
+            self._fishing_popup_handled = False
+            self._fishing_limit_reached = False
+
+    def _handle_fishing_popup(self, log=None, slot_idx=0):
+        if not self._has_popup_panel_fast():
+            return False
+        pt = tuple(self.settings.get("fishing_confirm_btn", DEFAULT_SETTINGS["fishing_confirm_btn"]))
+        now = time.time()
+        if now - self._last_fishing_popup_click_at < 2.0:
+            self.click_real(*pt, delay=0.04)
+            return True
+        self._last_fishing_popup_click_at = now
+        popup_img = self._capture_mole_region((320, 210, 640, 430))
+        close_delay = float(self.settings.get("fishing_popup_close_delay", 0.9))
+        if close_delay > 0 and not self.wait(close_delay):
+            return False
+        self.click_real(*pt, delay=0.04)
+        self._fishing_popup_handled = True
+        self._record_fishing_popup_async(log, slot_idx, popup_img)
+        return True
+
+    def _reset_after_fishing_result(self, on_status, seat=None, slot_idx=0):
+        if not self._fishing_popup_handled:
+            return
+        self._fishing_popup_handled = False
+        reset_delay = float(self.settings.get("fishing_reset_delay", 1.2))
+        if self.settings.get("fishing_reset_mode", "delay") != "leave":
+            on_status("釣魚：等待收桿動畫結束…")
+            self.wait(reset_delay)
+            return
+        leave_pts = self.settings.get("fishing_leave_pts") or []
+        if leave_pts and slot_idx < len(leave_pts) and leave_pts[slot_idx]:
+            leave_pt = tuple(leave_pts[slot_idx])
+        else:
+            leave_pt = None
+        if not leave_pt:
+            self.wait(reset_delay)
+            return
+        on_status("釣魚：離座復位，避免收桿動畫卡住…")
+        self.click_real(*leave_pt, delay=0.12)
+        self.wait(reset_delay)
+
+    def _move_aside_after_fishing_limit(self, on_status, seat=None, slot_idx=0):
+        stop_pts = self.settings.get("fishing_limit_stop_pts") or []
+        if stop_pts and slot_idx < len(stop_pts) and stop_pts[slot_idx]:
+            pt = tuple(stop_pts[slot_idx])
+        elif seat:
+            pt = (max(40, seat[0] - 50), max(80, seat[1] - 25))
+        else:
+            return
+        on_status("釣魚：今日上限，移到旁邊後停止…")
+        self.click_real(*pt, delay=0)
+        time.sleep(1.0)
+
+    def _clear_fishing_popup_fast(self, log=None, timeout=1.5, slot_idx=0):
+        handled = False
+        deadline = time.time() + timeout
+        while time.time() < deadline and not self._stop.is_set():
+            if self._handle_fishing_popup(log, slot_idx=slot_idx):
+                handled = True
+                time.sleep(0.06)
+                continue
+            if handled:
+                break
+            time.sleep(0.04)
+        return handled
+
+    def _bobber_center(self, img):
+        if img is None:
+            return None
+        try:
+            rgb = img.convert("RGB")
+            xs = []
+            ys = []
+            w, h = rgb.size
+            for y in range(0, h, 2):
+                for x in range(0, w, 2):
+                    r, g, b = rgb.getpixel((x, y))
+                    if r >= 120 and r > g * 1.35 and r > b * 1.35 and max(g, b) <= 150:
+                        xs.append(x)
+                        ys.append(y)
+            if len(xs) < 4:
+                return None
+            return (sum(xs) / len(xs), sum(ys) / len(ys))
+        except Exception:
+            return None
+
+    def _wait_for_fishing_started(self, on_status, bobber_pt, slot_idx=0):
+        timeout = float(self.settings.get("fishing_start_timeout", 3.0))
+        threshold = float(self.settings.get("fishing_motion_threshold", 3.0))
+        move_threshold = float(self.settings.get("fishing_bobber_move_threshold", 1.2))
+        box = self._fishing_bobber_box(bobber_pt)
+
+        baseline = self._capture_mole_region(box)
+        if baseline is None:
+            return False
+        base_center = self._bobber_center(baseline)
+
+        deadline = time.time() + timeout
+        best_score = 0.0
+        best_move = 0.0
+        while time.time() < deadline and not self._stop.is_set():
+            if self._handle_fishing_popup(on_status, slot_idx=slot_idx):
+                return "popup"
+            current = self._capture_mole_region(box)
+            score = self._image_diff_score(baseline, current)
+            best_score = max(best_score, score)
+            center = self._bobber_center(current)
+            if base_center and center:
+                move = ((center[0] - base_center[0]) ** 2 + (center[1] - base_center[1]) ** 2) ** 0.5
+                best_move = max(best_move, move)
+                if move >= move_threshold:
+                    return True
+            elif score >= threshold:
+                return True
+            time.sleep(0.12)
+
+        on_status(f"釣魚：浮標沒有動態（變化 {best_score:.1f}／位移 {best_move:.1f}），重試下竿")
+        return False
+
+    def _wait_for_fish_bite(self, on_status, click_pt, bobber_pt=None, slot_idx=0):
+        wait_sec = int(self.settings.get("fishing_wait_seconds", 25))
+        threshold = float(self.settings.get("fishing_bite_threshold", 16))
+        box = self._fishing_bobber_box(bobber_pt or click_pt)
+
+        # 丟竿後浮標會先穩定一下，再用這張當等待基準。
+        if not self.wait(0.8):
+            return False
+        baseline = self._capture_mole_region(box)
+        if baseline is None:
+            return False
+
+        deadline = time.time() + wait_sec
+        last_report = 0
+        while time.time() < deadline and not self._stop.is_set():
+            if self._handle_fishing_popup(on_status, slot_idx=slot_idx):
+                return "popup"
+
+            current = self._capture_mole_region(box)
+            score = self._image_diff_score(baseline, current)
+            if score >= threshold:
+                on_status(f"釣魚：浮標變化 {score:.1f}，收竿")
+                return True
+
+            # 釣魚中可以連點浮標，這樣上鉤時能更快收竿。
+            if not (win32api.GetAsyncKeyState(win32con.VK_LBUTTON) & 0x8000):
+                self.click_real(*click_pt, delay=0.01)
+
+            if time.time() - last_report >= 1.0:
+                rem = max(0, int(deadline - time.time()))
+                on_status(f"釣魚中，等待上鉤…（剩 {rem} 秒）")
+                last_report = time.time()
+            if not self.wait(0.08):
+                return False
+        return False
+
+    def _reel_until_popup(self, on_status, click_pt, slot_idx=0):
+        timeout = float(self.settings.get("fishing_reel_timeout", 3.0))
+        deadline = time.time() + timeout
+        on_status("釣魚：已上鉤，連續收桿確認…")
+        while time.time() < deadline and not self._stop.is_set():
+            if self._handle_fishing_popup(on_status, slot_idx=slot_idx):
+                return True
+            if not (win32api.GetAsyncKeyState(win32con.VK_LBUTTON) & 0x8000):
+                self.click_real(*click_pt, delay=0.02)
+            if self._clear_fishing_popup_fast(on_status, timeout=0.18, slot_idx=slot_idx):
+                return True
+            if not self.wait(0.08):
+                return False
+        on_status("釣魚：收桿後沒有看到結果彈窗，重試下竿")
+        return False
+
+    def run_fishing(self, on_status):
+        self._stop.clear()
+        self.hwnd = self.find_window()
+        if not self.hwnd:
+            on_status("找不到 Flash Player 視窗，請先開啟遊戲並站到釣魚地圖", error=True)
+            return
+
+        self._reset_fishing_session_stats()
+        seats = self.settings.get("fishing_seats", DEFAULT_SETTINGS["fishing_seats"])
+        seats = [tuple(pt) for pt in seats if pt]
+        if not seats:
+            seats = [tuple(DEFAULT_SETTINGS["fishing_seats"][0])]
+        cast_pts = self.settings.get("fishing_cast_pts") or []
+        cast_pts = [tuple(pt) for pt in cast_pts if pt]
+        if not cast_pts:
+            cast_pts = [tuple(self.settings.get("fishing_cast_pt", DEFAULT_SETTINGS["fishing_cast_pt"]))]
+
+        bobber_pts = self.settings.get("fishing_bobber_pts") or []
+        bobber_pts = [tuple(pt) for pt in bobber_pts if pt]
+        if len(bobber_pts) != len(cast_pts):
+            bobber_pts = cast_pts
+        slot_idx = int(self.settings.get("fishing_active_slot", 1) or 1) - 1
+        max_slots = max(1, min(len(seats), len(cast_pts), len(bobber_pts)))
+        slot_idx = max(0, min(max_slots - 1, slot_idx))
+        try:
+            on_status(f"釣魚模式啟動：固定使用釣位 {slot_idx + 1}")
+            self._clear_blocking_overlays(on_status, close_recipe=True)
+
+            while not self._stop.is_set():
+                if not self._is_window_alive():
+                    on_status("Flash Player 視窗已關閉，停止釣魚", error=True)
+                    break
+
+                if self._detect_disconnect_popup():
+                    on_status("偵測到斷線彈窗，請先重新登入後再開始釣魚", error=True)
+                    break
+
+                if self._clear_fishing_popup_fast(on_status, timeout=0.8, slot_idx=slot_idx):
+                    seat = seats[slot_idx % len(seats)]
+                    self._reset_after_fishing_result(on_status, seat, slot_idx=slot_idx)
+                    continue
+
+                seat = seats[slot_idx % len(seats)]
+                cast_pt = cast_pts[slot_idx % len(cast_pts)]
+                bobber_pt = bobber_pts[slot_idx % len(bobber_pts)]
+                on_status(f"釣魚：點椅子 {slot_idx + 1}/{len(seats)}")
+                self.click_real(*seat, delay=0.9)
+                started = self._wait_for_fishing_started(on_status, bobber_pt, slot_idx=slot_idx)
+                if started == "popup":
+                    self._reset_after_fishing_result(on_status, seat, slot_idx=slot_idx)
+                    continue
+                if not started:
+                    self._clear_fishing_popup_fast(on_status, timeout=0.5, slot_idx=slot_idx)
+                    self.wait(0.4)
+                    continue
+                bite = self._wait_for_fish_bite(on_status, cast_pt, bobber_pt, slot_idx=slot_idx)
+
+                if bite is True:
+                    self._reel_until_popup(on_status, cast_pt, slot_idx=slot_idx)
+                    self._reset_after_fishing_result(on_status, seat, slot_idx=slot_idx)
+                elif bite == "popup":
+                    self._clear_fishing_popup_fast(on_status, timeout=1.0, slot_idx=slot_idx)
+                    self._reset_after_fishing_result(on_status, seat, slot_idx=slot_idx)
+                else:
+                    on_status("釣魚：等待逾時，重新下竿")
+                    self.click_real(*cast_pt, delay=0.1)
+                    self._clear_fishing_popup_fast(on_status, timeout=0.8, slot_idx=slot_idx)
+                    self._reset_after_fishing_result(on_status, seat, slot_idx=slot_idx)
+        finally:
+            if self._fishing_limit_reached:
+                try:
+                    seat = seats[slot_idx % len(seats)] if seats else None
+                    self._move_aside_after_fishing_limit(on_status, seat, slot_idx=slot_idx)
+                except Exception:
+                    pass
+            on_status("已停止")
 
     def navigate_to_page(self, target_page):
         r = self.recipe
@@ -1957,7 +2421,7 @@ class App:
     def __init__(self, root, debug_ui=False):
         self.root = root
         self.debug_ui = debug_ui
-        title = "摩爾莊園｜餐廳自動做菜"
+        title = "摩爾莊園輔助"
         if self.debug_ui:
             title += "（除錯版）"
         self.root.title(title)
@@ -1980,27 +2444,41 @@ class App:
                        "btn_disconnect_confirm", "btn_notice_ok", "btn_online_time_ok",
                        "btn_game_start", "btn_login", "btn_quick_start",
                        "btn_happy_spin_close",
-                       "btn_land", "btn_land_restaurant")
+                       "btn_land", "btn_land_restaurant",
+                       "fishing_seats", "fishing_leave_pts", "fishing_limit_stop_pts",
+                       "fishing_cast_pt", "fishing_cast_pts",
+                       "fishing_bobber_pt", "fishing_bobber_pts",
+                       "fishing_confirm_btn",
+                       "fishing_start_timeout", "fishing_motion_threshold",
+                       "fishing_bobber_move_threshold",
+                       "fishing_reel_timeout",
+                       "fishing_popup_close_delay", "fishing_reset_delay",
+                       "fishing_reset_mode")
         self._extra_settings = {k: settings[k] for k in _extra_keys}
         self.bot = RestaurantBot(self.stoves, self.recipe, settings)
         self._build_ui(settings)
 
     def _build_ui(self, settings):
-        f = ttk.Frame(self.root, padding=12)
+        style = ttk.Style(self.root)
+        style.configure("Primary.TButton", padding=(14, 6), font=("", 10, "bold"))
+        style.configure("Tool.TButton", padding=(10, 4))
+        style.configure("Status.TLabel", padding=(2, 2), font=("", 9))
+
+        f = ttk.Frame(self.root, padding=(12, 10))
         f.pack(fill=tk.BOTH)
 
         self.vars = {}
 
         # ── 設定 ─────────────────────────────────────────
-        grp_set = ttk.LabelFrame(f, text="設定", padding=(10, 4))
-        grp_set.pack(fill=tk.X, pady=(0, 6))
+        grp_set = ttk.LabelFrame(f, text="基本設定", padding=(10, 6))
+        grp_set.pack(fill=tk.X, pady=(0, 8))
 
         row1 = ttk.Frame(grp_set)
         row1.pack(fill=tk.X, pady=2)
-        ttk.Label(row1, text="食譜頁數 (1~10)", width=17, anchor=tk.W).pack(side=tk.LEFT)
+        ttk.Label(row1, text="食譜頁數", width=12, anchor=tk.W).pack(side=tk.LEFT)
         v_page = tk.IntVar(value=settings["page"])
         ttk.Spinbox(row1, from_=1, to=10, textvariable=v_page, width=5).pack(side=tk.LEFT)
-        ttk.Label(row1, text="   菜的位置 (1~6)").pack(side=tk.LEFT)
+        ttk.Label(row1, text="   菜的位置").pack(side=tk.LEFT)
         v_dish = tk.IntVar(value=settings["dish"])
         ttk.Spinbox(row1, from_=1, to=6, textvariable=v_dish, width=5).pack(side=tk.LEFT)
         self.vars["page"] = v_page
@@ -2008,23 +2486,26 @@ class App:
 
         row2 = ttk.Frame(grp_set)
         row2.pack(fill=tk.X, pady=2)
-        ttk.Label(row2, text="掃描間隔", width=17, anchor=tk.W).pack(side=tk.LEFT)
+        ttk.Label(row2, text="掃描間隔", width=12, anchor=tk.W).pack(side=tk.LEFT)
         v_min = tk.IntVar(value=settings.get("cook_minutes", 20))
         v_sec = tk.IntVar(value=settings.get("cook_seconds", 0))
         ttk.Spinbox(row2, from_=0, to=99, textvariable=v_min, width=4).pack(side=tk.LEFT)
         ttk.Label(row2, text=" 分 ").pack(side=tk.LEFT)
         ttk.Spinbox(row2, from_=0, to=59, textvariable=v_sec, width=4).pack(side=tk.LEFT)
-        ttk.Label(row2, text=" 秒   防卡頓 ").pack(side=tk.LEFT)
+        ttk.Label(row2, text=" 秒").pack(side=tk.LEFT)
         v_al = tk.IntVar(value=settings.get("antlag_minutes", 5))
-        ttk.Spinbox(row2, from_=0, to=99, textvariable=v_al, width=4).pack(side=tk.LEFT)
-        ttk.Label(row2, text=" 分（0=關）").pack(side=tk.LEFT)
+        if self.debug_ui:
+            ttk.Label(row2, text="   防卡頓 ").pack(side=tk.LEFT)
+            ttk.Spinbox(row2, from_=0, to=99, textvariable=v_al, width=4).pack(side=tk.LEFT)
+            ttk.Label(row2, text=" 分（0=關）").pack(side=tk.LEFT)
         self.vars["cook_minutes"]  = v_min
         self.vars["cook_seconds"]  = v_sec
         self.vars["antlag_minutes"] = v_al
 
         row3 = ttk.Frame(grp_set)
-        row3.pack(fill=tk.X, pady=2)
-        ttk.Label(row3, text="收菜等待", width=17, anchor=tk.W).pack(side=tk.LEFT)
+        if self.debug_ui:
+            row3.pack(fill=tk.X, pady=2)
+        ttk.Label(row3, text="收菜等待", width=12, anchor=tk.W).pack(side=tk.LEFT)
         v_hw = tk.IntVar(value=settings.get("harvest_wait", 3))
         ttk.Spinbox(row3, from_=0, to=30, textvariable=v_hw, width=4).pack(side=tk.LEFT)
         ttk.Label(row3, text=" 秒（收菜後等待）   視窗等待 ").pack(side=tk.LEFT)
@@ -2036,32 +2517,54 @@ class App:
 
         row4 = ttk.Frame(grp_set)
         row4.pack(fill=tk.X, pady=2)
-        ttk.Label(row4, text="Flash Player 路徑", width=17, anchor=tk.W).pack(side=tk.LEFT)
+        ttk.Label(row4, text="Flash 路徑", width=12, anchor=tk.W).pack(side=tk.LEFT)
         v_exe = tk.StringVar(value=settings.get("flash_exe_path", ""))
-        ttk.Entry(row4, textvariable=v_exe, width=42).pack(side=tk.LEFT)
-        self.flash_browse_btn = ttk.Button(row4, text="瀏覽", command=self._browse_flash_exe)
+        ttk.Entry(row4, textvariable=v_exe, width=44).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.flash_browse_btn = ttk.Button(row4, text="瀏覽", command=self._browse_flash_exe, style="Tool.TButton")
         self.flash_browse_btn.pack(side=tk.LEFT, padx=(4, 0))
         self.vars["flash_exe_path"] = v_exe
 
+        row5 = ttk.Frame(grp_set)
+        row5.pack(fill=tk.X, pady=2)
+        ttk.Label(row5, text="釣魚等待", width=12, anchor=tk.W).pack(side=tk.LEFT)
+        v_fish_wait = tk.IntVar(value=settings.get("fishing_wait_seconds", 25))
+        ttk.Spinbox(row5, from_=5, to=120, textvariable=v_fish_wait, width=4).pack(side=tk.LEFT)
+        ttk.Label(row5, text=" 秒   上鉤敏感度 ").pack(side=tk.LEFT)
+        v_fish_thr = tk.IntVar(value=settings.get("fishing_bite_threshold", 16))
+        ttk.Spinbox(row5, from_=5, to=80, textvariable=v_fish_thr, width=4).pack(side=tk.LEFT)
+        ttk.Label(row5, text="   釣位 ").pack(side=tk.LEFT)
+        self.fishing_slot_var = tk.IntVar(value=1)
+        ttk.Spinbox(row5, from_=1, to=4, textvariable=self.fishing_slot_var, width=4).pack(side=tk.LEFT)
+        self.vars["fishing_wait_seconds"] = v_fish_wait
+        self.vars["fishing_bite_threshold"] = v_fish_thr
+
         # ── 校準 ─────────────────────────────────────────
-        grp_cal = ttk.LabelFrame(f, text="校準", padding=(10, 4))
-        grp_cal.pack(fill=tk.X, pady=(0, 6))
+        grp_cal = ttk.LabelFrame(f, text="校準", padding=(10, 6))
+        grp_cal.pack(fill=tk.X, pady=(0, 8))
 
         # 第一列：基礎設定校準
         row_c1 = ttk.Frame(grp_cal)
         row_c1.pack(fill=tk.X, pady=(2, 0))
-        ttk.Label(row_c1, text="基礎：", width=5, foreground="gray").pack(side=tk.LEFT)
-        self.calib_s    = ttk.Button(row_c1, text="鍋爐", command=self._calib_stoves)
-        self.calib_r    = ttk.Button(row_c1, text="食譜", command=self._calib_recipe)
-        self.calib_c    = ttk.Button(row_c1, text="彈窗", command=self._calib_cancel)
-        self.calib_door = ttk.Button(row_c1, text="門口", command=self._calib_door)
-        self.calib_rest = ttk.Button(row_c1, text="餐廳", command=self._calib_restaurant)
-        self.calib_ocr  = ttk.Button(row_c1, text="測 OCR", command=self._test_ocr)
-        base_calib_buttons = [self.calib_s, self.calib_r, self.calib_c, self.calib_door, self.calib_rest]
+        ttk.Label(row_c1, text="需要校準", width=12, foreground="gray").pack(side=tk.LEFT)
+        self.calib_s    = ttk.Button(row_c1, text="鍋爐", command=self._calib_stoves, style="Tool.TButton")
+        self.calib_r    = ttk.Button(row_c1, text="食譜", command=self._calib_recipe, style="Tool.TButton")
+        self.calib_c    = ttk.Button(row_c1, text="彈窗", command=self._calib_cancel, style="Tool.TButton")
+        self.calib_door = ttk.Button(row_c1, text="門口", command=self._calib_door, style="Tool.TButton")
+        self.calib_rest = ttk.Button(row_c1, text="餐廳", command=self._calib_restaurant, style="Tool.TButton")
+        self.calib_ocr  = ttk.Button(row_c1, text="測 OCR", command=self._test_ocr, style="Tool.TButton")
+        base_calib_buttons = [
+            self.calib_s, self.calib_r, self.calib_c,
+            self.calib_rest,
+        ]
         if self.debug_ui:
-            base_calib_buttons.append(self.calib_ocr)
+            base_calib_buttons.extend([self.calib_door, self.calib_ocr])
         for btn in base_calib_buttons:
             btn.pack(side=tk.LEFT, padx=3)
+
+        row_c_nav = ttk.Frame(grp_cal)
+        if not self.debug_ui:
+            row_c_nav.pack(fill=tk.X, pady=(4, 0))
+            ttk.Label(row_c_nav, text="導航校準", width=12, foreground="gray").pack(side=tk.LEFT)
 
         # 第二列：狀態偵測校準
         row_c2 = ttk.Frame(grp_cal)
@@ -2075,8 +2578,9 @@ class App:
 
         # 第三列：重連按鈕座標校準
         row_c3 = ttk.Frame(grp_cal)
-        row_c3.pack(fill=tk.X, pady=(2, 0))
-        ttk.Label(row_c3, text="重連：", width=5, foreground="gray").pack(side=tk.LEFT)
+        if self.debug_ui:
+            row_c3.pack(fill=tk.X, pady=(2, 0))
+            ttk.Label(row_c3, text="進階", width=12, foreground="gray").pack(side=tk.LEFT)
         self.calib_btn_dc  = ttk.Button(row_c3, text="斷線確認",   command=self._calib_btn_disconnect_confirm)
         self.calib_btn_no  = ttk.Button(row_c3, text="系統提示",   command=self._calib_btn_notice_ok)
         self.calib_btn_ot  = ttk.Button(row_c3, text="在線時間",   command=self._calib_btn_online_time_ok)
@@ -2084,11 +2588,26 @@ class App:
         self.calib_btn_li  = ttk.Button(row_c3, text="角色登入",   command=self._calib_btn_login)
         self.calib_btn_qs  = ttk.Button(row_c3, text="快速開始",   command=self._calib_btn_quick_start)
         self.calib_btn_hs  = ttk.Button(row_c3, text="轉轉關閉",   command=self._calib_btn_happy_spin_close)
-        self.calib_btn_land = ttk.Button(row_c3, text="地盤",       command=self._calib_btn_land)
-        self.calib_btn_lres = ttk.Button(row_c3, text="地盤餐廳",   command=self._calib_btn_land_restaurant)
-        for btn in (self.calib_btn_dc, self.calib_btn_no, self.calib_btn_ot,
-                    self.calib_btn_gs, self.calib_btn_li, self.calib_btn_qs,
-                    self.calib_btn_hs, self.calib_btn_land, self.calib_btn_lres):
+        nav_parent = row_c3 if self.debug_ui else row_c_nav
+        self.calib_btn_land = ttk.Button(nav_parent, text="地盤",       command=self._calib_btn_land, style="Tool.TButton")
+        self.calib_btn_lres = ttk.Button(nav_parent, text="地盤餐廳",   command=self._calib_btn_land_restaurant, style="Tool.TButton")
+        if self.debug_ui:
+            for btn in (self.calib_btn_dc, self.calib_btn_no, self.calib_btn_ot,
+                        self.calib_btn_gs, self.calib_btn_li, self.calib_btn_qs,
+                        self.calib_btn_hs, self.calib_btn_land, self.calib_btn_lres):
+                btn.pack(side=tk.LEFT, padx=3)
+        else:
+            for btn in (self.calib_btn_land, self.calib_btn_lres):
+                btn.pack(side=tk.LEFT, padx=3)
+
+        row_c_fish = ttk.Frame(grp_cal)
+        row_c_fish.pack(fill=tk.X, pady=(4, 0))
+        ttk.Label(row_c_fish, text="釣魚校準", width=12, foreground="gray").pack(side=tk.LEFT)
+        self.calib_fish_seats = ttk.Button(row_c_fish, text="椅子", command=self._calib_fishing_seats, style="Tool.TButton")
+        self.calib_fish_cast = ttk.Button(row_c_fish, text="浮標/收竿", command=self._calib_fishing_cast, style="Tool.TButton")
+        self.calib_fish_bob  = ttk.Button(row_c_fish, text="浮標偵測", command=self._calib_fishing_bobber, style="Tool.TButton")
+        self.calib_fish_ok   = ttk.Button(row_c_fish, text="釣魚確認", command=self._calib_fishing_confirm, style="Tool.TButton")
+        for btn in (self.calib_fish_seats, self.calib_fish_cast, self.calib_fish_bob, self.calib_fish_ok):
             btn.pack(side=tk.LEFT, padx=3)
 
         # 校準狀態指示列
@@ -2099,10 +2618,13 @@ class App:
                             ("door", "門口"), ("restaurant", "餐廳"),
                             ("nav", "導航"),
                             ("state", "狀態色"), ("clk_interior", "時鐘內")):
-            lbl = ttk.Label(row_cs, text=f"▸{title}", font=("", 8))
-            lbl.pack(side=tk.LEFT, padx=(2, 8))
+            lbl = ttk.Label(row_cs, text=f"▸{title}", font=("", 8), foreground="gray")
+            lbl.pack(side=tk.LEFT, padx=(0, 8))
             self._calib_lbl[key] = lbl
-        for unused in ("state", "clk_interior"):
+        unused_keys = ["state", "clk_interior"]
+        if not self.debug_ui:
+            unused_keys.append("door")
+        for unused in unused_keys:
             lbl = self._calib_lbl.pop(unused, None)
             if lbl:
                 lbl.destroy()
@@ -2110,19 +2632,27 @@ class App:
 
         # ── 狀態 ─────────────────────────────────────────
         self.status = ttk.Label(f, text="狀態：待機", foreground="gray",
-                                font=("", 10, "bold"), anchor=tk.W)
-        self.status.pack(fill=tk.X, pady=(2, 6))
+                                anchor=tk.W, style="Status.TLabel")
+        self.status.pack(fill=tk.X, pady=(0, 6))
+        self.fishing_stats_var = tk.StringVar(value="釣魚紀錄：尚未開始")
+        self.fishing_stats_lbl = ttk.Label(f, textvariable=self.fishing_stats_var,
+                                           foreground="gray", anchor=tk.W, style="Status.TLabel")
+        self.fishing_stats_lbl.pack(fill=tk.X, pady=(0, 6))
 
         # ── 執行 ─────────────────────────────────────────
-        grp_run = ttk.LabelFrame(f, text="執行", padding=(10, 4))
-        grp_run.pack(fill=tk.X, pady=(0, 6))
-        self.start_btn  = ttk.Button(grp_run, text="▶ 開始",   command=self._start,        width=10)
-        self.stop_btn   = ttk.Button(grp_run, text="■ 停止",   command=self._stop,         width=10,
+        grp_run = ttk.Frame(f)
+        grp_run.pack(fill=tk.X, pady=(0, 2))
+        self.start_btn  = ttk.Button(grp_run, text="開始",   command=self._start,        width=12, style="Primary.TButton")
+        self.fishing_btn = ttk.Button(grp_run, text="開始釣魚", command=self._start_fishing, width=12, style="Primary.TButton")
+        self.stop_btn   = ttk.Button(grp_run, text="停止",   command=self._stop,         width=12,
                                      state=tk.DISABLED)
-        self.login_btn  = ttk.Button(grp_run, text="↩ 手動登入", command=self._manual_login, width=12)
-        self.start_btn.pack(side=tk.LEFT, padx=(0, 6), pady=4)
-        self.stop_btn.pack(side=tk.LEFT, padx=(0, 6), pady=4)
-        self.login_btn.pack(side=tk.LEFT, pady=4)
+        self.login_btn  = ttk.Button(grp_run, text="手動登入", command=self._manual_login, width=12)
+        self.help_btn   = ttk.Button(grp_run, text="使用說明", command=self._show_help, width=12)
+        self.start_btn.pack(side=tk.LEFT, padx=(0, 8), pady=2)
+        self.fishing_btn.pack(side=tk.LEFT, padx=(0, 8), pady=2)
+        self.stop_btn.pack(side=tk.LEFT, padx=(0, 8), pady=2)
+        self.login_btn.pack(side=tk.LEFT, padx=(0, 8), pady=2)
+        self.help_btn.pack(side=tk.LEFT, pady=2)
 
         # ── 工具 ─────────────────────────────────────────
         grp_tool = ttk.LabelFrame(f, text="工具", padding=(10, 4))
@@ -2192,21 +2722,43 @@ class App:
         if path:
             self.vars["flash_exe_path"].set(path)
 
+    def _show_help(self):
+        messagebox.showinfo(
+            "使用說明",
+            "第一次使用：\n"
+            "1. 按「瀏覽」選擇 flashplayer_32_sa.exe。\n"
+            "2. 開啟遊戲，或按「手動登入」。\n"
+            "3. 依序校準鍋爐、食譜、彈窗、餐廳、地盤、地盤餐廳。\n"
+            "4. 設定食譜頁數、菜的位置、掃描間隔。\n"
+            "5. 按「開始」。\n\n"
+            "釣魚模式：\n"
+            "1. 先手動走到釣魚地圖並站到水邊。\n"
+            "2. 用上方「釣位」選 1～4，再校準該釣位的「椅子」和「浮標/收竿」。\n"
+            "   如果上鉤偵測不準，再校準「浮標偵測」。\n"
+            "3. 按「開始釣魚」。目前不會自動飛到釣魚地圖。\n\n"
+            "設定會存在 exe 同資料夾的 restaurant_config.json。\n"
+            "釣魚結果會記在 exe 同資料夾的 fishing_records.csv。\n"
+            "要重置設定，關閉程式後刪掉 restaurant_config.json 即可。",
+            parent=self.root,
+        )
+
     def _get_settings(self):
         s = {k: v.get() for k, v in self.vars.items()}
+        s["fishing_active_slot"] = self._get_fishing_slot() + 1
         s.update(self._extra_settings)  # 合併 spoiled_color / spoiled_threshold
         return s
 
     def _set_running(self, running):
         sa = tk.DISABLED if running else tk.NORMAL
         sb = tk.NORMAL   if running else tk.DISABLED
-        buttons = [self.start_btn, self.login_btn,
+        buttons = [self.start_btn, self.fishing_btn, self.login_btn, self.help_btn,
                     self.calib_s, self.calib_r,
                     self.calib_c, self.calib_sp, self.calib_clk_in,
                     self.calib_door, self.calib_rest,
                     self.calib_btn_dc, self.calib_btn_no, self.calib_btn_ot,
                     self.calib_btn_gs, self.calib_btn_li, self.calib_btn_qs, self.calib_btn_hs,
                     self.calib_btn_land, self.calib_btn_lres,
+                    self.calib_fish_seats, self.calib_fish_cast, self.calib_fish_bob, self.calib_fish_ok,
                     self.flash_browse_btn]
         if self.debug_ui:
             buttons.extend([
@@ -2240,6 +2792,18 @@ class App:
             target=self.bot.run,
             args=(s["page"], s["dish"], scan_secs,
                   s["antlag_minutes"], self._on_status),
+            daemon=True
+        ).start()
+
+    def _start_fishing(self):
+        if not self._save_all():
+            return
+        s = self._get_settings()
+        self.bot.settings.update(s)
+        self._set_running(True)
+        threading.Thread(
+            target=self.bot.run_fishing,
+            args=(self._on_status,),
             daemon=True
         ).start()
 
@@ -2481,6 +3045,173 @@ class App:
             "地盤餐廳",
             "請先點開右下角「地盤」，讓餐廳目標出現在畫面上，\n再按確定截圖，然後點「餐廳」的位置。",
             "btn_land_restaurant", "地盤餐廳按鈕")
+
+    def _get_fishing_slot(self):
+        try:
+            return max(0, min(3, int(self.fishing_slot_var.get()) - 1))
+        except Exception:
+            return 0
+
+    def _get_fishing_points_list(self, settings_key, default_points):
+        pts = self._extra_settings.get(settings_key) or self.bot.settings.get(settings_key) or default_points
+        pts = [list(p) for p in pts if p]
+        while len(pts) < 4:
+            pts.append(list(default_points[min(len(pts), len(default_points) - 1)]))
+        return pts[:4]
+
+    def _open_fishing_slot_calibration(self, title, prompt_action, settings_key, legacy_key, default_points, done_msg, sit_hint=True):
+        hwnd = self._get_hwnd()
+        if not hwnd:
+            return
+        points = self._get_fishing_points_list(settings_key, default_points)
+        slot_var = tk.IntVar(value=self._get_fishing_slot() + 1)
+
+        win = tk.Toplevel(self.root)
+        win.title(title)
+        win.transient(self.root)
+
+        top = ttk.Frame(win, padding=8)
+        top.pack(fill=tk.X)
+        ttk.Label(top, text="釣位").pack(side=tk.LEFT)
+
+        info = ttk.Label(win, foreground="blue", padding=(8, 2))
+        info.pack(fill=tk.X)
+
+        canvas_holder = ttk.Frame(win)
+        canvas_holder.pack(padx=8, pady=6)
+
+        state = {
+            "photo": None,
+            "canvas": None,
+            "game_w": 0,
+            "game_h": 0,
+            "display_scale": 1.0,
+        }
+
+        def current_slot():
+            try:
+                return max(0, min(3, int(slot_var.get()) - 1))
+            except Exception:
+                return 0
+
+        def save_points():
+            self._extra_settings[settings_key] = [list(p) for p in points]
+            if legacy_key != settings_key:
+                self._extra_settings[legacy_key] = list(points[0])
+            self.bot.settings[settings_key] = [list(p) for p in points]
+            if legacy_key != settings_key:
+                self.bot.settings[legacy_key] = list(points[0])
+            if not self._save_all():
+                return False
+            self._refresh_calib_status()
+            return True
+
+        def update_info():
+            slot = current_slot()
+            self.fishing_slot_var.set(slot + 1)
+            hint = f"請手動坐到第 {slot + 1} 張椅子並讓浮標出現，" if sit_hint else ""
+            info.config(
+                text=f"▶ {hint}切到釣位會重新截圖；在圖上點第 {slot + 1} 個釣位的{prompt_action}。目前：{points[slot]}"
+            )
+
+        def draw_existing():
+            canvas = state["canvas"]
+            if not canvas:
+                return
+            canvas.delete("marker")
+            slot = current_slot()
+            px = points[slot][0] * max(state["game_w"] / MOLE_W, state["game_h"] / MOLE_H) * state["display_scale"]
+            py = points[slot][1] * max(state["game_w"] / MOLE_W, state["game_h"] / MOLE_H) * state["display_scale"]
+            r = 7
+            canvas.create_oval(px-r, py-r, px+r, py+r, outline="#1e90ff", width=3, tags="marker")
+            canvas.create_text(px+14, py, text=f"{slot + 1}", fill="#1e90ff", font=("Arial", 10, "bold"), tags="marker")
+
+        def refresh_snapshot():
+            try:
+                img, game_w, game_h = capture_window(hwnd)
+            except Exception as e:
+                messagebox.showerror("錯誤", f"截圖失敗：{e}", parent=win)
+                return
+
+            for child in canvas_holder.winfo_children():
+                child.destroy()
+
+            scale = min(900 / game_w, 580 / game_h, 1.0)
+            disp = img.resize((int(game_w * scale), int(game_h * scale)))
+            state["photo"] = ImageTk.PhotoImage(disp)
+            state["game_w"] = game_w
+            state["game_h"] = game_h
+            state["display_scale"] = scale
+            canvas = tk.Canvas(
+                canvas_holder,
+                width=int(game_w * scale),
+                height=int(game_h * scale),
+                cursor="crosshair",
+            )
+            state["canvas"] = canvas
+            canvas.pack()
+            canvas.create_image(0, 0, anchor=tk.NW, image=state["photo"])
+            canvas.bind("<Button-1>", on_click)
+            update_info()
+            draw_existing()
+
+        def select_slot(slot_num):
+            slot_var.set(slot_num)
+            refresh_snapshot()
+
+        for i in range(1, 5):
+            ttk.Button(top, text=str(i), width=3, command=lambda n=i: select_slot(n)).pack(side=tk.LEFT, padx=2)
+        ttk.Button(top, text="重新截圖", command=refresh_snapshot).pack(side=tk.LEFT, padx=(8, 2))
+        ttk.Button(top, text="關閉", command=win.destroy).pack(side=tk.RIGHT)
+
+        def on_click(event):
+            sg = max(state["game_w"] / MOLE_W, state["game_h"] / MOLE_H)
+            mx = int((event.x / state["display_scale"]) / sg)
+            my = int((event.y / state["display_scale"]) / sg)
+            slot = current_slot()
+            points[slot] = [mx, my]
+            if save_points():
+                update_info()
+                draw_existing()
+
+        refresh_snapshot()
+
+    def _calib_fishing_seats(self):
+        self._open_fishing_slot_calibration(
+            "校準釣魚椅子",
+            "椅子 / 坐墊位置",
+            "fishing_seats",
+            "fishing_seats",
+            DEFAULT_SETTINGS["fishing_seats"],
+            "椅子",
+            sit_hint=False,
+        )
+
+    def _calib_fishing_cast(self):
+        self._open_fishing_slot_calibration(
+            "校準浮標/收竿",
+            "浮標 / 收竿位置",
+            "fishing_cast_pts",
+            "fishing_cast_pt",
+            DEFAULT_SETTINGS["fishing_cast_pts"],
+            "浮標/收竿位置",
+        )
+
+    def _calib_fishing_bobber(self):
+        self._open_fishing_slot_calibration(
+            "校準浮標偵測",
+            "浮標偵測中心",
+            "fishing_bobber_pts",
+            "fishing_bobber_pt",
+            DEFAULT_SETTINGS["fishing_cast_pts"],
+            "浮標偵測中心",
+        )
+
+    def _calib_fishing_confirm(self):
+        self._calib_one_btn(
+            "釣魚確認",
+            "請讓釣魚結果或魚跑了彈窗出現，\n再按確定截圖，然後點「知道了 / 確認」按鈕。",
+            "fishing_confirm_btn", "釣魚彈窗確認按鈕")
 
     def _manual_login(self):
         """手動觸發登入流程（不啟動完整掃描），用於測試或手動重連。"""
@@ -3869,10 +4600,24 @@ class App:
     def _on_status(self, msg, error=False):
         color = "red" if error else ("gray" if msg == "已停止" else "green")
         self.root.after(0, lambda: self.status.config(text=f"狀態：{msg}", foreground=color))
+        self.root.after(0, self._refresh_fishing_stats)
         if msg == "已停止" or error:
             self.root.after(0, lambda: self._set_running(False))
         if error:
             self.root.after(0, lambda: messagebox.showerror("錯誤", msg))
+
+    def _refresh_fishing_stats(self):
+        if not hasattr(self, "fishing_stats_var"):
+            return
+        stats = getattr(self.bot, "fishing_stats", {})
+        total = int(stats.get("total", 0) or 0)
+        if total <= 0:
+            self.fishing_stats_var.set("釣魚紀錄：尚未開始")
+            return
+        last = stats.get("last") or "無"
+        self.fishing_stats_var.set(
+            f"釣魚紀錄：成功 {stats.get('caught', 0)}／失敗 {stats.get('missed', 0)}／上限 {stats.get('limit', 0)}／未知 {stats.get('unknown', 0)}，最近：{last}"
+        )
 
 
 def _check_ocr_language():

@@ -27,7 +27,8 @@ do {
     if (-not $obsPassword) { Write-Host '  請填入 OBS WebSocket 密碼' -ForegroundColor Red }
 } while (-not $obsPassword)
 
-$installDir = "$PSScriptRoot\NOALBS_$twitchId"
+$projectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$installDir = Join-Path (Join-Path $projectRoot "tools") "NOALBS_$twitchId"
 $zipPath    = "$env:TEMP\noalbs.zip"
 $noalbsUrl  = 'https://github.com/NOALBS/nginx-obs-automatic-low-bitrate-switching/releases/download/v2.16.1/noalbs-v2.16.1-x86_64-pc-windows-msvc.zip'
 

@@ -1,5 +1,5 @@
 ﻿param([string]$Title = "StreamControl")
-$sizeFile = "D:\tset\FlyCatClaude Code\scripts\window_size.txt"
+$sizeFile = Join-Path $PSScriptRoot "window_size.txt"
 if (-not (Test-Path $sizeFile)) { exit }
 
 $parts = (Get-Content $sizeFile) -split ","

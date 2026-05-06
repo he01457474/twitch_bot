@@ -100,14 +100,17 @@
     ]
   },
   "settings": {
-    "page": 6,
-    "dish": 2,
-    "cook_minutes": 2,
+    "page": 1,
+    "dish": 1,
+    "cook_minutes": 0,
     "cook_seconds": 10,
     "antlag_minutes": 10,
     "harvest_wait": 4,
     "restart_wait_seconds": 10,
     "flash_exe_path": "D:\\下載\\Win登入器\\flashplayer_32_sa.exe",
+    "fishing_wait_seconds": 20,
+    "fishing_bite_threshold": 16,
+    "fishing_active_slot": 1,
     "restaurant_pt": [
       461,
       498
@@ -626,6 +629,9 @@
     ],
     "cooking_white_threshold": 0.1,
     "done_white_threshold": 0.05,
+    "recipe_open_timeout": 1.4,
+    "progress_start_timeout": 0.65,
+    "progress_gone_misses": 2,
     "smoke_offsets": [
       [
         -12,
@@ -660,12 +666,16 @@
       382
     ],
     "btn_notice_ok": [
-      480,
-      390
+      474,
+      356
+    ],
+    "btn_online_time_ok": [
+      474,
+      360
     ],
     "btn_game_start": [
-      477,
-      489
+      476,
+      445
     ],
     "btn_login": [
       477,
@@ -676,7 +686,7 @@
       473
     ],
     "btn_happy_spin_close": [
-      702,
+      700,
       133
     ],
     "btn_land": [
@@ -686,6 +696,97 @@
     "btn_land_restaurant": [
       876,
       445
-    ]
+    ],
+    "fishing_seats": [
+      [
+        556,
+        336
+      ],
+      [
+        494,
+        368
+      ],
+      [
+        414,
+        388
+      ],
+      [
+        370,
+        435
+      ]
+    ],
+    "fishing_leave_pts": [
+      [
+        370,
+        420
+      ],
+      [
+        420,
+        378
+      ],
+      [
+        495,
+        355
+      ],
+      [
+        568,
+        330
+      ]
+    ],
+    "fishing_cast_pt": [
+      615,
+      392
+    ],
+    "fishing_cast_pts": [
+      [
+        615,
+        392
+      ],
+      [
+        555,
+        422
+      ],
+      [
+        477,
+        446
+      ],
+      [
+        438,
+        492
+      ]
+    ],
+    "fishing_bobber_pt": [
+      613,
+      390
+    ],
+    "fishing_bobber_pts": [
+      [
+        613,
+        390
+      ],
+      [
+        556,
+        423
+      ],
+      [
+        478,
+        448
+      ],
+      [
+        437,
+        487
+      ]
+    ],
+    "fishing_confirm_btn": [
+      475,
+      344
+    ],
+    "fishing_start_timeout": 3.0,
+    "fishing_motion_threshold": 3.0,
+    "fishing_bobber_move_threshold": 1.2,
+    "fishing_reel_timeout": 3.0,
+    "fishing_popup_close_delay": 0.55,
+    "fishing_reset_delay": 0.8,
+    "fishing_reset_mode": "delay"
   }
 }
