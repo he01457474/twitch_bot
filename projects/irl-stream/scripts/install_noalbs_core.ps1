@@ -13,7 +13,7 @@ Write-Host '=============================' -ForegroundColor Cyan
 Write-Host '   戶外直播一條龍設定工具   ' -ForegroundColor Cyan
 Write-Host '=============================' -ForegroundColor Cyan
 Write-Host ''
-Write-Host '這是借用者電腦用的工具，會幫你產生 NOALBS 設定和直播時要填的網址。' -ForegroundColor Yellow
+Write-Host '這是借用者電腦用的工具，會幫你自動下載 NOALBS，並產生 .env、config.json 和啟動檔。' -ForegroundColor Yellow
 Write-Host '中繼伺服器由管理員提供，你的電腦不需要安裝 Docker 或 MediaMTX。' -ForegroundColor Yellow
 Write-Host ''
 Write-Host '開始前先準備好：' -ForegroundColor Cyan
@@ -94,7 +94,7 @@ TWITCH_BOT_OAUTH=$twitchToken
         "type": "Mediamtx",
         "statsUrl": "$statsUrl"
       },
-      "name": "MediaMTX", "priority": 1,
+      "name": "MediaMTX", "priority": 0,
       "overrideScenes": null, "dependsOn": null, "enabled": true
     }]
   },
