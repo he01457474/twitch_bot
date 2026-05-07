@@ -96,3 +96,8 @@
 | **filesystem** | 讀寫本機檔案 | 桌面、文件、下載（`C:/Users/he014/Desktop`、`Documents`、`Downloads`） |
 | **firecrawl** | 抓取並解析網頁內容 | 任意公開網址 |
 | **playwright** | 操控真實瀏覽器（截圖、填表、登入後頁面） | 任意網址，含需登入的頁面 |
+
+## IRL 中繼伺服器白名單
+- IRL 借用者的手機 Stream ID 和 OBS 拉流網址，統一由 `projects/irl-stream/launchers/管理IRL白名單.bat` 產生，不手動組公開的 `publish:<Twitch ID>`。
+- 私有白名單資料放在 `projects/irl-stream/config/relay_users.json`，不提交 Git。
+- 停用台主或重新產生密鑰後，需要套用白名單並重啟 MediaMTX 才會生效。

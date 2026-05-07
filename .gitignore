@@ -52,3 +52,7 @@ projects/irl-stream/tools/NOALBS_*/
 
 # 巢狀 git repo（各自獨立管理）
 projects/irl-stream/docs/srt-relay-guide/
+
+# IRL private relay whitelist data
+projects/irl-stream/config/relay_users.json
+projects/irl-stream/config/exports/

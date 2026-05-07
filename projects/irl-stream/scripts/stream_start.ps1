@@ -73,7 +73,7 @@ if (-not $ducRunning) {
 
 Write-Host ""
 Write-Host "中繼伺服器已啟動完成。" -ForegroundColor Cyan
-Write-Host "借用者可以用 srt://flycat.ddns.net:5002 推流。" -ForegroundColor Cyan
+Write-Host "借用者的推流資料請用「管理IRL白名單.bat」新增台主後匯出。" -ForegroundColor Cyan
 Write-Host "借用者的 NOALBS 監測網址是 http://flycat.ddns.net:9997/v3/paths/get/<Twitch ID>。" -ForegroundColor Cyan
 Write-Host "SRTLA 之後會另外加 receiver；目前這個腳本先跑 SRT。" -ForegroundColor DarkGray
 Read-Host "按 Enter 關閉"
