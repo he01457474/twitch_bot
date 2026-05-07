@@ -1670,10 +1670,9 @@ asyncio.run(run())
 
     def _classify_fishing_text(self, text):
         clean = re.sub(r"\s+", "", text or "")
-        limit_words = ("很多魚", "很多鱼", "生態平衡", "生态平衡", "明天再來", "明天再来",
-                       "ä¾ˆå¤šé­š", "ç”Ÿæ…‹å¹³è¡¡", "æ˜Žå¤©å†ä¾†")
-        caught_words = ("釣到", "钓到", "百寶箱", "百宝箱", "魚種", "鱼种", "é‡£åˆ°", "ç™¾å¯¶ç®±")
-        missed_words = ("錯過", "错过", "魚跑", "鱼跑", "下次收桿", "下次收杆", "及時", "及时", "éŒ¯éŽ", "é­šè·‘")
+        limit_words = ("很多魚", "很多鱼", "生態平衡", "生态平衡", "明天再來", "明天再来")
+        caught_words = ("釣到", "钓到", "百寶箱", "百宝箱", "魚種", "鱼种")
+        missed_words = ("錯過", "错过", "魚跑", "鱼跑", "下次收桿", "下次收杆", "及時", "及时")
         if any(word in clean for word in limit_words):
             return "limit"
         if any(word in clean for word in caught_words):
@@ -1943,6 +1942,7 @@ asyncio.run(run())
 
         deadline = time.time() + wait_sec
         last_report = 0
+        consecutive_hits = 0
         while time.time() < deadline and not self._stop.is_set():
             if self._handle_fishing_popup(on_status, slot_idx=slot_idx):
                 return "popup"
@@ -1950,8 +1950,12 @@ asyncio.run(run())
             current = self._capture_mole_region(box)
             score = self._image_diff_score(baseline, current)
             if score >= threshold:
-                on_status(f"釣魚：浮標變化 {score:.1f}，收竿")
-                return True
+                consecutive_hits += 1
+                if consecutive_hits >= 2:
+                    on_status(f"釣魚：浮標變化 {score:.1f}，收竿")
+                    return True
+            else:
+                consecutive_hits = 0
 
             # 釣魚中可以連點浮標，這樣上鉤時能更快收竿。
             if not (win32api.GetAsyncKeyState(win32con.VK_LBUTTON) & 0x8000):
@@ -2011,12 +2015,53 @@ asyncio.run(run())
 
             while not self._stop.is_set():
                 if not self._is_window_alive():
-                    on_status("Flash Player 視窗已關閉，停止釣魚", error=True)
-                    break
+                    wait_sec = self.settings.get("restart_wait_seconds", 15)
+                    on_status(f"Flash Player 視窗消失，等待 {wait_sec} 秒…")
+                    deadline_w = time.time() + wait_sec
+                    while time.time() < deadline_w and not self._stop.is_set():
+                        if not self.wait(1.0):
+                            break
+                        if self._is_window_alive():
+                            on_status("視窗已恢復，繼續釣魚…")
+                            break
+                    else:
+                        if not self._stop.is_set() and self.settings.get("flash_exe_path"):
+                            if not self._launch_flash_and_login(on_status):
+                                break
+                            on_status("重啟完成，請確認已回到釣魚地圖…")
+                        else:
+                            on_status("Flash Player 視窗已關閉，停止釣魚", error=True)
+                            break
+                    if self._stop.is_set(): break
+                    continue
 
                 if self._detect_disconnect_popup():
-                    on_status("偵測到斷線彈窗，請先重新登入後再開始釣魚", error=True)
+                    on_status("釣魚：偵測到斷線彈窗，嘗試重連…")
+                    btn_confirm = tuple(self.settings.get("btn_disconnect_confirm", [478, 382]))
+                    self.click(*btn_confirm, delay=1.5)
+                    self.wait(2.0)
+                    self._handle_notice_popup(on_status)
+                    maint = self._check_and_wait_maintenance(on_status)
+                    if maint is False:
+                        break
+                    if maint is True:
+                        if not self._launch_flash_and_login(on_status):
+                            break
+                    else:
+                        if not self._login_flow(on_status):
+                            break
+                    if self._stop.is_set(): break
+                    on_status("重連完成，請確認已回到釣魚地圖，繼續釣魚…")
+                    continue
+
+                maint = self._check_and_wait_maintenance(on_status)
+                if maint is False:
                     break
+                if maint is True:
+                    if not self._launch_flash_and_login(on_status):
+                        break
+                    on_status("維修結束，請確認已回到釣魚地圖，繼續釣魚…")
+                    continue
 
                 if self._clear_fishing_popup_fast(on_status, timeout=0.8, slot_idx=slot_idx):
                     seat = seats[slot_idx % len(seats)]
