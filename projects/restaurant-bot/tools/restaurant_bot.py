@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import threading
 import time
+import datetime
 import json
 import os
 import sys
@@ -2200,6 +2201,47 @@ asyncio.run(run())
             return True
         return False
 
+    # ── 維修時段 ──────────────────────────────────────────
+
+    def _taiwan_now(self):
+        return datetime.datetime.utcnow() + datetime.timedelta(hours=8)
+
+    def _is_maintenance_time(self):
+        """週五 00:00~11:00 為維修時段（台北時間）。"""
+        now = self._taiwan_now()
+        return now.weekday() == 4 and 0 <= now.hour < 11
+
+    def _is_pre_maintenance(self):
+        """週四 23:56 以後即將進入維修，提早停下來等。"""
+        now = self._taiwan_now()
+        return now.weekday() == 3 and now.hour == 23 and now.minute >= 56
+
+    def _wait_for_maintenance_end(self, on_status):
+        """等待至維修結束（台北時間週五 11:00），每分鐘更新一次狀態。"""
+        while not self._stop.is_set():
+            now = self._taiwan_now()
+            if not self._is_maintenance_time():
+                on_status("維修結束，等待 30 秒後重新連線…")
+                self.wait(30.0)
+                return True
+            end_time = datetime.datetime(now.year, now.month, now.day, 11, 0)
+            remaining_sec = max(0, (end_time - now).total_seconds())
+            mins = int(remaining_sec // 60)
+            on_status(f"維修中（週五 00:00~11:00），距結束約 {mins} 分鐘…")
+            if not self.wait(60.0):
+                return False
+        return False
+
+    def _check_and_wait_maintenance(self, on_status):
+        """若目前在維修時段或即將維修，等待直到結束，回傳是否應繼續。"""
+        if self._is_maintenance_time():
+            on_status("現在是維修時段（週五 00:00~11:00），暫停等待…")
+            return self._wait_for_maintenance_end(on_status)
+        if self._is_pre_maintenance():
+            on_status("週五維修即將開始（23:56），提早暫停等待…")
+            return self._wait_for_maintenance_end(on_status)
+        return None  # 不是維修時段，照常繼續
+
     def _login_flow(self, on_status):
         """從主畫面完成整個登入流程直到進入遊戲。
         步驟：主畫面開始 → 角色登入 → 選伺服器快速開始 → 導航餐廳"""
@@ -2212,29 +2254,47 @@ asyncio.run(run())
         if self._wait_for_game_scene(timeout=0.8, on_status=None, require_text=True):
             return self._navigate_to_restaurant_after_login(on_status)
 
-        if self._wait_for_screen(["摩爾莊園"], region=(80, 40, 880, 440), timeout=1.0, on_status=on_status):
+        if self._wait_for_screen(
+
+            ["摩爾莊園", "摩尔庄园"],
+
+            region=(80, 40, 880, 440), timeout=4.0, on_status=on_status
+
+        ):
             on_status("偵測到主畫面，點選「開始」…")
         else:
             on_status("未辨識到主畫面，嘗試點一次「開始」…")
-        self.click(*btn_start, delay=0.7)
+        self.click(*btn_start, delay=1.0)
         if self._stop.is_set(): return False
 
-        if self._wait_for_screen(["登入", "密碼"], timeout=1.5, on_status=on_status):
+        if self._wait_for_screen(
+
+            ["登入", "密碼", "登录", "密码"],
+
+            timeout=5.0, on_status=on_status
+
+        ):
             on_status("偵測到登入畫面，點選「登入」…")
         else:
             on_status("未辨識到登入畫面，嘗試點一次「登入」…")
-        self.click(*btn_login, delay=0.7)
+        self.click(*btn_login, delay=1.0)
         if self._stop.is_set(): return False
 
-        if self._wait_for_screen(["選擇伺服器", "快速"], timeout=1.5, on_status=on_status):
+        if self._wait_for_screen(
+
+            ["選擇伺服器", "选择服务器", "快速開始", "快速开始", "快速"],
+
+            timeout=5.0, on_status=on_status
+
+        ):
             on_status("偵測到選伺服器畫面，點選「快速開始」…")
         else:
             on_status("未辨識到選伺服器畫面，嘗試點一次「快速開始」…")
-        self.click(*btn_quick, delay=1.0)
+        self.click(*btn_quick, delay=1.5)
         if self._stop.is_set(): return False
 
         on_status("等待進入遊戲場景…")
-        if not self._wait_for_game_scene(timeout=8.0, on_status=on_status, require_text=False):
+        if not self._wait_for_game_scene(timeout=15.0, on_status=on_status, require_text=False):
             on_status("\u9032\u5834\u5075\u6e2c\u672a\u78ba\u8a8d\uff0c\u6539\u7528\u4fdd\u5b88\u5c0e\u822a\u7e7c\u7e8c", error=False)
 
         self._handle_notice_popup(on_status)
@@ -2355,9 +2415,25 @@ asyncio.run(run())
                     self.click(*btn_confirm, delay=1.5)
                     self.wait(2.0)
                     self._handle_notice_popup(on_status)
-                    if not self._login_flow(on_status):
+                    maint = self._check_and_wait_maintenance(on_status)
+                    if maint is False:
                         break
+                    if maint is True:
+                        if not self._launch_flash_and_login(on_status):
+                            break
+                    else:
+                        if not self._login_flow(on_status):
+                            break
                     if self._stop.is_set(): break
+                    continue
+
+                # 維修時段主動檢查（掃描前）
+                maint = self._check_and_wait_maintenance(on_status)
+                if maint is False:
+                    break
+                if maint is True:
+                    if not self._launch_flash_and_login(on_status):
+                        break
                     continue
 
                 # 掃描前防卡頓：若距上次防卡頓已超過設定間隔，先出去繞一圈再掃
