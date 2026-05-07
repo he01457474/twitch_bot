@@ -8,7 +8,15 @@
 projects/irl-stream/tools/mediamtx/mediamtx.exe
 ```
 
-`mediamtx.exe` 是本機執行檔，不進 Git；`mediamtx.yml` 是伺服器設定檔。
+`mediamtx.exe` 是本機執行檔，不進 Git。
+
+`tools/mediamtx/mediamtx.yml` 只是範本，不放台主密鑰。實際執行用的設定會由白名單工具產生在：
+
+```text
+projects/irl-stream/config/mediamtx.yml
+```
+
+這份實際設定不進 Git。
 
 ## 白名單
 
@@ -26,6 +34,8 @@ projects/irl-stream/launchers/管理IRL白名單.bat
 OBS 媒體來源輸入
 ```
 
-這些資料會自動帶上 MediaMTX 的 SRT 帳號密碼。停用台主或重新產生密鑰後，工具會更新 `mediamtx.yml`，需要重啟 MediaMTX 才會生效。
+這些資料會自動帶上 MediaMTX 的 SRT 帳號密碼。新增、停用或重新產生密鑰後，工具會更新 `config/mediamtx.yml`；如果 MediaMTX 正在跑，工具會自動重啟套用。
+
+每次啟動 `啟動直播環境.bat` 時，也會先自動套用白名單，避免忘記手動套用。
 
 SRTLA 之後會另外加 receiver；目前這個伺服器先跑純 SRT。

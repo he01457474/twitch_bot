@@ -16,7 +16,7 @@ $UsersFile = Join-Path $ConfigDir 'relay_users.json'
 $ExportDir = Join-Path $ConfigDir 'exports'
 $MediaMtxDir = Join-Path $ProjectRoot 'tools\mediamtx'
 $MediaMtxExe = Join-Path $MediaMtxDir 'mediamtx.exe'
-$MediaMtxConfig = Join-Path $MediaMtxDir 'mediamtx.yml'
+$MediaMtxConfig = Join-Path $ConfigDir 'mediamtx.yml'
 
 function Ensure-Directories {
     New-Item -ItemType Directory -Path $ConfigDir -Force | Out-Null
@@ -207,13 +207,12 @@ function Restart-MediaMtx {
     Write-Host 'MediaMTX 已用最新白名單重新啟動。' -ForegroundColor Green
 }
 
-function Ask-RestartIfRunning {
-    if (-not (Get-Process 'mediamtx' -ErrorAction SilentlyContinue)) { return }
-    $answer = (Read-Host 'MediaMTX 目前正在執行，要現在重啟套用嗎？(Y/N)').Trim().ToUpper()
-    if ($answer -eq 'Y') {
+function Apply-RunningMediaMtx {
+    if (Get-Process 'mediamtx' -ErrorAction SilentlyContinue) {
+        Write-Host 'MediaMTX 目前正在執行，正在自動重啟套用白名單...' -ForegroundColor Yellow
         Restart-MediaMtx
     } else {
-        Write-Host '已更新設定檔；下次重啟 MediaMTX 後生效。' -ForegroundColor Yellow
+        Write-Host 'MediaMTX 目前沒有執行；下次啟動直播環境時會自動套用白名單。' -ForegroundColor Yellow
     }
 }
 
@@ -243,6 +242,8 @@ function Export-UserSettings {
         Write-Host '剪貼簿不可用，已只輸出成檔案。' -ForegroundColor Yellow
     }
     Write-Host "給台主的設定已輸出：$file" -ForegroundColor Cyan
+    Write-Host ''
+    Write-Host '提醒：請把這份文字檔或剪貼簿內容給台主，台主照裡面填手機和 OBS。' -ForegroundColor Yellow
 }
 
 function Add-User {
@@ -262,7 +263,7 @@ function Add-User {
     Save-State $state
     Write-MediaMtxConfig $state
     Export-UserSettings -State $state -TwitchId $id
-    Ask-RestartIfRunning
+    Apply-RunningMediaMtx
 }
 
 function Disable-User {
@@ -279,7 +280,7 @@ function Disable-User {
     Save-State $state
     Write-MediaMtxConfig $state
     Write-Host "已停用 $id。" -ForegroundColor Green
-    Ask-RestartIfRunning
+    Apply-RunningMediaMtx
 }
 
 function Rotate-UserKeys {
@@ -298,7 +299,7 @@ function Rotate-UserKeys {
     Write-MediaMtxConfig $state
     Export-UserSettings -State $state -TwitchId $id
     Write-Host "已重新產生 $id 的推流與拉流密鑰。" -ForegroundColor Green
-    Ask-RestartIfRunning
+    Apply-RunningMediaMtx
 }
 
 function List-Users {

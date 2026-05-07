@@ -100,4 +100,5 @@
 ## IRL 中繼伺服器白名單
 - IRL 借用者的手機 Stream ID 和 OBS 拉流網址，統一由 `projects/irl-stream/launchers/管理IRL白名單.bat` 產生，不手動組公開的 `publish:<Twitch ID>`。
 - 私有白名單資料放在 `projects/irl-stream/config/relay_users.json`，不提交 Git。
-- 停用台主或重新產生密鑰後，需要套用白名單並重啟 MediaMTX 才會生效。
+- 實際執行用的 MediaMTX 白名單設定放在 `projects/irl-stream/config/mediamtx.yml`，不提交 Git；`tools/mediamtx/mediamtx.yml` 只當無密鑰範本。
+- 新增、停用或重新產生 IRL 台主密鑰後，白名單工具會自動套用設定；若 MediaMTX 正在執行，會自動重啟。啟動直播環境時也會先自動套用白名單。

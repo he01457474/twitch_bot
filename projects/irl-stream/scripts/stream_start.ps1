@@ -5,7 +5,8 @@ $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $sizeFile = Join-Path $PSScriptRoot "window_size.txt"
 $mediamtxDir = Join-Path $ProjectRoot "tools\mediamtx"
 $mediamtxExe = Join-Path $mediamtxDir "mediamtx.exe"
-$mediamtxConfig = Join-Path $mediamtxDir "mediamtx.yml"
+$mediamtxConfig = Join-Path (Join-Path $ProjectRoot "config") "mediamtx.yml"
+$whitelistScript = Join-Path $PSScriptRoot "manage_irl_users.ps1"
 
 function Test-HttpOk {
     param([string]$Url)
@@ -32,9 +33,17 @@ if (-not (Test-Path $mediamtxExe)) {
     exit 1
 }
 
+if (Test-Path $whitelistScript) {
+    Write-Host "套用 IRL 白名單設定..."
+    & $whitelistScript -Mode Apply
+} else {
+    Write-Host "[警告] 找不到白名單管理腳本：$whitelistScript" -ForegroundColor Yellow
+}
+
 if (-not (Test-Path $mediamtxConfig)) {
     Write-Host "[錯誤] 找不到 MediaMTX 設定檔：" -ForegroundColor Red
     Write-Host "  $mediamtxConfig" -ForegroundColor Yellow
+    Write-Host "請先用「管理IRL白名單.bat」新增台主，或確認白名單工具可正常套用。" -ForegroundColor Yellow
     Read-Host "按 Enter 關閉"
     exit 1
 }

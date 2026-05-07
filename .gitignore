@@ -55,4 +55,5 @@ projects/irl-stream/docs/srt-relay-guide/
 
 # IRL private relay whitelist data
 projects/irl-stream/config/relay_users.json
+projects/irl-stream/config/mediamtx.yml
 projects/irl-stream/config/exports/

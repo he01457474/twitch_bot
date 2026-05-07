@@ -5,9 +5,8 @@ srtAddress: :5002
 authInternalUsers:
   - user: any
     pass:
+    ips: []
     permissions:
-      - action: publish
-      - action: read
       - action: api
 
 paths:
