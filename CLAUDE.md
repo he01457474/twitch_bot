@@ -24,12 +24,21 @@
   - 工具程式 → 專案內 `tools/`
   - 說明文件、圖片 → 專案內 `docs/`
   - `index.html`、`deploy.bat`、`3.py` 因既有部署流程暫時保留在工作目錄根層
-  - 目前專案：餐廳工具 `projects/restaurant-bot/`、IRL / 直播環境 `projects/irl-stream/`、音訊工具 `projects/audio-tools/`、聊天伺服器 `projects/chat-bot/`
+  - 目前專案：餐廳工具 `projects/restaurant-bot/`、IRL / 直播環境 `projects/irl-stream/`、音訊工具 `projects/audio-tools/`、Twitch Bot 文件 `projects/twitch-bot/`
   - `__pycache__` 等快取目錄不納入 git，可直接刪除
-- 有新的偏好規則或權限設定，都寫回 CLAUDE.md
+- 有新的偏好規則或權限設定，都寫回 CLAUDE.md 和 AGENTS.md（兩個檔案保持同步）
+- 修改登入 / 重連相關功能時，必須同步處理「自動重連」和「手動登入」兩條流程，讓使用者可以直接用手動登入測試同一套行為
+- 對外給別人用的 GUI 工具要保留「一般版」和「除錯版」入口；一般版隱藏一般使用者用不到的測試工具，除錯版保留完整偵測、截圖、OCR 測試等工具
+- 餐廳機器人對外發佈以單一 `.exe` 為主，不把除錯版或額外 bat / README 一起交給一般使用者；打包版設定檔放在 exe 同目錄，方便使用者刪除重置
+- 餐廳 / 釣魚工具顯示名稱與打包檔名使用「摩爾莊園輔助」
+- 餐廳 / 釣魚工具只有使用者明確要求「打包」或「產 exe」時才執行打包腳本；平常修改只做程式檢查
 - **使用量達 95% 時**，強制把所有未完成任務存到 memory，停止繼續執行，等用戶下次使用量重置後再繼續
 - 測試過程建立的暫時腳本或檔案，任務完成後立即清除，不留在工作目錄
 - 功能完成或重大修改後，直接執行 git commit，不等用戶提醒
+- 之後 git add / git commit 由助理自行執行，不需要另外詢問使用者
+- 說明網頁更新完成後，自動 commit 並 push 到對應網頁 repo，不需要另外詢問使用者；若因網路或權限失敗，回覆中說明即可
+- 如果 git add / git commit 因權限被 sandbox 擋住，不要再向使用者彈出權限確認；先保留未提交狀態並在回覆中說明
+- 語法檢查、編譯檢查等本地驗證由助理自行執行並修到通過，不需要另外詢問使用者
 
 ## 說明風格
 使用者非工程師，盡量用白話文與比喻方式說明，減少不必要的技術術語。
@@ -71,11 +80,13 @@
 - `.env` 永遠只留在 BOT 那台電腦，不上傳 GitHub
 
 ### 部署流程
-1. **這台電腦**：改完 `3.py` / `index.html` → 執行 `deploy.bat`
+1. **這台電腦**：改本機 BOT 檔案 `D:\tset\FlyCatClaude Code\3.py`，完成後同步到私有 repo `D:\tset\bot_private\src\test.py` 並 commit/push
 2. **LAPTOP-6N12C053**：執行 `D:\下載\BOT2\repo_temp\update_bot.bat` → 自動 pull + 重啟 BOT
 
 ### 注意事項
-- `3.py` 在這台電腦編輯，`deploy.bat` 會自動同步到私有 repo
+- 之後聊天 BOT 相關修改，可以先改本機 `D:\tset\FlyCatClaude Code\3.py`；修完後必須同步到私有 repo `D:\tset\bot_private\src\test.py`
+- 同步到私有 repo 後直接 commit/push 到 GitHub，讓另一台 BOT 電腦可以 pull 更新
+- `.env`、資料庫、log、備份、執行暫存都不能提交
 - BOT 實際執行檔為 `D:\下載\BOT2\test.py`，由 `start_bot.bat` 啟動
 
 ## 已安裝的 MCP 工具
@@ -85,3 +96,9 @@
 | **filesystem** | 讀寫本機檔案 | 桌面、文件、下載（`C:/Users/he014/Desktop`、`Documents`、`Downloads`） |
 | **firecrawl** | 抓取並解析網頁內容 | 任意公開網址 |
 | **playwright** | 操控真實瀏覽器（截圖、填表、登入後頁面） | 任意網址，含需登入的頁面 |
+
+## IRL 中繼伺服器白名單
+- IRL 借用者的手機 Stream ID 和 OBS 拉流網址，統一由 `projects/irl-stream/launchers/管理IRL白名單.bat` 產生，不手動組公開的 `publish:<Twitch ID>`。
+- 私有白名單資料放在 `projects/irl-stream/config/relay_users.json`，不提交 Git。
+- 實際執行用的 MediaMTX 白名單設定放在 `projects/irl-stream/config/mediamtx.yml`，不提交 Git；`tools/mediamtx/mediamtx.yml` 只當無密鑰範本。
+- 新增、停用或重新產生 IRL 台主密鑰後，白名單工具會自動套用設定；若 MediaMTX 正在執行，會自動重啟。啟動直播環境時也會先自動套用白名單。
