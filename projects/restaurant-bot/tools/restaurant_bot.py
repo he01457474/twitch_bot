@@ -578,7 +578,7 @@ asyncio.run(run())
             time.sleep(delay)
         return None
 
-    def _handle_popup_guard(self, log, allow_unknown=False):
+    def _handle_popup_guard(self, log, allow_unknown=False, stove_xy=None):
         if not self._has_popup_panel_fast():
             return None
         popup_type = self._detect_popup_type_retry(attempts=2, delay=0.15)
@@ -598,15 +598,26 @@ asyncio.run(run())
         if not allow_unknown:
             return None
 
+        log("彈窗守門員：文字看不清，先試取消…")
+        self.click_real(*cancel_btn, delay=0.7)
+        if stove_xy is not None:
+            time.sleep(0.35)
+            state = self.detect_stove_state(*stove_xy)
+            if state == "cooking":
+                log("彈窗守門員：取消後爐子回烹飪中 → 確認是捐菜")
+                return "unknown_cancel"
+            log("彈窗守門員：取消後爐子仍佔用 → 判斷燒糊，重新確認清除")
+            time.sleep(0.3)
+            self.click(*stove_xy, delay=0.12)
+            time.sleep(0.5)
+            if self._has_popup_panel_fast():
+                self.click_real(*confirm_btn, delay=0.8)
+            return "unknown_confirm"
         before = self._capture_popup_region()
         if before is None:
             return None
-        log("彈窗守門員：彈窗文字看不清，先按取消")
-        self.click_real(*cancel_btn, delay=0.5)
         if self._popup_region_changed(before):
             return "unknown_cancel"
-
-        log("彈窗守門員：取消無效，改按確認")
         self.click_real(*confirm_btn, delay=0.8)
         return "unknown_confirm"
 
@@ -669,7 +680,12 @@ asyncio.run(run())
                         return "time"
 
             if center_white >= 0.62:
-                return "time"
+                _btn_orange = self._region_light_ratio(
+                    img, w, h, (335, 385, 620, 445),
+                    lambda r, g, b: r >= 190 and 70 <= g <= 170 and b <= 80 and r > g + 30,
+                )
+                if _btn_orange < 0.015:
+                    return "time"
             if star_left >= 0.45 and star_right >= 0.45:
                 return "star"
         except Exception:
@@ -1310,7 +1326,7 @@ asyncio.run(run())
                 if self._handle_known_notice_popup(log):
                     return
 
-                popup_result = self._handle_popup_guard(log, allow_unknown=True)
+                popup_result = self._handle_popup_guard(log, allow_unknown=True, stove_xy=(sx, sy))
                 if popup_result in ("donation", "unknown_cancel"):
                     log("彈窗已關閉，這爐跳過")
                     return
@@ -1444,7 +1460,7 @@ asyncio.run(run())
             return
 
         # 食譜沒開──偵測像素動畫（烹飪中 or 靜止）
-        popup_result = self._handle_popup_guard(log, allow_unknown=True)
+        popup_result = self._handle_popup_guard(log, allow_unknown=True, stove_xy=(sx, sy))
         if popup_result in ("donation", "unknown_cancel"):
             return
         if popup_result in ("spoiled", "unknown_confirm"):
