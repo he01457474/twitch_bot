@@ -120,6 +120,11 @@ DEFAULT_SETTINGS = {
     "fishing_popup_close_delay": 0.9,
     "fishing_reset_delay":     1.2,
     "fishing_reset_mode":      "delay",
+    "btn_fishing_nav":         None,   # 開地圖導航按鈕（左下角固定）
+    "fishing_nav_scene_pt":    None,   # 大地圖上的釣魚場景位置
+    "fishing_nav_detail_pt":   None,   # 細部場景入口位置
+    "fishing_area_check_pt":   None,   # 偵測是否在釣魚場景的像素點
+    "fishing_area_color":      None,   # 上述像素點的基準顏色
 }
 MAP_BTN        = (33,  505)
 HOME_BTN       = (880, 538)
@@ -2012,6 +2017,10 @@ asyncio.run(run())
         try:
             on_status(f"釣魚模式啟動：固定使用釣位 {slot_idx + 1}")
             self._clear_blocking_overlays(on_status, close_recipe=True)
+            if not self._is_in_fishing_area():
+                on_status("釣魚：不在釣魚場景，嘗試導航…")
+                if not self._navigate_to_fishing(on_status, slot_idx):
+                    return
 
             while not self._stop.is_set():
                 if not self._is_window_alive():
@@ -2028,7 +2037,8 @@ asyncio.run(run())
                         if not self._stop.is_set() and self.settings.get("flash_exe_path"):
                             if not self._launch_flash_and_login(on_status):
                                 break
-                            on_status("重啟完成，請確認已回到釣魚地圖…")
+                            if not self._navigate_to_fishing(on_status, slot_idx):
+                                break
                         else:
                             on_status("Flash Player 視窗已關閉，停止釣魚", error=True)
                             break
@@ -2051,7 +2061,8 @@ asyncio.run(run())
                         if not self._login_flow(on_status):
                             break
                     if self._stop.is_set(): break
-                    on_status("重連完成，請確認已回到釣魚地圖，繼續釣魚…")
+                    if not self._navigate_to_fishing(on_status, slot_idx):
+                        break
                     continue
 
                 maint = self._check_and_wait_maintenance(on_status)
@@ -2060,7 +2071,8 @@ asyncio.run(run())
                 if maint is True:
                     if not self._launch_flash_and_login(on_status):
                         break
-                    on_status("維修結束，請確認已回到釣魚地圖，繼續釣魚…")
+                    if not self._navigate_to_fishing(on_status, slot_idx):
+                        break
                     continue
 
                 if self._clear_fishing_popup_fast(on_status, timeout=0.8, slot_idx=slot_idx):
@@ -2224,6 +2236,44 @@ asyncio.run(run())
             btn = tuple(self.settings.get("btn_notice_ok", [480, 390]))
             on_status("偵測到系統提示，點知道了…")
             self.click(*btn, delay=1.0)
+
+    def _is_in_fishing_area(self):
+        """確認是否在釣魚場景。未校準時預設視為已在（不阻擋流程）。"""
+        pt    = self.settings.get("fishing_area_check_pt")
+        color = self.settings.get("fishing_area_color")
+        if not pt or not color:
+            return True
+        threshold = self.settings.get("state_threshold", 40)
+        return self.color_diff(self.get_pixel(*pt), tuple(color)) < threshold
+
+    def _navigate_to_fishing(self, on_status, slot_idx=0):
+        """從任意場景導航到釣魚地圖：開地圖 → 點釣魚場景 → 點細部入口。"""
+        if self._is_in_fishing_area():
+            return True
+        btn_nav    = self.settings.get("btn_fishing_nav")
+        scene_pt   = self.settings.get("fishing_nav_scene_pt")
+        detail_pt  = self.settings.get("fishing_nav_detail_pt")
+        if not btn_nav:
+            on_status("釣魚導航：尚未校準地圖按鈕，請先校準", error=True)
+            return False
+        on_status("釣魚導航：開啟地圖…")
+        self.click_real(*tuple(btn_nav), delay=1.0)
+        if self._stop.is_set(): return False
+        if scene_pt:
+            on_status("釣魚導航：選擇釣魚場景…")
+            self.click_real(*tuple(scene_pt), delay=1.2)
+            if self._stop.is_set(): return False
+        if detail_pt:
+            on_status("釣魚導航：進入細部場景…")
+            self.click_real(*tuple(detail_pt), delay=1.5)
+            if self._stop.is_set(): return False
+        on_status("釣魚導航：等待場景載入…")
+        self.wait(1.5)
+        if self._is_in_fishing_area():
+            on_status("釣魚導航：已到達釣魚場景")
+            return True
+        on_status("釣魚導航：無法確認是否到達，繼續嘗試…")
+        return True
 
     def _navigate_to_restaurant(self, on_status):
         btn_land = tuple(self.settings.get("btn_land", HOME_BTN))
@@ -2574,7 +2624,10 @@ class App:
                        "fishing_bobber_move_threshold",
                        "fishing_reel_timeout",
                        "fishing_popup_close_delay", "fishing_reset_delay",
-                       "fishing_reset_mode")
+                       "fishing_reset_mode",
+                       "btn_fishing_nav", "fishing_nav_scene_pt",
+                       "fishing_nav_detail_pt",
+                       "fishing_area_check_pt", "fishing_area_color")
         self._extra_settings = {k: settings[k] for k in _extra_keys}
         self.bot = RestaurantBot(self.stoves, self.recipe, settings)
         self._build_ui(settings)
@@ -2731,13 +2784,23 @@ class App:
         for btn in (self.calib_fish_seats, self.calib_fish_cast, self.calib_fish_bob, self.calib_fish_ok):
             btn.pack(side=tk.LEFT, padx=3)
 
+        row_c_fish_nav = ttk.Frame(grp_cal)
+        row_c_fish_nav.pack(fill=tk.X, pady=(2, 0))
+        ttk.Label(row_c_fish_nav, text="釣魚導航", width=12, foreground="gray").pack(side=tk.LEFT)
+        self.calib_fish_nav     = ttk.Button(row_c_fish_nav, text="地圖按鈕",  command=self._calib_fishing_nav_btn,    style="Tool.TButton")
+        self.calib_fish_scene   = ttk.Button(row_c_fish_nav, text="釣魚場景",  command=self._calib_fishing_nav_scene,  style="Tool.TButton")
+        self.calib_fish_detail  = ttk.Button(row_c_fish_nav, text="細部入口",  command=self._calib_fishing_nav_detail, style="Tool.TButton")
+        self.calib_fish_area    = ttk.Button(row_c_fish_nav, text="場景確認點",command=self._calib_fishing_area,       style="Tool.TButton")
+        for btn in (self.calib_fish_nav, self.calib_fish_scene, self.calib_fish_detail, self.calib_fish_area):
+            btn.pack(side=tk.LEFT, padx=3)
+
         # 校準狀態指示列
         self._calib_lbl = {}
         row_cs = ttk.Frame(grp_cal)
         row_cs.pack(fill=tk.X, pady=(3, 4))
         for key, title in (("stoves", "鍋爐"), ("recipe", "食譜"), ("cancel", "彈窗"),
                             ("door", "門口"), ("restaurant", "餐廳"),
-                            ("nav", "導航"),
+                            ("nav", "導航"), ("fishing_nav", "釣魚導航"),
                             ("state", "狀態色"), ("clk_interior", "時鐘內")):
             lbl = ttk.Label(row_cs, text=f"▸{title}", font=("", 8), foreground="gray")
             lbl.pack(side=tk.LEFT, padx=(0, 8))
@@ -2813,10 +2876,11 @@ class App:
             "door":       bool(s.get("door_out") and s.get("door_in")),
             "restaurant": bool(s.get("restaurant_pt") and s.get("restaurant_color")),
             "nav":        bool(s.get("btn_land") and s.get("btn_land_restaurant")),
+            "fishing_nav": bool(s.get("btn_fishing_nav") and s.get("fishing_nav_scene_pt")),
         }
         titles = {"stoves": "鍋爐", "recipe": "食譜", "cancel": "彈窗",
                   "state": "狀態色", "clk_interior": "時鐘內",
-                  "door": "門口", "restaurant": "餐廳", "nav": "導航"}
+                  "door": "門口", "restaurant": "餐廳", "nav": "導航", "fishing_nav": "釣魚導航"}
         for key, done in checks.items():
             lbl = self._calib_lbl.get(key)
             if not lbl:
@@ -3041,6 +3105,16 @@ class App:
             if s.get("btn_land_restaurant"):
                 dot(*s["btn_land_restaurant"], "#30a0ff", "地盤餐廳")
 
+            # 釣魚導航點
+            if s.get("btn_fishing_nav"):
+                dot(*s["btn_fishing_nav"], "#00d4aa", "地圖按鈕")
+            if s.get("fishing_nav_scene_pt"):
+                dot(*s["fishing_nav_scene_pt"], "#00d4aa", "釣魚場景")
+            if s.get("fishing_nav_detail_pt"):
+                dot(*s["fishing_nav_detail_pt"], "#00d4aa", "細部入口")
+            if s.get("fishing_area_check_pt"):
+                square(*s["fishing_area_check_pt"], "#00d4aa", "釣魚確認點", r=8)
+
             # 縮放顯示
             disp_scale = min(900/game_w, 580/game_h, 1.0)
             disp_w = int(game_w * disp_scale)
@@ -3154,6 +3228,72 @@ class App:
             "轉轉關閉",
             "請讓「歡樂轉轉」彈窗出現在遊戲畫面，\n再按確定截圖，然後點彈窗右上方的關閉按鈕。",
             "btn_happy_spin_close", "歡樂轉轉關閉按鈕")
+
+    def _calib_fishing_nav_btn(self):
+        self._calib_one_btn(
+            "地圖按鈕",
+            "請切換到遊戲場景內，\n再按確定截圖，然後點左下角「地圖」按鈕。",
+            "btn_fishing_nav", "釣魚地圖按鈕")
+
+    def _calib_fishing_nav_scene(self):
+        self._calib_one_btn(
+            "釣魚場景",
+            "請先點開地圖，讓大地圖畫面出現，\n再按確定截圖，然後點釣魚區域的位置。",
+            "fishing_nav_scene_pt", "大地圖釣魚場景點")
+
+    def _calib_fishing_nav_detail(self):
+        self._calib_one_btn(
+            "細部入口",
+            "請讓細部場景選擇畫面出現，\n再按確定截圖，然後點進入釣魚場景的入口。",
+            "fishing_nav_detail_pt", "釣魚細部場景入口")
+
+    def _calib_fishing_area(self):
+        """校準釣魚場景確認點（像素顏色），類似餐廳確認點的做法。"""
+        hwnd = self._get_hwnd()
+        if not hwnd: return
+        pt    = self._extra_settings.get("fishing_area_check_pt")
+        color = self._extra_settings.get("fishing_area_color")
+        cur   = f"目前：{pt}  RGB{tuple(color)}" if pt and color else "目前：未校準"
+        msg   = "\n".join([
+            cur, "",
+            "請確認現在在釣魚場景內，再點「確定」截圖。", "",
+            "截圖後，點固定不變的背景點（地板/牆壁/水面等靜態區域）。", "",
+            "機器人會用這個點的顏色判斷是否已到達釣魚場景。",
+        ])
+        messagebox.showinfo("校準釣魚場景確認點", msg)
+        try:
+            img, game_w, game_h = capture_window(hwnd)
+        except Exception as e:
+            messagebox.showerror("錯誤", f"截圖失敗：{e}")
+            return
+        sg = max(game_w / MOLE_W, game_h / MOLE_H)
+        disp_scale = min(900 / game_w, 580 / game_h, 1.0)
+        disp  = img.resize((int(game_w * disp_scale), int(game_h * disp_scale)))
+        photo = ImageTk.PhotoImage(disp)
+        win = tk.Toplevel(self.root)
+        win.title("校準釣魚場景確認點")
+        win.grab_set()
+        ttk.Label(win, text="▶ 點釣魚場景內的固定背景點（地板/水面等靜態位置）", padding=8).pack()
+        canvas = tk.Canvas(win, width=int(game_w * disp_scale), height=int(game_h * disp_scale), cursor="crosshair")
+        canvas.pack(padx=8, pady=8)
+        canvas.create_image(0, 0, anchor=tk.NW, image=photo)
+        canvas.photo = photo
+        def on_pick(event):
+            px  = min(int(event.x / disp_scale), game_w - 1)
+            py  = min(int(event.y / disp_scale), game_h - 1)
+            mx  = int(px / sg)
+            my  = int(py / sg)
+            rgb = img.convert("RGB").getpixel((px, py))
+            self._extra_settings["fishing_area_check_pt"] = [mx, my]
+            self._extra_settings["fishing_area_color"]    = list(rgb)
+            self.bot.settings["fishing_area_check_pt"]    = [mx, my]
+            self.bot.settings["fishing_area_color"]       = list(rgb)
+            if not self._save_all():
+                return
+            self._refresh_calib_status()
+            win.destroy()
+            messagebox.showinfo("完成", f"釣魚場景確認點：({mx}, {my})  RGB{rgb}  已儲存。")
+        canvas.bind("<Button-1>", on_pick)
 
     def _calib_btn_land(self):
         self._calib_one_btn(
