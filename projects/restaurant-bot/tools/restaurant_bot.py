@@ -1956,15 +1956,11 @@ asyncio.run(run())
             score = self._image_diff_score(baseline, current)
             if score >= threshold:
                 consecutive_hits += 1
-                if consecutive_hits >= 2:
+                if consecutive_hits >= 3:
                     on_status(f"釣魚：浮標變化 {score:.1f}，收竿")
                     return True
             else:
                 consecutive_hits = 0
-
-            # 釣魚中可以連點浮標，這樣上鉤時能更快收竿。
-            if not (win32api.GetAsyncKeyState(win32con.VK_LBUTTON) & 0x8000):
-                self.click_real(*click_pt, delay=0.01)
 
             if time.time() - last_report >= 1.0:
                 rem = max(0, int(deadline - time.time()))
