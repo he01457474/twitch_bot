@@ -125,6 +125,13 @@ DEFAULT_SETTINGS = {
     "fishing_nav_detail_pt":   None,   # 細部場景入口位置
     "fishing_area_check_pt":   None,   # 偵測是否在釣魚場景的像素點
     "fishing_area_color":      None,   # 上述像素點的基準顏色
+    # 登入畫面像素偵測（各校準一點，用顏色 diff 識別畫面）
+    "main_screen_check_pt":    None,
+    "main_screen_check_color": None,
+    "login_screen_check_pt":   None,
+    "login_screen_check_color": None,
+    "server_screen_check_pt":  None,
+    "server_screen_check_color": None,
 }
 MAP_BTN        = (33,  505)
 HOME_BTN       = (880, 538)
@@ -2333,56 +2340,97 @@ asyncio.run(run())
             return self._wait_for_maintenance_end(on_status)
         return None  # 不是維修時段，照常繼續
 
+    def _detect_login_screen(self):
+        """偵測目前是哪個登入畫面。回傳 'main'、'login'、'server' 或 None。"""
+        threshold = self.settings.get("state_threshold", 40)
+        for key, pt_key, color_key in [
+            ("main",   "main_screen_check_pt",   "main_screen_check_color"),
+            ("login",  "login_screen_check_pt",  "login_screen_check_color"),
+            ("server", "server_screen_check_pt", "server_screen_check_color"),
+        ]:
+            pt    = self.settings.get(pt_key)
+            color = self.settings.get(color_key)
+            if pt and color:
+                diff = self.color_diff(self.get_pixel(*pt), tuple(color))
+                if diff < threshold:
+                    return key
+        return None
+
     def _login_flow(self, on_status):
-        """從主畫面完成整個登入流程直到進入遇戲。
-        步驟：主畫面開始 → 角色登入 → 選伺服器快速開始 → 導航餐廳"""
+        """從主畫面完成整個登入流程直到進入遊戲。
+        會先偵測目前停在哪個登入畫面，從正確步驟繼續。"""
         btn_start = tuple(self.settings.get("btn_game_start",  [484, 398]))
         btn_login = tuple(self.settings.get("btn_login",       [484, 432]))
         btn_quick = tuple(self.settings.get("btn_quick_start", [456, 517]))
-        if self._close_happy_spin_popup(on_status):
-            pass
+        self._close_happy_spin_popup(on_status)
 
         if self._wait_for_game_scene(timeout=0.8, on_status=None, require_text=True):
             return self._navigate_to_restaurant_after_login(on_status)
 
-        # Step 1: 主畫面 → 點「開始」
-        on_status("等待主畫面載入…")
-        t0 = time.time()
-        while time.time() - t0 < 8.0:
-            if self._stop.is_set(): return False
-            if self.color_diff(self.get_pixel(480, 180), (0, 0, 0)) > 60:
-                break
-            if not self.wait(0.4): return False
-        on_status("點選「開始」…")
-        baseline1 = self.get_pixel(480, 280)
-        self.click(*btn_start)
-        changed, _, _ = self.wait_for_pixel_change(480, 280, timeout=6.0, threshold=40, baseline=baseline1)
-        if not changed:
-            on_status("畫面未轉換，再試一次「開始」…")
-            self.click(*btn_start)
-            self.wait_for_pixel_change(480, 280, timeout=4.0, threshold=40, baseline=baseline1)
-        if not self.wait(0.8): return False
-        if self._stop.is_set(): return False
+        # 偵測目前停在哪個畫面，決定從哪步開始
+        screen = self._detect_login_screen()
+        if screen == "server":
+            start_from = 3
+        elif screen == "login":
+            start_from = 2
+        else:
+            start_from = 1
 
-        # Step 2: 登入畫面 → 點「登入」
-        on_status("點選「登入」…")
-        baseline2 = self.get_pixel(480, 280)
-        self.click(*btn_login)
-        changed, _, _ = self.wait_for_pixel_change(480, 280, timeout=6.0, threshold=40, baseline=baseline2)
-        if not changed:
-            on_status("畫面未轉換，再試一次「登入」…")
+        if start_from <= 1:
+            # Step 1: 主畫面 → 點「開始」
+            if screen == "main":
+                on_status("偵測到主畫面，點選「開始」…")
+            else:
+                on_status("等待主畫面載入…")
+                t0 = time.time()
+                while time.time() - t0 < 8.0:
+                    if self._stop.is_set(): return False
+                    if self.color_diff(self.get_pixel(480, 180), (0, 0, 0)) > 60:
+                        break
+                    if not self.wait(0.4): return False
+                sc2 = self._detect_login_screen()
+                if sc2 == "main":
+                    on_status("偵測到主畫面，點選「開始」…")
+                else:
+                    on_status("點選「開始」…")
+            baseline = self.get_pixel(480, 280)
+            self.click(*btn_start)
+            changed, _, _ = self.wait_for_pixel_change(480, 280, timeout=6.0, threshold=40, baseline=baseline)
+            if not changed:
+                on_status("畫面未轉換，再試一次「開始」…")
+                self.click(*btn_start)
+                self.wait_for_pixel_change(480, 280, timeout=4.0, threshold=40, baseline=baseline)
+            if not self.wait(0.8): return False
+            if self._stop.is_set(): return False
+
+        if start_from <= 2:
+            # Step 2: 登入畫面 → 點「登入」
+            sc2 = self._detect_login_screen()
+            if sc2 == "login":
+                on_status("偵測到登入畫面，點選「登入」…")
+            else:
+                on_status("點選「登入」…")
+            baseline = self.get_pixel(480, 280)
             self.click(*btn_login)
-            self.wait_for_pixel_change(480, 280, timeout=4.0, threshold=40, baseline=baseline2)
-        if not self.wait(0.8): return False
-        if self._stop.is_set(): return False
+            changed, _, _ = self.wait_for_pixel_change(480, 280, timeout=6.0, threshold=40, baseline=baseline)
+            if not changed:
+                on_status("畫面未轉換，再試一次「登入」…")
+                self.click(*btn_login)
+                self.wait_for_pixel_change(480, 280, timeout=4.0, threshold=40, baseline=baseline)
+            if not self.wait(0.8): return False
+            if self._stop.is_set(): return False
 
         # Step 3: 選伺服器 → 點「快速開始」
-        on_status("點選「快速開始」…")
+        sc3 = self._detect_login_screen()
+        if sc3 == "server":
+            on_status("偵測到選伺服器畫面，點選「快速開始」…")
+        else:
+            on_status("點選「快速開始」…")
         self.click(*btn_quick)
         if not self.wait(1.5): return False
         if self._stop.is_set(): return False
 
-        on_status("等待進入遇戲場景…")
+        on_status("等待進入遊戲場景…")
         if not self._wait_for_game_scene(timeout=15.0, on_status=on_status, require_text=False):
             on_status("進場偵測未確認，改用保守導航繼續", error=False)
 
@@ -2788,6 +2836,15 @@ class App:
         for btn in (self.calib_fish_nav, self.calib_fish_scene, self.calib_fish_detail, self.calib_fish_area):
             btn.pack(side=tk.LEFT, padx=3)
 
+        row_c_login = ttk.Frame(grp_cal)
+        row_c_login.pack(fill=tk.X, pady=(2, 0))
+        ttk.Label(row_c_login, text="登入偵測", width=12, foreground="gray").pack(side=tk.LEFT)
+        self.calib_login_main   = ttk.Button(row_c_login, text="主畫面",   command=self._calib_login_main_screen,   style="Tool.TButton")
+        self.calib_login_char   = ttk.Button(row_c_login, text="選角畫面", command=self._calib_login_char_screen,   style="Tool.TButton")
+        self.calib_login_server = ttk.Button(row_c_login, text="選伺服器", command=self._calib_login_server_screen, style="Tool.TButton")
+        for btn in (self.calib_login_main, self.calib_login_char, self.calib_login_server):
+            btn.pack(side=tk.LEFT, padx=3)
+
         # 校準狀態指示列
         self._calib_lbl = {}
         row_cs = ttk.Frame(grp_cal)
@@ -2795,6 +2852,7 @@ class App:
         for key, title in (("stoves", "鍋爐"), ("recipe", "食譜"), ("cancel", "彈窗"),
                             ("door", "門口"), ("restaurant", "餐廳"),
                             ("nav", "導航"), ("fishing_nav", "釣魚導航"),
+                            ("login_screen", "登入偵測"),
                             ("state", "狀態色"), ("clk_interior", "時鐘內")):
             lbl = ttk.Label(row_cs, text=f"▸{title}", font=("", 8), foreground="gray")
             lbl.pack(side=tk.LEFT, padx=(0, 8))
@@ -2871,10 +2929,15 @@ class App:
             "restaurant": bool(s.get("restaurant_pt") and s.get("restaurant_color")),
             "nav":        bool(s.get("btn_land") and s.get("btn_land_restaurant")),
             "fishing_nav": bool(s.get("btn_fishing_nav") and s.get("fishing_nav_scene_pt")),
+            "login_screen": bool(
+                s.get("main_screen_check_pt") or
+                s.get("login_screen_check_pt") or
+                s.get("server_screen_check_pt")),
         }
         titles = {"stoves": "鍋爐", "recipe": "食譜", "cancel": "彈窗",
                   "state": "狀態色", "clk_interior": "時鐘內",
-                  "door": "門口", "restaurant": "餐廳", "nav": "導航", "fishing_nav": "釣魚導航"}
+                  "door": "門口", "restaurant": "餐廳", "nav": "導航",
+                  "fishing_nav": "釣魚導航", "login_screen": "登入偵測"}
         for key, done in checks.items():
             lbl = self._calib_lbl.get(key)
             if not lbl:
@@ -3288,6 +3351,67 @@ class App:
             win.destroy()
             messagebox.showinfo("完成", f"釣魚場景確認點：({mx}, {my})  RGB{rgb}  已儲存。")
         canvas.bind("<Button-1>", on_pick)
+
+    def _calib_login_screen_pt(self, screen_key, pt_key, color_key, title, hint):
+        """通用：校準某個登入畫面的特徵點。"""
+        hwnd = self._get_hwnd()
+        if not hwnd: return
+        pt    = self._extra_settings.get(pt_key)
+        color = self._extra_settings.get(color_key)
+        if pt and color:
+            cur = f"目前：{pt}  RGB{tuple(color)}"
+        else:
+            cur = "目前：未校準"
+        sep = chr(10)
+        msg = sep.join([cur, "", hint, "", "截圖後，點畫面中不會動的靜態背景區域。", "", "機器人會用這個點的顏色判斷目前是哪個登入畫面。"])
+        messagebox.showinfo(f"校準{title}", msg)
+        try:
+            img, game_w, game_h = capture_window(hwnd)
+        except Exception as e:
+            messagebox.showerror("錯誤", f"截圖失敗：{e}")
+            return
+        sg = max(game_w / MOLE_W, game_h / MOLE_H)
+        disp_scale = min(900 / game_w, 580 / game_h, 1.0)
+        disp  = img.resize((int(game_w * disp_scale), int(game_h * disp_scale)))
+        photo = ImageTk.PhotoImage(disp)
+        win = tk.Toplevel(self.root)
+        win.title(f"校準{title}")
+        win.grab_set()
+        ttk.Label(win, text=f"▶ 點{title}的靜態背景區域", padding=8).pack()
+        canvas = tk.Canvas(win, width=int(game_w * disp_scale), height=int(game_h * disp_scale), cursor="crosshair")
+        canvas.pack(padx=8, pady=8)
+        canvas.create_image(0, 0, anchor=tk.NW, image=photo)
+        canvas.photo = photo
+        def on_pick(event):
+            px  = min(int(event.x / disp_scale), game_w - 1)
+            py  = min(int(event.y / disp_scale), game_h - 1)
+            mx  = int(px / sg)
+            my  = int(py / sg)
+            rgb = img.convert("RGB").getpixel((px, py))
+            self._extra_settings[pt_key]    = [mx, my]
+            self._extra_settings[color_key] = list(rgb)
+            self.bot.settings[pt_key]    = [mx, my]
+            self.bot.settings[color_key] = list(rgb)
+            if not self._save_all(): return
+            self._refresh_calib_status()
+            win.destroy()
+            messagebox.showinfo("完成", f"{title}：({mx}, {my})  RGB{rgb}  已儲存。")
+        canvas.bind("<Button-1>", on_pick)
+
+    def _calib_login_main_screen(self):
+        self._calib_login_screen_pt(
+            "main", "main_screen_check_pt", "main_screen_check_color",
+            "主畫面", "請確認目前遊戲顯示的是主畫面（有「開始」按鈕那頁），再按確定截圖。")
+
+    def _calib_login_char_screen(self):
+        self._calib_login_screen_pt(
+            "login", "login_screen_check_pt", "login_screen_check_color",
+            "選角畫面", "請確認目前遊戲顯示的是選角畫面（有「登入」按鈕那頁），再按確定截圖。")
+
+    def _calib_login_server_screen(self):
+        self._calib_login_screen_pt(
+            "server", "server_screen_check_pt", "server_screen_check_color",
+            "選伺服器畫面", "請確認目前遊戲顯示的是選伺服器畫面（有「快速開始」按鈕那頁），再按確定截圖。")
 
     def _calib_btn_land(self):
         self._calib_one_btn(
