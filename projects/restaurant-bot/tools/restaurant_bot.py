@@ -2338,7 +2338,7 @@ asyncio.run(run())
         return None  # 不是維修時段，照常繼續
 
     def _login_flow(self, on_status):
-        """從主畫面完成整個登入流程直到進入遊戲。
+        """從主畫面完成整個登入流程直到進入遇戲。
         步驟：主畫面開始 → 角色登入 → 選伺服器快速開始 → 導航餐廳"""
         btn_start = tuple(self.settings.get("btn_game_start",  [484, 398]))
         btn_login = tuple(self.settings.get("btn_login",       [484, 432]))
@@ -2349,48 +2349,46 @@ asyncio.run(run())
         if self._wait_for_game_scene(timeout=0.8, on_status=None, require_text=True):
             return self._navigate_to_restaurant_after_login(on_status)
 
-        if self._wait_for_screen(
-
-            ["摩爾莊園", "摩尔庄园"],
-
-            region=(80, 40, 880, 440), timeout=4.0, on_status=on_status
-
-        ):
-            on_status("偵測到主畫面，點選「開始」…")
-        else:
-            on_status("未辨識到主畫面，嘗試點一次「開始」…")
-        self.click(*btn_start, delay=1.0)
+        # Step 1: 主畫面 → 點「開始」
+        on_status("等待主畫面載入…")
+        t0 = time.time()
+        while time.time() - t0 < 8.0:
+            if self._stop.is_set(): return False
+            if self.color_diff(self.get_pixel(480, 180), (0, 0, 0)) > 60:
+                break
+            if not self.wait(0.4): return False
+        on_status("點選「開始」…")
+        baseline1 = self.get_pixel(480, 280)
+        self.click(*btn_start)
+        changed, _, _ = self.wait_for_pixel_change(480, 280, timeout=6.0, threshold=40, baseline=baseline1)
+        if not changed:
+            on_status("畫面未轉換，再試一次「開始」…")
+            self.click(*btn_start)
+            self.wait_for_pixel_change(480, 280, timeout=4.0, threshold=40, baseline=baseline1)
+        if not self.wait(0.8): return False
         if self._stop.is_set(): return False
 
-        if self._wait_for_screen(
-
-            ["登入", "密碼", "登录", "密码"],
-
-            timeout=5.0, on_status=on_status
-
-        ):
-            on_status("偵測到登入畫面，點選「登入」…")
-        else:
-            on_status("未辨識到登入畫面，嘗試點一次「登入」…")
-        self.click(*btn_login, delay=1.0)
+        # Step 2: 登入畫面 → 點「登入」
+        on_status("點選「登入」…")
+        baseline2 = self.get_pixel(480, 280)
+        self.click(*btn_login)
+        changed, _, _ = self.wait_for_pixel_change(480, 280, timeout=6.0, threshold=40, baseline=baseline2)
+        if not changed:
+            on_status("畫面未轉換，再試一次「登入」…")
+            self.click(*btn_login)
+            self.wait_for_pixel_change(480, 280, timeout=4.0, threshold=40, baseline=baseline2)
+        if not self.wait(0.8): return False
         if self._stop.is_set(): return False
 
-        if self._wait_for_screen(
-
-            ["選擇伺服器", "选择服务器", "快速開始", "快速开始", "快速"],
-
-            timeout=5.0, on_status=on_status
-
-        ):
-            on_status("偵測到選伺服器畫面，點選「快速開始」…")
-        else:
-            on_status("未辨識到選伺服器畫面，嘗試點一次「快速開始」…")
-        self.click(*btn_quick, delay=1.5)
+        # Step 3: 選伺服器 → 點「快速開始」
+        on_status("點選「快速開始」…")
+        self.click(*btn_quick)
+        if not self.wait(1.5): return False
         if self._stop.is_set(): return False
 
-        on_status("等待進入遊戲場景…")
+        on_status("等待進入遇戲場景…")
         if not self._wait_for_game_scene(timeout=15.0, on_status=on_status, require_text=False):
-            on_status("\u9032\u5834\u5075\u6e2c\u672a\u78ba\u8a8d\uff0c\u6539\u7528\u4fdd\u5b88\u5c0e\u822a\u7e7c\u7e8c", error=False)
+            on_status("進場偵測未確認，改用保守導航繼續", error=False)
 
         self._handle_notice_popup(on_status)
         if not self.wait(1.0):
