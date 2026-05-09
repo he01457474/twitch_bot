@@ -1953,11 +1953,11 @@ asyncio.run(run())
                 return True
             time.sleep(0.12)
 
-        on_status(f"釣魚：浮標沒有動態（變化 {best_score:.1f}／位移 {best_move:.1f}），重試下竿")
-        return False
+        on_status(f"釣魚：浮標沒有動態（變化 {best_score:.1f}／位移 {best_move:.1f}），竿已入水但沒抓到")
+        return "timeout"
 
-    def _wait_for_fish_bite(self, on_status, click_pt, bobber_pt=None, slot_idx=0):
-        wait_sec = int(self.settings.get("fishing_wait_seconds", 25))
+    def _wait_for_fish_bite(self, on_status, click_pt, bobber_pt=None, slot_idx=0, override_timeout=None):
+        wait_sec = override_timeout if override_timeout is not None else int(self.settings.get("fishing_wait_seconds", 25))
         threshold = float(self.settings.get("fishing_bite_threshold", 16))
         box = self._fishing_bobber_box(bobber_pt or click_pt)
 
@@ -2107,6 +2107,15 @@ asyncio.run(run())
                 started = self._wait_for_fishing_started(on_status, bobber_pt, slot_idx=slot_idx)
                 if started == "popup":
                     self._reset_after_fishing_result(on_status, seat, slot_idx=slot_idx)
+                    continue
+                if started == "timeout":
+                    bite = self._wait_for_fish_bite(on_status, cast_pt, bobber_pt, slot_idx=slot_idx, override_timeout=10)
+                    if bite is True:
+                        self._reel_until_popup(on_status, cast_pt, slot_idx=slot_idx)
+                        self._reset_after_fishing_result(on_status, seat, slot_idx=slot_idx)
+                    elif bite == "popup":
+                        self._clear_fishing_popup_fast(on_status, timeout=1.0, slot_idx=slot_idx)
+                        self._reset_after_fishing_result(on_status, seat, slot_idx=slot_idx)
                     continue
                 if not started:
                     self._clear_fishing_popup_fast(on_status, timeout=0.5, slot_idx=slot_idx)
