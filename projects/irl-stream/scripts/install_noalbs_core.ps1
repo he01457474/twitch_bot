@@ -160,7 +160,8 @@ if ($existingExe) {
     Expand-Archive -Path $zipPath -DestinationPath $installDir -Force
     Remove-Item $zipPath -ErrorAction SilentlyContinue
 
-    $noalbsPath = Find-NoalbsPath $installDir
+    $exePath    = Find-ExeInDir $installDir
+    $noalbsPath = if ($exePath) { Split-Path $exePath } else { $installDir }
     Write-Host '下載完成' -ForegroundColor Green
 }
 
