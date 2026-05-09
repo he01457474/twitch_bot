@@ -8,15 +8,13 @@
 *.db
 *.db-shm
 *.db-wal
-backups/
 
-# 日誌
-logs/
-*.log
-
-# Bot 執行暫存
+# Bot 執行時產生的資料（統一放 data/ 子資料夾）
+data/backups/
+data/logs/
 donation_state.json
 .chrome_profiles/
+bot.pid
 
 # Python 暫存
 __pycache__/

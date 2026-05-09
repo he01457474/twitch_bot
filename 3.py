@@ -135,7 +135,7 @@ if not INITIAL_CHANNELS or not all([CLIENT_ID, CLIENT_SECRET]):
 # ----------------------------------------------------------------
 # [0.1] 日誌系統與 TwitchIO 修補
 # ----------------------------------------------------------------
-os.makedirs("logs", exist_ok=True)
+os.makedirs("data/logs", exist_ok=True)
 
 class CleanConsoleHandler(logging.StreamHandler):
     def __init__(self, stream=None):
@@ -153,8 +153,8 @@ def setup_logging():
     if logger.hasHandlers(): logger.handlers.clear()
     for name in ["twitchio", "twitchio.websocket", "twitchio.client", "urllib3", "selenium", "WDM"]:
         logging.getLogger(name).setLevel(logging.CRITICAL)
-    fh = TimedRotatingFileHandler("logs/bot.log", when="midnight", interval=1, backupCount=LOG_RETAIN_DAYS, encoding="utf-8")
-    eh = TimedRotatingFileHandler("logs/error.log", when="midnight", interval=1, backupCount=LOG_RETAIN_DAYS, encoding="utf-8")
+    fh = TimedRotatingFileHandler("data/logs/bot.log", when="midnight", interval=1, backupCount=LOG_RETAIN_DAYS, encoding="utf-8")
+    eh = TimedRotatingFileHandler("data/logs/error.log", when="midnight", interval=1, backupCount=LOG_RETAIN_DAYS, encoding="utf-8")
     ch = CleanConsoleHandler(sys.stdout)
     fh.setFormatter(fmt); eh.setFormatter(fmt); ch.setFormatter(fmt); eh.setLevel(logging.WARNING)
     logger.addHandler(fh); logger.addHandler(eh); logger.addHandler(ch)
@@ -1912,14 +1912,14 @@ class Bot(commands.Bot):
     async def backup_database(self):
         now = datetime.datetime.now(LOCAL_TZ)
         ts = now.strftime("%Y%m%d_%H%M%S")
-        fname = f"backups/checkin_backup_{ts}.db"
+        fname = f"data/backups/checkin_backup_{ts}.db"
         try:
             await self.db.execute("PRAGMA wal_checkpoint(FULL);")
-            os.makedirs("backups", exist_ok=True)
+            os.makedirs("data/backups", exist_ok=True)
             await self.loop.run_in_executor(None, shutil.copy, "checkin.db", fname)
             logging.info(f"📦 備份成功: {fname}")
         except Exception as e: return logging.error(f"❌ 備份失敗: {e}")
-        for f in [f for f in os.listdir("backups") if f.startswith("checkin_backup_") and f.endswith(".db")]:
+        for f in [f for f in os.listdir("data/backups") if f.startswith("checkin_backup_") and f.endswith(".db")]:
             try:
                 fd = datetime.datetime.strptime(f[15:23], "%Y%m%d").date()
                 days_old = (now.date() - fd).days
@@ -1928,7 +1928,7 @@ class Bot(commands.Bot):
                 # 月首/月末備份保留 6 個月；其餘按 BACKUP_RETAIN_DAYS
                 should_delete = (is_month_boundary and months_old > 6) or (not is_month_boundary and days_old >= BACKUP_RETAIN_DAYS)
                 if should_delete:
-                    os.remove(os.path.join("backups", f)); logging.info(f"🗑️ 已刪除過期備份: {f}")
+                    os.remove(os.path.join("data/backups", f)); logging.info(f"🗑️ 已刪除過期備份: {f}")
             except: pass
 
     async def proposal_timeout_task(self, ctx, t_id, ts, ch):
