@@ -115,26 +115,44 @@ $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $installDir  = Join-Path (Join-Path $projectRoot "tools") "NOALBS_$twitchId"
 $zipPath     = "$env:TEMP\noalbs.zip"
 
-Write-Host ''
-Write-Host '正在下載 NOALBS...' -ForegroundColor Cyan
-
-try {
-    Invoke-WebRequest -Uri $noalbsUrl -OutFile $zipPath -UseBasicParsing
-} catch {
-    Write-Host ''
-    Write-Host '[錯誤] 下載失敗，請確認網路連線正常後重試。' -ForegroundColor Red
-    Read-Host '按 Enter 關閉'
-    exit 1
+# 找出實際的 noalbs.exe 路徑（可能在子資料夾內）
+function Find-NoalbsPath {
+    param([string]$Dir)
+    $inner = Get-ChildItem $Dir -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($inner) { return $inner.FullName }
+    return $Dir
 }
 
-Write-Host '正在解壓縮...' -ForegroundColor Cyan
-Expand-Archive -Path $zipPath -DestinationPath $installDir -Force
-Remove-Item $zipPath -ErrorAction SilentlyContinue
+$existingExe = $null
+if (Test-Path $installDir) {
+    $candidate = Join-Path (Find-NoalbsPath $installDir) 'noalbs.exe'
+    if (Test-Path $candidate) { $existingExe = $candidate }
+}
 
-$inner     = Get-ChildItem $installDir -Directory | Select-Object -First 1
-$noalbsPath = if ($inner) { $inner.FullName } else { $installDir }
+if ($existingExe) {
+    Write-Host ''
+    Write-Host '偵測到已安裝的 NOALBS，略過下載。' -ForegroundColor Green
+    $noalbsPath = Split-Path $existingExe
+} else {
+    Write-Host ''
+    Write-Host '正在下載 NOALBS...' -ForegroundColor Cyan
 
-Write-Host '下載完成' -ForegroundColor Green
+    try {
+        Invoke-WebRequest -Uri $noalbsUrl -OutFile $zipPath -UseBasicParsing
+    } catch {
+        Write-Host ''
+        Write-Host '[錯誤] 下載失敗，請確認網路連線正常後重試。' -ForegroundColor Red
+        Read-Host '按 Enter 關閉'
+        exit 1
+    }
+
+    Write-Host '正在解壓縮...' -ForegroundColor Cyan
+    Expand-Archive -Path $zipPath -DestinationPath $installDir -Force
+    Remove-Item $zipPath -ErrorAction SilentlyContinue
+
+    $noalbsPath = Find-NoalbsPath $installDir
+    Write-Host '下載完成' -ForegroundColor Green
+}
 
 @"
 TWITCH_BOT_USERNAME=$twitchId
