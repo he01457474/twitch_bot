@@ -12,7 +12,6 @@
 # Bot 執行時產生的資料（統一放 data/ 子資料夾）
 data/backups/
 data/logs/
-donation_state.json
 .chrome_profiles/
 bot.pid
 
