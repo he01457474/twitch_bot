@@ -110,27 +110,38 @@ $sceneNormal  = Read-WithDefault '   正常畫面場景名稱' 'IRL'
 $sceneLow     = Read-WithDefault '   低畫質場景名稱' 'lowB'
 $sceneOffline = Read-WithDefault '   離線場景名稱' 'BRB'
 
-# 安裝（固定放在使用者家目錄，不受腳本位置影響）
+# 預設安裝目錄（找不到現有安裝時使用）
 $installDir = Join-Path $env:USERPROFILE "NOALBS_$twitchId"
 $zipPath    = "$env:TEMP\noalbs.zip"
 
-# 找出實際的 noalbs.exe 路徑（可能在子資料夾內）
-function Find-NoalbsPath {
+# 在指定目錄內找 noalbs.exe（可能在子資料夾一層）
+function Find-ExeInDir {
     param([string]$Dir)
-    $inner = Get-ChildItem $Dir -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($inner) { return $inner.FullName }
-    return $Dir
+    if (-not (Test-Path $Dir)) { return $null }
+    $direct = Join-Path $Dir 'noalbs.exe'
+    if (Test-Path $direct) { return $direct }
+    $sub = Get-ChildItem $Dir -Directory -ErrorAction SilentlyContinue |
+           ForEach-Object { Join-Path $_.FullName 'noalbs.exe' } |
+           Where-Object { Test-Path $_ } |
+           Select-Object -First 1
+    return $sub
 }
 
-$existingExe = $null
-if (Test-Path $installDir) {
-    $candidate = Join-Path (Find-NoalbsPath $installDir) 'noalbs.exe'
-    if (Test-Path $candidate) { $existingExe = $candidate }
-}
+# 多點偵測：依序掃常見位置
+$searchDirs = @(
+    $installDir,
+    (Join-Path $env:USERPROFILE 'Desktop'),
+    (Join-Path $env:USERPROFILE 'Downloads'),
+    (Join-Path $env:USERPROFILE 'Documents')
+) + (Get-ChildItem $env:USERPROFILE -Directory -ErrorAction SilentlyContinue |
+     Where-Object { $_.Name -imatch 'noalbs' } |
+     Select-Object -ExpandProperty FullName)
+
+$existingExe = $searchDirs | ForEach-Object { Find-ExeInDir $_ } | Where-Object { $_ } | Select-Object -First 1
 
 if ($existingExe) {
     Write-Host ''
-    Write-Host '偵測到已安裝的 NOALBS，略過下載。' -ForegroundColor Green
+    Write-Host "偵測到已安裝的 NOALBS：$existingExe，略過下載。" -ForegroundColor Green
     $noalbsPath = Split-Path $existingExe
 } else {
     Write-Host ''
