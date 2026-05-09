@@ -22,33 +22,106 @@ function Get-StatsUrl {
     }
 }
 
+function Find-ExeInDir {
+    param([string]$Dir)
+    if (-not (Test-Path $Dir)) { return $null }
+    $direct = Join-Path $Dir 'noalbs.exe'
+    if (Test-Path $direct) { return $direct }
+    $sub = Get-ChildItem $Dir -Directory -ErrorAction SilentlyContinue |
+           ForEach-Object { Join-Path $_.FullName 'noalbs.exe' } |
+           Where-Object { Test-Path $_ } |
+           Select-Object -First 1
+    return $sub
+}
+
 Write-Host ''
 Write-Host '=============================' -ForegroundColor Cyan
 Write-Host '   戶外直播一條龍設定工具   ' -ForegroundColor Cyan
 Write-Host '=============================' -ForegroundColor Cyan
 Write-Host ''
-Write-Host '這是借用者電腦用的工具，會幫你自動下載 NOALBS，並產生 .env、config.json 和啟動檔。' -ForegroundColor Yellow
-Write-Host '中繼伺服器由管理員提供，你的電腦不需要安裝 Docker 或 MediaMTX。' -ForegroundColor Yellow
+Write-Host '  1. 安裝 / 更新設定'
+Write-Host '  2. 移除安裝'
 Write-Host ''
-Write-Host '開始前先準備好：' -ForegroundColor Cyan
-Write-Host '  1. 你的 Twitch 英文帳號'
-Write-Host '  2. Twitch Bot Token（等等會開網頁讓你拿）'
-Write-Host '  3. OBS WebSocket 密碼'
-Write-Host ''
-
-# ① Twitch ID
 do {
-    $twitchId = (Read-Host '① 你的 Twitch ID（英文帳號，例如 kevin123）').Trim().ToLower()
+    $action = (Read-Host '請選擇').Trim()
+    if ($action -notin @('1','2')) { Write-Host '  請輸入 1 或 2' -ForegroundColor Red }
+} while ($action -notin @('1','2'))
+
+# Twitch ID
+Write-Host ''
+do {
+    $twitchId = (Read-Host 'Twitch ID（英文帳號，例如 kevin123）').Trim().ToLower()
     if (-not $twitchId) { Write-Host '  請填入 Twitch ID' -ForegroundColor Red }
 } while (-not $twitchId)
 
-# ② Bot Token
+# 偵測現有安裝
+$installDir = Join-Path $env:USERPROFILE "NOALBS_$twitchId"
+$searchDirs = @(
+    $installDir,
+    (Join-Path $env:USERPROFILE 'Desktop'),
+    (Join-Path $env:USERPROFILE 'Downloads'),
+    (Join-Path $env:USERPROFILE 'Documents')
+) + (Get-ChildItem $env:USERPROFILE -Directory -ErrorAction SilentlyContinue |
+     Where-Object { $_.Name -imatch 'noalbs' } |
+     Select-Object -ExpandProperty FullName)
+
+$existingExe = $searchDirs | ForEach-Object { Find-ExeInDir $_ } | Where-Object { $_ } | Select-Object -First 1
+
+if ($existingExe) {
+    $existingPath = Split-Path $existingExe
+    Write-Host "  偵測到已安裝：$existingPath" -ForegroundColor DarkGray
+}
+
+# ── 移除安裝 ──────────────────────────────────────────────
+if ($action -eq '2') {
+    if (-not $existingExe) {
+        Write-Host ''
+        Write-Host "找不到 $twitchId 的 NOALBS 安裝，無法移除。" -ForegroundColor Yellow
+        Read-Host '按 Enter 關閉'
+        exit 0
+    }
+
+    $noalbsPath = Split-Path $existingExe
+    $parentDir  = Split-Path $noalbsPath
+    $deleteDir  = if ((Split-Path $parentDir -Leaf) -imatch 'noalbs') { $parentDir } else { $noalbsPath }
+
+    Write-Host ''
+    Write-Host "即將刪除：$deleteDir" -ForegroundColor Yellow
+    $confirm = (Read-Host '確認刪除？（輸入 y 確認）').Trim().ToLower()
+    if ($confirm -ne 'y') {
+        Write-Host '已取消。' -ForegroundColor DarkGray
+        Read-Host '按 Enter 關閉'
+        exit 0
+    }
+
+    $proc = Get-Process 'noalbs' -ErrorAction SilentlyContinue
+    if ($proc) {
+        Stop-Process -Name 'noalbs' -Force
+        Write-Host 'NOALBS 已停止' -ForegroundColor Green
+    }
+
+    Remove-Item -Path $deleteDir -Recurse -Force -ErrorAction SilentlyContinue
+    Write-Host ''
+    Write-Host '=============================' -ForegroundColor Green
+    Write-Host '         移除完成！          ' -ForegroundColor Green
+    Write-Host '=============================' -ForegroundColor Green
+    Write-Host ''
+    Write-Host "已刪除：$deleteDir" -ForegroundColor Cyan
+    Read-Host '按 Enter 關閉'
+    exit 0
+}
+
+# ── 安裝 / 更新設定 ──────────────────────────────────────
 Write-Host ''
-Write-Host '② 請到下面這個網址，用你的 Twitch 帳號登入後按 Connect，複製 oauth:... 這段' -ForegroundColor Yellow
+Write-Host '請準備好：Twitch Bot Token、OBS WebSocket 密碼' -ForegroundColor Cyan
+Write-Host ''
+
+# Bot Token
+Write-Host "請到下面這個網址，用你的 Twitch 帳號登入後按 Connect，複製 oauth:... 這段" -ForegroundColor Yellow
 Write-Host "   $tokenUrl" -ForegroundColor Cyan
 Start-Process $tokenUrl
 do {
-    $twitchToken = (Read-Host '   貼上你的 Token（oauth:xxxxxxxxxx）').Trim()
+    $twitchToken = (Read-Host '貼上你的 Token（oauth:xxxxxxxxxx）').Trim()
     if (-not $twitchToken) {
         Write-Host '  請填入 Token' -ForegroundColor Red
     } elseif ($twitchToken -notlike 'oauth:*') {
@@ -56,9 +129,9 @@ do {
     }
 } while (-not $twitchToken -or $twitchToken -notlike 'oauth:*')
 
-# ③ 伺服器選擇
+# 伺服器選擇
 Write-Host ''
-Write-Host '③ 選擇中繼伺服器' -ForegroundColor Yellow
+Write-Host '選擇中繼伺服器' -ForegroundColor Yellow
 Write-Host '  1. flycat 伺服器（管理員 flycat 提供，預設選這個）'
 Write-Host '  2. 自訂伺服器（其他管理員提供的伺服器位址）'
 do {
@@ -94,103 +167,46 @@ if ($serverChoice -eq '1') {
     Write-Host "  伺服器：$serverHost（$serverType）" -ForegroundColor Green
 }
 
-# ④ OBS WebSocket 密碼
+# OBS WebSocket 密碼
 Write-Host ''
-Write-Host '④ OBS WebSocket 密碼在 OBS → 工具 → WebSocket 伺服器設定。' -ForegroundColor Yellow
+Write-Host 'OBS WebSocket 密碼在 OBS → 工具 → WebSocket 伺服器設定。' -ForegroundColor Yellow
 do {
     $obsPassword = (Read-Host '   貼上你的 OBS WebSocket 密碼').Trim()
     if (-not $obsPassword) { Write-Host '  請填入 OBS WebSocket 密碼' -ForegroundColor Red }
 } while (-not $obsPassword)
 
-# ⑤ OBS 場景名稱
+# OBS 場景名稱
 Write-Host ''
-Write-Host '⑤ OBS 場景名稱（直接按 Enter 使用括號內的預設值）' -ForegroundColor Yellow
+Write-Host 'OBS 場景名稱（直接按 Enter 使用括號內的預設值）' -ForegroundColor Yellow
 $sceneNormal  = Read-WithDefault '   正常畫面場景名稱' 'IRL'
 $sceneLow     = Read-WithDefault '   低畫質場景名稱' 'lowB'
 $sceneOffline = Read-WithDefault '   離線場景名稱' 'BRB'
 
-# 預設安裝目錄（找不到現有安裝時使用）
-$installDir = Join-Path $env:USERPROFILE "NOALBS_$twitchId"
-$zipPath    = "$env:TEMP\noalbs.zip"
-
-# 在指定目錄內找 noalbs.exe（可能在子資料夾一層）
-function Find-ExeInDir {
-    param([string]$Dir)
-    if (-not (Test-Path $Dir)) { return $null }
-    $direct = Join-Path $Dir 'noalbs.exe'
-    if (Test-Path $direct) { return $direct }
-    $sub = Get-ChildItem $Dir -Directory -ErrorAction SilentlyContinue |
-           ForEach-Object { Join-Path $_.FullName 'noalbs.exe' } |
-           Where-Object { Test-Path $_ } |
-           Select-Object -First 1
-    return $sub
-}
-
-# 多點偵測：依序掃常見位置
-$searchDirs = @(
-    $installDir,
-    (Join-Path $env:USERPROFILE 'Desktop'),
-    (Join-Path $env:USERPROFILE 'Downloads'),
-    (Join-Path $env:USERPROFILE 'Documents')
-) + (Get-ChildItem $env:USERPROFILE -Directory -ErrorAction SilentlyContinue |
-     Where-Object { $_.Name -imatch 'noalbs' } |
-     Select-Object -ExpandProperty FullName)
-
-$existingExe = $searchDirs | ForEach-Object { Find-ExeInDir $_ } | Where-Object { $_ } | Select-Object -First 1
-
+# 下載（若尚未安裝）
+$zipPath = "$env:TEMP\noalbs.zip"
 if ($existingExe) {
     $noalbsPath = Split-Path $existingExe
     Write-Host ''
-    Write-Host "偵測到已安裝的 NOALBS：$noalbsPath" -ForegroundColor Green
-    Write-Host ''
-    Write-Host '請選擇：'
-    Write-Host '  1. 更新設定（保留程式，重新設定伺服器和 OBS 資訊）'
-    Write-Host '  2. 移除安裝（停止 NOALBS 並刪除整個資料夾）'
-    do {
-        $action = (Read-Host '   請輸入 1 或 2').Trim()
-        if ($action -notin @('1','2')) { Write-Host '  請輸入 1 或 2' -ForegroundColor Red }
-    } while ($action -notin @('1','2'))
-
-    if ($action -eq '2') {
-        $proc = Get-Process 'noalbs' -ErrorAction SilentlyContinue
-        if ($proc) {
-            Stop-Process -Name 'noalbs' -Force
-            Write-Host 'NOALBS 已停止' -ForegroundColor Green
-        }
-        $parentDir = Split-Path $noalbsPath
-        $deleteDir = if ((Split-Path $parentDir -Leaf) -imatch 'noalbs') { $parentDir } else { $noalbsPath }
-        Remove-Item -Path $deleteDir -Recurse -Force -ErrorAction SilentlyContinue
-        Write-Host ''
-        Write-Host '=============================' -ForegroundColor Green
-        Write-Host '         移除完成！          ' -ForegroundColor Green
-        Write-Host '=============================' -ForegroundColor Green
-        Write-Host ''
-        Write-Host "已刪除：$deleteDir" -ForegroundColor Cyan
-        Read-Host '按 Enter 關閉'
-        exit 0
-    }
+    Write-Host '程式已存在，略過下載，直接更新設定。' -ForegroundColor Green
 } else {
     Write-Host ''
     Write-Host '正在下載 NOALBS...' -ForegroundColor Cyan
-
     try {
         Invoke-WebRequest -Uri $noalbsUrl -OutFile $zipPath -UseBasicParsing
     } catch {
-        Write-Host ''
         Write-Host '[錯誤] 下載失敗，請確認網路連線正常後重試。' -ForegroundColor Red
         Read-Host '按 Enter 關閉'
         exit 1
     }
-
     Write-Host '正在解壓縮...' -ForegroundColor Cyan
     Expand-Archive -Path $zipPath -DestinationPath $installDir -Force
     Remove-Item $zipPath -ErrorAction SilentlyContinue
-
     $exePath    = Find-ExeInDir $installDir
     $noalbsPath = if ($exePath) { Split-Path $exePath } else { $installDir }
     Write-Host '下載完成' -ForegroundColor Green
 }
 
+# 寫入設定檔
 @"
 TWITCH_BOT_USERNAME=$twitchId
 TWITCH_BOT_OAUTH=$twitchToken
@@ -249,7 +265,7 @@ start "" noalbs.exe
 
 Write-Host ''
 Write-Host '=============================' -ForegroundColor Green
-Write-Host '         安裝完成！          ' -ForegroundColor Green
+Write-Host '         完成！              ' -ForegroundColor Green
 Write-Host '=============================' -ForegroundColor Green
 Write-Host ''
 Write-Host "設定檔位置：$noalbsPath" -ForegroundColor Cyan
