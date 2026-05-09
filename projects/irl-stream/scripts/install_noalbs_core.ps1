@@ -110,10 +110,9 @@ $sceneNormal  = Read-WithDefault '   正常畫面場景名稱' 'IRL'
 $sceneLow     = Read-WithDefault '   低畫質場景名稱' 'lowB'
 $sceneOffline = Read-WithDefault '   離線場景名稱' 'BRB'
 
-# 安裝
-$projectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$installDir  = Join-Path (Join-Path $projectRoot "tools") "NOALBS_$twitchId"
-$zipPath     = "$env:TEMP\noalbs.zip"
+# 安裝（固定放在使用者家目錄，不受腳本位置影響）
+$installDir = Join-Path $env:USERPROFILE "NOALBS_$twitchId"
+$zipPath    = "$env:TEMP\noalbs.zip"
 
 # 找出實際的 noalbs.exe 路徑（可能在子資料夾內）
 function Find-NoalbsPath {
