@@ -48,6 +48,7 @@
 - 終端機：Windows Terminal
 - 系統 code page：CP936（GBK），非 Unicode 程式預設用簡體中文編碼
 - 慣用語言順序：中文（簡體，中國）→ 繁體中文（台灣）→ 韓文
+- 本機 Python 執行檔：`D:\tset\FlyCatClaude Code\.tools\python-3.13.3-embed\python.exe`；語法檢查請用完整路徑，例如 `& 'D:\tset\FlyCatClaude Code\.tools\python-3.13.3-embed\python.exe' -m py_compile 3.py`，不要只用 `python` 或 `py`
 
 ## PowerShell 腳本編碼
 - 包含中文的 `.ps1` 一律加 UTF-8 BOM（`EF BB BF`），否則 PS5 會以 GBK 讀取，破壞語法
