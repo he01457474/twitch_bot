@@ -324,156 +324,6 @@ function Export-UserSettingsInteractive {
     Export-UserSettings -State $state -TwitchId $id
 }
 
-function Read-WithDefault {
-    param([string]$Prompt, [string]$Default)
-    $input = (Read-Host "$Prompt [$Default]").Trim()
-    if ($input -eq '') { return $Default }
-    return $input
-}
-
-function Get-StatsUrl {
-    param([string]$ServerType, [string]$Host, [string]$Path)
-    switch ($ServerType) {
-        'Mediamtx'        { return "http://${Host}:9997/v3/paths/get/$Path" }
-        'NginxRtmp'       { return "http://${Host}:8080/stat" }
-        'NodeMediaServer' { return "http://${Host}:8000/api/streams" }
-        'SrtLiveServer'   { return "http://${Host}:8181/stats" }
-        default           { return "http://${Host}:9997/v3/paths/get/$Path" }
-    }
-}
-
-function Generate-NoalbsConfig {
-    $state = Load-State
-    $id = Read-TwitchId '台主 Twitch ID'
-
-    Write-Host ''
-    Write-Host '中繼伺服器來源：'
-    Write-Host '  1. 使用 flycat 的伺服器（flycat.ddns.net）'
-    Write-Host '  2. 使用自己的伺服器'
-    $serverChoice = (Read-Host '請選擇').Trim()
-
-    $serverType = 'Mediamtx'
-    $statsUrl   = ''
-
-    if ($serverChoice -eq '2') {
-        Write-Host ''
-        Write-Host '伺服器類型：'
-        Write-Host '  1. MediaMTX'
-        Write-Host '  2. RTMP'
-        Write-Host '  3. Node Media Server'
-        Write-Host '  4. SRT Live Server'
-        $typeChoice = (Read-Host '請選擇').Trim()
-        $serverType = switch ($typeChoice) {
-            '2' { 'NginxRtmp' }
-            '3' { 'NodeMediaServer' }
-            '4' { 'SrtLiveServer' }
-            default { 'Mediamtx' }
-        }
-        $serverHost = (Read-Host '伺服器 IP 或網域').Trim()
-        $statsUrl   = Get-StatsUrl -ServerType $serverType -Host $serverHost -Path $id
-    } else {
-        $statsUrl = Get-StatsUrl -ServerType 'Mediamtx' -Host $RelayHost -Path $id
-    }
-
-    Write-Host ''
-    $obsPassword   = Read-WithDefault 'OBS WebSocket 密碼' 'obs_password'
-    $sceneNormal   = Read-WithDefault '正常場景名稱' 'IRL'
-    $sceneLow      = Read-WithDefault '低訊號場景名稱' 'lowB'
-    $sceneOffline  = Read-WithDefault '離線場景名稱' 'BRB'
-
-    $config = [ordered]@{
-        user = [ordered]@{
-            id           = $null
-            name         = $id
-            passwordHash = $null
-        }
-        switcher = [ordered]@{
-            bitrateSwitcherEnabled   = $true
-            onlySwitchWhenStreaming  = $true
-            instantlySwitchOnRecover = $true
-            autoSwitchNotification   = $true
-            retryAttempts            = 5
-            triggers = [ordered]@{ low = 800; rtt = 2500; offline = 100 }
-            switchingScenes = [ordered]@{
-                normal  = $sceneNormal
-                low     = $sceneLow
-                offline = $sceneOffline
-            }
-            streamServers = @(
-                [ordered]@{
-                    streamServer = [ordered]@{
-                        type     = $serverType
-                        statsUrl = $statsUrl
-                    }
-                    name          = '中繼伺服器'
-                    priority      = 1
-                    overrideScenes = $null
-                    dependsOn     = $null
-                    enabled       = $true
-                }
-            )
-        }
-        software = [ordered]@{
-            type     = 'Obs'
-            host     = 'localhost'
-            password = $obsPassword
-            port     = 4455
-        }
-        chat = [ordered]@{
-            platform                      = 'Twitch'
-            username                      = $id
-            admins                        = @($id)
-            ignoreUsers                   = @()
-            language                      = 'ZHTW'
-            prefix                        = '!'
-            enablePublicCommands          = $false
-            enableModCommands             = $true
-            enableAutoStopStreamOnHostOrRaid = $true
-            announceRaidOnAutoStop        = $true
-            commands = [ordered]@{
-                Fix     = [ordered]@{ permission = 'Mod'; userPermissions = $null; alias = @('f', '修復') }
-                Switch  = [ordered]@{ permission = 'Mod'; userPermissions = $null; alias = @('ss', '換') }
-                Bitrate = [ordered]@{ permission = $null; userPermissions = $null; alias = @('b', '訊號') }
-                Start   = [ordered]@{ permission = 'Mod'; userPermissions = $null; alias = @('開台') }
-                Stop    = [ordered]@{ permission = 'Mod'; userPermissions = $null; alias = @('關台') }
-            }
-        }
-        optionalScenes = [ordered]@{
-            starting = $null; ending = $null; privacy = $null; refresh = $null
-        }
-        optionalOptions = [ordered]@{
-            twitchTranscodingCheck            = $false
-            twitchTranscodingRetries          = 5
-            twitchTranscodingDelaySeconds     = 15
-            offlineTimeout                    = $null
-            recordWhileStreaming              = $false
-            switchToStartingSceneOnStreamStart = $false
-            switchFromStartingSceneToLiveScene = $false
-        }
-    }
-
-    Ensure-Directories
-    $outFile = Join-Path $ExportDir "$id-noalbs-config.json"
-    $config | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $outFile -Encoding UTF8
-
-    try {
-        $jsonText = Get-Content -LiteralPath $outFile -Raw -Encoding UTF8
-        Set-Clipboard -Value $jsonText
-        Write-Host '設定已複製到剪貼簿。' -ForegroundColor Green
-    } catch {
-        Write-Host '剪貼簿不可用，已只輸出成檔案。' -ForegroundColor Yellow
-    }
-
-    Write-Host ''
-    Write-Host "NOALBS 設定已產出：$outFile" -ForegroundColor Cyan
-    Write-Host ''
-    Write-Host '給台主的說明：' -ForegroundColor Yellow
-    Write-Host "  1. 把 $id-noalbs-config.json 改名為 config.json"
-    Write-Host '  2. 放到 NOALBS 程式資料夾，取代原本的 config.json'
-    Write-Host '  3. OBS 要先開 WebSocket（工具 → WebSocket 伺服器設定）'
-    Write-Host "  4. OBS 場景名稱要跟設定一樣：$sceneNormal / $sceneLow / $sceneOffline"
-}
-
 function Apply-Config {
     $state = Load-State
     Write-MediaMtxConfig $state
@@ -493,7 +343,6 @@ function Show-Menu {
     Write-Host '5. 匯出給台主的設定'
     Write-Host '6. 套用白名單到 MediaMTX 設定'
     Write-Host '7. 套用並重啟 MediaMTX'
-    Write-Host '8. 產生 NOALBS 設定'
     Write-Host '0. 離開'
     Write-Host ''
 }
@@ -516,7 +365,6 @@ do {
         '5' { Export-UserSettingsInteractive }
         '6' { Apply-Config }
         '7' { Apply-Config; Restart-MediaMtx }
-        '8' { Generate-NoalbsConfig }
         '0' { break }
         default { Write-Host '沒有這個功能。' -ForegroundColor Red }
     }
