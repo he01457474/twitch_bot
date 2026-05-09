@@ -139,9 +139,36 @@ $searchDirs = @(
 $existingExe = $searchDirs | ForEach-Object { Find-ExeInDir $_ } | Where-Object { $_ } | Select-Object -First 1
 
 if ($existingExe) {
-    Write-Host ''
-    Write-Host "偵測到已安裝的 NOALBS：$existingExe，略過下載。" -ForegroundColor Green
     $noalbsPath = Split-Path $existingExe
+    Write-Host ''
+    Write-Host "偵測到已安裝的 NOALBS：$noalbsPath" -ForegroundColor Green
+    Write-Host ''
+    Write-Host '請選擇：'
+    Write-Host '  1. 更新設定（保留程式，重新設定伺服器和 OBS 資訊）'
+    Write-Host '  2. 移除安裝（停止 NOALBS 並刪除整個資料夾）'
+    do {
+        $action = (Read-Host '   請輸入 1 或 2').Trim()
+        if ($action -notin @('1','2')) { Write-Host '  請輸入 1 或 2' -ForegroundColor Red }
+    } while ($action -notin @('1','2'))
+
+    if ($action -eq '2') {
+        $proc = Get-Process 'noalbs' -ErrorAction SilentlyContinue
+        if ($proc) {
+            Stop-Process -Name 'noalbs' -Force
+            Write-Host 'NOALBS 已停止' -ForegroundColor Green
+        }
+        $parentDir = Split-Path $noalbsPath
+        $deleteDir = if ((Split-Path $parentDir -Leaf) -imatch 'noalbs') { $parentDir } else { $noalbsPath }
+        Remove-Item -Path $deleteDir -Recurse -Force -ErrorAction SilentlyContinue
+        Write-Host ''
+        Write-Host '=============================' -ForegroundColor Green
+        Write-Host '         移除完成！          ' -ForegroundColor Green
+        Write-Host '=============================' -ForegroundColor Green
+        Write-Host ''
+        Write-Host "已刪除：$deleteDir" -ForegroundColor Cyan
+        Read-Host '按 Enter 關閉'
+        exit 0
+    }
 } else {
     Write-Host ''
     Write-Host '正在下載 NOALBS...' -ForegroundColor Cyan
