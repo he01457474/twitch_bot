@@ -1,4 +1,7 @@
-﻿[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+﻿param([string]$InstallDir = '')
+if ($InstallDir) { $InstallDir = $InstallDir.TrimEnd('\').TrimEnd('/') }
+
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
 
 $noalbsUrl = 'https://github.com/NOALBS/nginx-obs-automatic-low-bitrate-switching/releases/download/v2.16.1/noalbs-v2.16.1-x86_64-pc-windows-msvc.zip'
@@ -41,15 +44,17 @@ Write-Host '=============================' -ForegroundColor Cyan
 Write-Host ''
 Write-Host '正在偵測...' -ForegroundColor DarkGray
 
-# 掃描常見位置
+# 掃描常見位置（bat 所在目錄優先）
 $searchDirs = @(
+    $InstallDir,
     $env:USERPROFILE,
     (Join-Path $env:USERPROFILE 'Desktop'),
     (Join-Path $env:USERPROFILE 'Downloads'),
     (Join-Path $env:USERPROFILE 'Documents')
-) + (Get-ChildItem $env:USERPROFILE -Directory -ErrorAction SilentlyContinue |
-     Where-Object { $_.Name -imatch 'noalbs' } |
-     Select-Object -ExpandProperty FullName)
+) | Where-Object { $_ } | Select-Object -Unique
+$searchDirs += Get-ChildItem $env:USERPROFILE -Directory -ErrorAction SilentlyContinue |
+               Where-Object { $_.Name -imatch 'noalbs' } |
+               Select-Object -ExpandProperty FullName
 
 $existingExe = $searchDirs | ForEach-Object { Find-ExeInDir $_ } | Where-Object { $_ } | Select-Object -First 1
 
@@ -77,10 +82,9 @@ if ($existingExe) {
     } while ($action -notin @('1','2'))
 
     if ($action -eq '2') {
-        $parentDir = Split-Path $noalbsPath
-        $deleteDir = if ((Split-Path $parentDir -Leaf) -imatch 'noalbs') { $parentDir } else { $noalbsPath }
+        $noalbsFiles = @('noalbs.exe', 'config.json', '.env', '啟動_NOALBS.bat')
         Write-Host ''
-        Write-Host "即將刪除：$deleteDir" -ForegroundColor Yellow
+        Write-Host "即將刪除 $noalbsPath 裡的 NOALBS 檔案" -ForegroundColor Yellow
         $confirm = (Read-Host '確認刪除？（輸入 y 確認）').Trim().ToLower()
         if ($confirm -ne 'y') {
             Write-Host '已取消。' -ForegroundColor DarkGray
@@ -89,13 +93,18 @@ if ($existingExe) {
         }
         $proc = Get-Process 'noalbs' -ErrorAction SilentlyContinue
         if ($proc) { Stop-Process -Name 'noalbs' -Force; Write-Host 'NOALBS 已停止' -ForegroundColor Green }
-        Remove-Item -Path $deleteDir -Recurse -Force -ErrorAction SilentlyContinue
+        foreach ($f in $noalbsFiles) {
+            $fp = Join-Path $noalbsPath $f
+            if (Test-Path $fp) { Remove-Item $fp -Force -ErrorAction SilentlyContinue }
+        }
+        $remaining = Get-ChildItem $noalbsPath -ErrorAction SilentlyContinue
+        if (-not $remaining) { Remove-Item $noalbsPath -Force -ErrorAction SilentlyContinue }
         Write-Host ''
         Write-Host '=============================' -ForegroundColor Green
         Write-Host '         移除完成！          ' -ForegroundColor Green
         Write-Host '=============================' -ForegroundColor Green
         Write-Host ''
-        Write-Host "已刪除：$deleteDir" -ForegroundColor Cyan
+        Write-Host "已刪除：$noalbsPath" -ForegroundColor Cyan
         Read-Host '按 Enter 關閉'
         exit 0
     }
@@ -117,7 +126,7 @@ if ($existingExe) {
         $twitchId = (Read-Host 'Twitch ID（英文帳號，例如 kevin123）').Trim().ToLower()
         if (-not $twitchId) { Write-Host '  請填入 Twitch ID' -ForegroundColor Red }
     } while (-not $twitchId)
-    $installDir = Join-Path $env:USERPROFILE "NOALBS"
+    $installDir = if ($InstallDir) { $InstallDir } else { Join-Path $env:USERPROFILE "NOALBS" }
 }
 
 # ── 安裝 / 更新共用流程 ────────────────────────────────────
