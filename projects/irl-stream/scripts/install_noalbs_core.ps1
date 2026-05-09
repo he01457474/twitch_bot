@@ -117,7 +117,7 @@ if ($existingExe) {
         $twitchId = (Read-Host 'Twitch ID（英文帳號，例如 kevin123）').Trim().ToLower()
         if (-not $twitchId) { Write-Host '  請填入 Twitch ID' -ForegroundColor Red }
     } while (-not $twitchId)
-    $installDir = Join-Path $env:USERPROFILE "NOALBS_$twitchId"
+    $installDir = Join-Path $env:USERPROFILE "NOALBS"
 }
 
 # ── 安裝 / 更新共用流程 ────────────────────────────────────
