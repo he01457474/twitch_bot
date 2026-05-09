@@ -64,6 +64,18 @@ if (Test-HttpOk "http://localhost:9997/v3/config/global/get") {
     Write-Host "請確認 9997 port 沒被其他程式占用，或查看 MediaMTX 視窗 / log。" -ForegroundColor Yellow
 }
 
+$watchdogScript = Join-Path $PSScriptRoot "mediamtx_watchdog.ps1"
+$watchdogPidFile = "$env:TEMP\mediamtx_watchdog.pid"
+if (Test-Path $watchdogScript) {
+    if (Test-Path $watchdogPidFile) {
+        $oldPid = Get-Content $watchdogPidFile -ErrorAction SilentlyContinue
+        if ($oldPid) { Stop-Process -Id ([int]$oldPid) -Force -ErrorAction SilentlyContinue }
+        Remove-Item $watchdogPidFile -ErrorAction SilentlyContinue
+    }
+    Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$watchdogScript`" -ExePath `"$mediamtxExe`" -ConfigPath `"$mediamtxConfig`" -WorkDir `"$mediamtxDir`" -PidFile `"$watchdogPidFile`"" -WindowStyle Hidden
+    Write-Host "MediaMTX 監控已啟動（當機自動重啟）" -ForegroundColor Green
+}
+
 # [2/2] No-IP DUC
 Write-Host "[2/2] 檢查 No-IP DUC..."
 $ducRunning = Get-Process "DUC40" -ErrorAction SilentlyContinue

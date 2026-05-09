@@ -324,6 +324,29 @@ function Export-UserSettingsInteractive {
     Export-UserSettings -State $state -TwitchId $id
 }
 
+function Remove-User {
+    $state = Load-State
+    $id = Read-TwitchId '要刪除的 Twitch ID'
+    $entry = Get-UserEntry $state $id
+    if (-not $entry) {
+        Write-Host "找不到 $id。" -ForegroundColor Red
+        return
+    }
+
+    Write-Host "即將完全刪除 $id（包含密鑰資料，無法復原）" -ForegroundColor Yellow
+    $confirm = (Read-Host '確認刪除？（輸入 y 確認）').Trim().ToLower()
+    if ($confirm -ne 'y') {
+        Write-Host '已取消。' -ForegroundColor DarkGray
+        return
+    }
+
+    $state.users.PSObject.Properties.Remove($id)
+    Save-State $state
+    Write-MediaMtxConfig $state
+    Write-Host "已刪除 $id。" -ForegroundColor Green
+    Apply-RunningMediaMtx
+}
+
 function Apply-Config {
     $state = Load-State
     Write-MediaMtxConfig $state
@@ -343,6 +366,7 @@ function Show-Menu {
     Write-Host '5. 匯出給台主的設定'
     Write-Host '6. 套用白名單到 MediaMTX 設定'
     Write-Host '7. 套用並重啟 MediaMTX'
+    Write-Host '8. 刪除台主（完全移除）'
     Write-Host '0. 離開'
     Write-Host ''
 }
@@ -365,6 +389,7 @@ do {
         '5' { Export-UserSettingsInteractive }
         '6' { Apply-Config }
         '7' { Apply-Config; Restart-MediaMtx }
+        '8' { Remove-User }
         '0' { break }
         default { Write-Host '沒有這個功能。' -ForegroundColor Red }
     }
