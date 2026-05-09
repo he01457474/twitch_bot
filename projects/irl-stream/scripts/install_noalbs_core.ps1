@@ -12,13 +12,13 @@ function Read-WithDefault {
 }
 
 function Get-StatsUrl {
-    param([string]$ServerType, [string]$Host, [string]$Path)
+    param([string]$ServerType, [string]$HostName, [string]$Path)
     switch ($ServerType) {
-        'Mediamtx'        { return "http://${Host}:9997/v3/paths/get/$Path" }
-        'NginxRtmp'       { return "http://${Host}:8080/stat" }
-        'NodeMediaServer' { return "http://${Host}:8000/api/streams" }
-        'SrtLiveServer'   { return "http://${Host}:8181/stats" }
-        default           { return "http://${Host}:9997/v3/paths/get/$Path" }
+        'Mediamtx'        { return "http://${HostName}:9997/v3/paths/get/$Path" }
+        'NginxRtmp'       { return "http://${HostName}:8080/stat" }
+        'NodeMediaServer' { return "http://${HostName}:8000/api/streams" }
+        'SrtLiveServer'   { return "http://${HostName}:8181/stats" }
+        default           { return "http://${HostName}:9997/v3/paths/get/$Path" }
     }
 }
 
@@ -69,7 +69,7 @@ do {
 if ($serverChoice -eq '1') {
     $serverHost = 'flycat.ddns.net'
     $serverType = 'Mediamtx'
-    $statsUrl   = Get-StatsUrl -ServerType $serverType -Host $serverHost -Path $twitchId
+    $statsUrl   = Get-StatsUrl -ServerType $serverType -HostName $serverHost -Path $twitchId
     Write-Host "  伺服器：$serverHost（MediaMTX）" -ForegroundColor Green
 } else {
     Write-Host ''
@@ -90,7 +90,7 @@ if ($serverChoice -eq '1') {
     } while ($typeChoice -notin @('1','2','3','4'))
 
     $serverType = @{ '1'='Mediamtx'; '2'='NginxRtmp'; '3'='NodeMediaServer'; '4'='SrtLiveServer' }[$typeChoice]
-    $statsUrl   = Get-StatsUrl -ServerType $serverType -Host $serverHost -Path $twitchId
+    $statsUrl   = Get-StatsUrl -ServerType $serverType -HostName $serverHost -Path $twitchId
     Write-Host "  伺服器：$serverHost（$serverType）" -ForegroundColor Green
 }
 
