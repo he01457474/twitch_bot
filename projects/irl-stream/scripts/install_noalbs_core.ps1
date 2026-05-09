@@ -82,7 +82,7 @@ if ($serverChoice -eq '1') {
     Write-Host ''
     Write-Host '   伺服器類型（不確定的話問管理員）：' -ForegroundColor Yellow
     Write-Host '   1. MediaMTX（最常見）'
-    Write-Host '   2. Nginx RTMP'
+    Write-Host '   2. RTMP'
     Write-Host '   3. NodeMediaServer'
     Write-Host '   4. SRT Live Server'
     do {

@@ -359,7 +359,7 @@ function Generate-NoalbsConfig {
         Write-Host ''
         Write-Host '伺服器類型：'
         Write-Host '  1. MediaMTX'
-        Write-Host '  2. nginx-rtmp'
+        Write-Host '  2. RTMP'
         Write-Host '  3. Node Media Server'
         Write-Host '  4. SRT Live Server'
         $typeChoice = (Read-Host '請選擇').Trim()
