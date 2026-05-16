@@ -3208,7 +3208,8 @@ class App:
                                            variable=self._debug_var,
                                            command=self._toggle_debug)
         self.preview_btn.pack(side=tk.LEFT, padx=3, pady=4)
-        for btn in (self.testdet_btn, self.snap_btn, self.testnav_btn, self.debug_btn):
+        self.snap_btn.pack(side=tk.LEFT, padx=3, pady=4)
+        for btn in (self.testdet_btn, self.testnav_btn, self.debug_btn):
             if self.debug_ui:
                 btn.pack(side=tk.LEFT, padx=3, pady=4)
 
@@ -5110,7 +5111,93 @@ class App:
         if not hwnd: return
         self.bot.hwnd = hwnd
         self.bot.save_live_snapshot("手動截圖")
-        self._on_status(f"截圖已存到 tools/debug/bot_live.png")
+        self._on_status("截圖完成，已開啟預覽視窗")
+        self._show_snap_preview()
+
+    def _show_snap_preview(self):
+        if not os.path.exists(LIVE_SNAP):
+            messagebox.showwarning("截圖不存在", "尚未截圖，請先按「立即截圖」")
+            return
+
+        win = tk.Toplevel(self.root)
+        win.title("截圖預覽")
+        win.resizable(False, False)
+
+        canvas_frame = ttk.Frame(win)
+        canvas_frame.pack(side=tk.TOP, padx=8, pady=(8, 4))
+
+        bottom = ttk.Frame(win)
+        bottom.pack(side=tk.TOP, fill=tk.X, padx=8, pady=(0, 8))
+
+        coord_var = tk.StringVar(value="移動滑鼠查看座標與顏色")
+        clip_lbl  = tk.Label(bottom, text="", font=("", 9))
+        clip_lbl.pack(side=tk.LEFT)
+        ttk.Label(bottom, textvariable=coord_var,
+                  font=("Courier", 9), foreground="gray").pack(side=tk.LEFT, padx=8)
+
+        canvas_holder = [None]
+
+        def build(refresh=False):
+            if refresh:
+                hwnd2 = self.bot.hwnd or self.bot.find_window()
+                if hwnd2:
+                    self.bot.hwnd = hwnd2
+                    self.bot.save_live_snapshot("手動截圖")
+            try:
+                img = Image.open(LIVE_SNAP)
+            except Exception:
+                return
+
+            disp_scale = min(900 / img.width, 580 / img.height, 1.0)
+            disp_w = int(img.width  * disp_scale)
+            disp_h = int(img.height * disp_scale)
+            disp   = img.resize((disp_w, disp_h), Image.LANCZOS)
+            photo  = ImageTk.PhotoImage(disp)
+
+            if canvas_holder[0]:
+                canvas_holder[0].destroy()
+            canvas = tk.Canvas(canvas_frame, width=disp_w, height=disp_h, cursor="crosshair")
+            canvas.pack()
+            canvas.create_image(0, 0, anchor=tk.NW, image=photo)
+            canvas.photo = photo
+            canvas_holder[0] = canvas
+
+            game_scale  = max(img.width / MOLE_W, img.height / MOLE_H)
+            total_scale = game_scale * disp_scale
+
+            def on_move(e, _ts=total_scale, _ds=disp_scale, _img=img):
+                mx = int(e.x / _ts)
+                my = int(e.y / _ts)
+                ox = min(_img.width  - 1, int(e.x / _ds))
+                oy = min(_img.height - 1, int(e.y / _ds))
+                r, g, b = _img.getpixel((ox, oy))
+                coord_var.set(f"Mole ({mx}, {my})  ·  RGB ({r}, {g}, {b})")
+            canvas.bind("<Motion>", on_move)
+            canvas.bind("<Leave>",  lambda e: coord_var.set("移動滑鼠查看座標與顏色"))
+
+            # 複製到剪貼簿
+            try:
+                import win32clipboard
+                from io import BytesIO
+                buf = BytesIO()
+                img.convert("RGB").save(buf, "BMP")
+                data = buf.getvalue()[14:]
+                win32clipboard.OpenClipboard()
+                win32clipboard.EmptyClipboard()
+                win32clipboard.SetClipboardData(win32clipboard.CF_DIB, data)
+                win32clipboard.CloseClipboard()
+                clip_lbl.config(text="✓ 已複製到剪貼簿", foreground="#27ae60")
+            except Exception:
+                clip_lbl.config(text="剪貼簿複製失敗", foreground="#cc4444")
+
+            win.update_idletasks()
+
+        ttk.Button(bottom, text="重新截圖",
+                   command=lambda: build(refresh=True)).pack(side=tk.RIGHT)
+        ttk.Button(bottom, text="開啟資料夾",
+                   command=self._open_screenshot_folder).pack(side=tk.RIGHT, padx=4)
+
+        build()
 
     def _open_detect_test(self):
         """
