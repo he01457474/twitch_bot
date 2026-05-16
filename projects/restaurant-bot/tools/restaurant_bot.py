@@ -126,7 +126,7 @@ DEFAULT_SETTINGS = {
     "fishing_reel_start_delay": 0.00,
     "fishing_reel_click_interval": 0.08,
     "fishing_popup_close_delay": 0.18,
-    "btn_profile_card_close": [545, 110],
+    "btn_profile_card_close": [545, 65],
     "fishing_reset_delay":     1.2,
     "fishing_reset_mode":      "delay",
     "btn_fishing_nav":         None,   # 開地圖導航按鈕（左下角固定）
@@ -1768,9 +1768,9 @@ asyncio.run(run())
             if close_orange < 0.06:
                 return False
 
-            # 區域 2：面板內容中央 60×60 → 奶油色比例（容許 ±30px 位移）
+            # 區域 2：面板下段白色內容區 60×50 → 白/奶油色比例（容許 ±25px 位移）
             body_cream = self._region_light_ratio(
-                img, w, h, (400, 230, 460, 290),
+                img, w, h, (400, 280, 460, 330),
                 lambda r, g, b: r >= 210 and g >= 180 and b >= 110,
             )
 
