@@ -1759,28 +1759,23 @@ asyncio.run(run())
             img = img.convert("RGB")
             close_pt = tuple(self.settings.get("btn_profile_card_close", DEFAULT_SETTINGS["btn_profile_card_close"]))
 
-            # 區域 1：關閉按鈕附近 36×36 → 粉紅/洋紅比例（實測 255,112,192，容許 ±18px 位移）
+            # 條件 1：面板中央大區域（120×113 Mole 座標）白色比例
+            # 正常場景有角色/場景元素，通常不達 60% 全白
+            # 資料卡彈出時整片被白色面板覆蓋
+            panel_white = self._region_light_ratio(
+                img, w, h, (378, 145, 498, 258),
+                lambda r, g, b: r >= 218 and g >= 208 and b >= 198,
+            )
+            if panel_white < 0.60:
+                return False
+
+            # 條件 2：關閉按鈕附近粉紅/洋紅比例（容許 ±18px 位移）
             close_pink = self._region_light_ratio(
                 img, w, h,
                 (close_pt[0] - 18, close_pt[1] - 18, close_pt[0] + 18, close_pt[1] + 18),
                 lambda r, g, b: r >= 200 and b >= 140 and g <= 155 and r > g + 80 and b > g + 30,
             )
-            if close_pink < 0.06:
-                return False
-
-            # 區域 2：面板下段白色內容區 60×50 → 白/奶油色比例（容許 ±25px 位移）
-            body_cream = self._region_light_ratio(
-                img, w, h, (400, 280, 460, 330),
-                lambda r, g, b: r >= 210 and g >= 180 and b >= 110,
-            )
-
-            # 區域 3：頭像區 50×50 → 深色比例（人物圖案）
-            avatar_dark = self._region_light_ratio(
-                img, w, h, (345, 150, 395, 200),
-                lambda r, g, b: max(r, g, b) <= 115,
-            )
-
-            return body_cream >= 0.25 or avatar_dark >= 0.08
+            return close_pink >= 0.06
         except Exception:
             return False
 
