@@ -2394,13 +2394,16 @@ asyncio.run(run())
                         break
                     continue
 
+                # 每輪開始前一次性清除所有遮擋
+                _cleared = False
                 if self._close_player_card_popup(on_status):
                     self.wait(0.3)
-                    continue
-
-                if self._clear_fishing_popup_fast(on_status, timeout=0.8, slot_idx=slot_idx):
+                    _cleared = True
+                if self._clear_fishing_popup_fast(on_status, timeout=0.5, slot_idx=slot_idx):
                     seat = seats[slot_idx % len(seats)]
                     self._reset_after_fishing_result(on_status, seat, slot_idx=slot_idx)
+                    _cleared = True
+                if _cleared:
                     continue
 
                 seat = seats[slot_idx % len(seats)]
