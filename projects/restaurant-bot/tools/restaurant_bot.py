@@ -2137,6 +2137,13 @@ asyncio.run(run())
         best_score = 0.0
         best_move = 0.0
         while time.time() < deadline and not self._stop.is_set():
+            if self._close_player_card_popup(on_status):
+                self.wait(0.3)
+                refreshed = self._capture_mole_region(box)
+                if refreshed:
+                    baseline = refreshed
+                    base_center = self._bobber_center(baseline)
+                continue
             if self._handle_fishing_popup(on_status, slot_idx=slot_idx):
                 return "popup"
             current = self._capture_mole_region(box)
@@ -2187,6 +2194,15 @@ asyncio.run(run())
         best_move = 0.0
         next_wait_click = 0.0
         while time.time() < deadline and not self._stop.is_set():
+            if self._close_player_card_popup(on_status):
+                self.wait(0.3)
+                refreshed = self._capture_mole_region(box)
+                if refreshed:
+                    baseline = refreshed
+                    base_center = self._bobber_center(baseline)
+                    prev = refreshed
+                consecutive_hits = 0
+                continue
             if self._handle_fishing_popup(on_status, slot_idx=slot_idx):
                 return "popup"
 
