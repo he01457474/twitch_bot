@@ -242,13 +242,20 @@ async def initialize_tokens_async():
                     logging.info("🔧 Token 已自動修復並存檔")
                     return d["access_token"], d.get("refresh_token", env_refresh or db_ref), f"oauth:{d['access_token'].replace('oauth:', '')}"
         except: pass
-        logging.error("❌ Token 刷新失敗！使用 .env 預設值")
-        return os.getenv("TWITCH_TOKEN"), None, os.getenv("TWITCH_TOKEN")
+        fallback_token = os.getenv("TWITCH_TOKEN")
+        if fallback_token and await validate(fallback_token, ".env TWITCH_TOKEN"):
+            logging.warning("⚠️ 使用 .env TWITCH_TOKEN fallback 啟動。建議重新執行 authorize_chat_badge.bat 更新資料庫 token。")
+            return fallback_token, None, fallback_token
+
+        logging.error("❌ Token 刷新失敗或權限不足，停止啟動。Twitch 不允許程式自動補新權限，請重新執行 authorize_chat_badge.bat 取得完整授權。")
+        return None, None, None
 
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
 LATEST_USER_TOKEN, LATEST_REFRESH_TOKEN, TWITCH_IRC_TOKEN = loop.run_until_complete(initialize_tokens_async())
-if not TWITCH_IRC_TOKEN: sys.exit(1)
+if not TWITCH_IRC_TOKEN:
+    logging.error("❌ 沒有可用的 Twitch 聊天 Token，BOT 不會啟動。")
+    sys.exit(1)
 
 # 每次啟動（含 os.execv 重啟）都更新 PID 檔，讓 update_bot.bat 能正確殺掉舊 process
 try:
@@ -442,6 +449,7 @@ class Bot(commands.Bot):
         self.token_lock, self.user_token_lock, self._background_tasks, self._tasks_started = asyncio.Lock(), asyncio.Lock(), set(), False
         self._background_task_factories, self._api_fail_since, self._api_fail_strikes = {}, None, 0
         self._last_offline_keepalive, self._ws_dead_strikes = 0, 0
+        self._ws_unhealthy_since = None
         self.chat_app_access_token, self._chat_api_warned_channels = os.getenv("TWITCH_CHAT_APP_ACCESS_TOKEN"), set()
         self._last_chat_api_error = ""
         self._install_context_chat_api_patch()
@@ -1543,8 +1551,33 @@ class Bot(commands.Bot):
         else:
             logging.debug(f"✅ {channel_name} 聊天室有動靜，連線確認正常！")
 
+    def _is_ws_unhealthy(self):
+        conn = getattr(self, "_connection", None)
+        if not conn:
+            return True
+        if not getattr(conn, "is_alive", False):
+            return True
+
+        ws = getattr(conn, "_websocket", None)
+        if ws:
+            if getattr(ws, "closed", False):
+                return True
+            close_code = getattr(ws, "close_code", None)
+            if close_code:
+                return True
+            transport = getattr(ws, "_writer", None)
+            transport = getattr(transport, "transport", None)
+            if transport and getattr(transport, "is_closing", lambda: False)():
+                return True
+        return False
+
     async def _rejoin_single_channel(self, channel_name):
         """專門處理單一頻道的無痛重新連線，不影響其他頻道，聊天室完全隱形"""
+        if self._is_ws_unhealthy():
+            logging.warning(f"⚠️ {channel_name} 無法隱形重連：聊天室 WebSocket 已不健康，改用全域重啟。")
+            await self.hard_restart("System_WebSocket_Unhealthy")
+            return
+
         try:
             await self.part_channels([channel_name])
             await asyncio.sleep(1)  # 緩衝 1 秒
@@ -1555,6 +1588,10 @@ class Bot(commands.Bot):
             # 🟢 降級為 debug，這樣 LOG 就不會一直跳出來洗版
             logging.debug(f"🔄 {channel_name} 預防性隱形重連完成！")
         except Exception as e:
+            if "closing transport" in str(e).lower():
+                logging.error(f"💥 {channel_name} 隱形重連遇到 closing transport，啟動全域重啟。")
+                await self.hard_restart("System_Closing_Transport")
+                return
             logging.error(f"❌ {channel_name} 隱形重連失敗: {e}")
 
     async def safe_channel_send(self, channel_name: str, message: str):
@@ -1736,17 +1773,19 @@ class Bot(commands.Bot):
         while True:
             try:
                 await asyncio.sleep(60)
-                conn = getattr(self, "_connection", None)
-                if not conn or not conn.is_alive:
+                now = time.time()
+                if self._is_ws_unhealthy():
+                    if self._ws_unhealthy_since is None:
+                        self._ws_unhealthy_since = now
                     self._ws_dead_strikes += 1
                     logging.warning(f"⚠️ 聊天室 WebSocket 無回應 ({self._ws_dead_strikes}/3)")
-                    if self._ws_dead_strikes >= 3:
+                    if self._ws_dead_strikes >= 3 or now - self._ws_unhealthy_since >= 180:
                         await self.hard_restart("System_WebSocket_Dead")
                         return
                 else:
                     self._ws_dead_strikes = 0
+                    self._ws_unhealthy_since = None
 
-                now = time.time()
                 if self._api_fail_since and now - self._api_fail_since >= API_FAIL_RESTART_SECONDS:
                     logging.error("💥 Twitch API 長時間無法恢復，啟動自動重啟。")
                     await self.hard_restart("System_Twitch_API_Stall")
@@ -1760,7 +1799,11 @@ class Bot(commands.Bot):
                         cl = cl.strip().lower()
                         if not cl:
                             continue
-                        if not self.get_channel(cl) or self._ws_dead_strikes == 0:
+                        if self._is_ws_unhealthy():
+                            logging.warning("⚠️ 離線保活偵測到 WebSocket 不健康，改用全域重啟。")
+                            await self.hard_restart("System_Offline_Keepalive_WS_Dead")
+                            return
+                        if not self.get_channel(cl):
                             await self._rejoin_single_channel(cl)
                             await asyncio.sleep(1)
             except Exception as e:
