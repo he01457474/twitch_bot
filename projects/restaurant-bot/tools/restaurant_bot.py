@@ -60,22 +60,14 @@ DEFAULT_SETTINGS = {
     "door_out":      None,  # 出門座標（餐廳內往外走的門口）
     "door_waypoint": None,  # 出門後走到入口前的中途路徑點（選填）
     "door_in":       None,  # 進門座標（餐廳外往內走的門口）
-    "spoiled_color":  None,   # 腐壞（舊格式，單點）
-    "spoiled_offset": None,
-    "clock_color":   None,    # 時鐘（舊格式，單點）
-    "clock_offset":  None,
-    "done_color":    None,    # 做完（舊格式，單點）
-    "done_offset":   None,
-    # 多點格式（新，優先使用）：每個元素 = [dx, dy, r, g, b]
+    # 多點格式：每個元素 = [dx, dy, r, g, b]
     "done_points":    [],
     "clock_points":   [],
-    "spoiled_points": [],
     "state_threshold": 40,    # 顏色差異容許值
     # HSV 區域偵測（新格式，每個元素對應一個鍋爐）
     # 格式：{"cx":dx, "cy":dy, "radius":10, "h":[hmin,hmax], "s":[smin,smax], "v":[vmin,vmax], "pct":0.15}
     "done_hsv_list":    [],
     "clock_hsv_list":   [],
-    "spoiled_hsv_list": [],
     # 時鐘內部偵測：各爐獨立偏移 [dx,dy]，指向橙色環內側
     # 掃描白色像素（白色扇形 = 剩餘時間），區分烹飪中 vs 菜做好
     "clock_interior_offsets": [],
@@ -273,11 +265,6 @@ _STATE_COLOR_HINTS = {
         "label":  "做完（黃光）",
         "expect": "黃色（H 35-75°，飽和度 > 35%，亮度 > 55%）",
         "check":  lambda h, s, v: 35 <= h <= 75 and s >= 35 and v >= 55,
-    },
-    "spoiled_offset": {
-        "label":  "腐壞（黑煙）",
-        "expect": "深色/灰色（亮度 < 50%，或飽和度低）",
-        "check":  lambda h, s, v: v <= 50 or (s <= 30 and v <= 65),
     },
 }
 
@@ -980,7 +967,7 @@ asyncio.run(run())
         讓外部工具（Claude）即時讀取，不需 Debug 模式也能呼叫。
         標記內容：
           - 鍋爐位置（白圈），旁邊顯示偵測到的狀態
-          - 各偵測點位置：黃=done, 橙=clock, 紅=spoiled
+          - 各偵測點位置：黃=done, 橙=clock（烹飪中）
           - 每個偵測點顯示最小 Δ 值
         """
         if not self.hwnd:
@@ -1015,9 +1002,8 @@ asyncio.run(run())
 
                 # 畫出各偵測點及 Δ 值
                 checks = [
-                    ("done_points",    "done_color",    "done_offset",    "yellow", 4),
-                    ("clock_points",   "clock_color",   "clock_offset",   "orange", 4),
-                    ("spoiled_points", "spoiled_color", "spoiled_offset", "red",    6),
+                    ("done_points",  "done_color",  "done_offset",  "yellow", 4),
+                    ("clock_points", "clock_color", "clock_offset", "orange", 4),
                 ]
                 for pts_key, col_key, off_key, dot_col, spread in checks:
                     pts   = self.settings.get(pts_key) or []
@@ -2955,11 +2941,8 @@ class App:
         self.stoves, self.recipe, settings = load_config()
         _extra_keys = ("restaurant_pt", "restaurant_color",
                        "door_out", "door_waypoint", "door_in",
-                       "spoiled_color", "spoiled_offset",
-                       "clock_color",   "clock_offset",
-                       "done_color",    "done_offset",
-                       "done_points", "clock_points", "spoiled_points",
-                       "done_hsv_list", "clock_hsv_list", "spoiled_hsv_list",
+                       "done_points", "clock_points",
+                       "done_hsv_list", "clock_hsv_list",
                        "state_threshold",
                        "clock_interior_offsets",
                        "cooking_white_threshold", "done_white_threshold",
@@ -3241,10 +3224,7 @@ class App:
                            tuple(self.recipe.get("cancel_btn", ())) !=
                            tuple(DEFAULT_RECIPE["cancel_btn"])),
             "state":      bool(s.get("done_hsv_list") or s.get("clock_hsv_list") or
-                               s.get("spoiled_hsv_list") or
-                               s.get("done_points") or s.get("clock_points") or
-                               s.get("spoiled_points") or s.get("done_color") or
-                               s.get("clock_color") or s.get("spoiled_color")),
+                               s.get("done_points") or s.get("clock_points")),
             "clk_interior": bool(s.get("clock_interior_offsets") and
                                   len(s["clock_interior_offsets"]) == len(self.stoves) and
                                   any(o for o in s["clock_interior_offsets"])),
@@ -3314,7 +3294,7 @@ class App:
     def _get_settings(self):
         s = {k: v.get() for k, v in self.vars.items()}
         s["fishing_active_slot"] = self._get_fishing_slot() + 1
-        s.update(self._extra_settings)  # 合併 spoiled_color / spoiled_threshold
+        s.update(self._extra_settings)
         return s
 
     def _set_running(self, running):
@@ -3439,9 +3419,8 @@ class App:
 
             # 狀態偵測點（小方塊，畫在鍋爐下層避免遮擋）
             state_cfgs = [
-                ("done_points",    "done_color",    "done_offset",    "#f0c040"),
-                ("clock_points",   "clock_color",   "clock_offset",   "#e07820"),
-                ("spoiled_points", "spoiled_color", "spoiled_offset", "#c04040"),
+                ("done_points",  "done_color",  "done_offset",  "#f0c040"),
+                ("clock_points", "clock_color", "clock_offset", "#e07820"),
             ]
             for pts_key, col_key, off_key, color in state_cfgs:
                 pts = s.get(pts_key) or []
@@ -4790,9 +4769,8 @@ class App:
         img_rgb = img.convert("RGB")
 
         CALIB_HINTS = {
-            "clock_offset":   "請在右側放大圖中，點擊橙色時鐘圓圈的中心位置",
-            "done_offset":    "請在右側放大圖中，點擊黃色光暈最亮的位置",
-            "spoiled_offset": "請在右側放大圖中，點擊鍋爐上方黑色煙霧的位置",
+            "clock_offset": "請在右側放大圖中，點擊橙色時鐘圓圈的中心位置",
+            "done_offset":  "請在右側放大圖中，點擊黃色光暈最亮的位置",
         }
         pt_hint = CALIB_HINTS.get(offset_key, f"請在右側放大圖中，點擊「{label}」對應位置")
 
