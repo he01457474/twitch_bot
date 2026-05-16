@@ -1759,20 +1759,28 @@ asyncio.run(run())
             img = img.convert("RGB")
             close_pt = tuple(self.settings.get("btn_profile_card_close", DEFAULT_SETTINGS["btn_profile_card_close"]))
 
-            # 錨點 1：關閉按鈕 → 橘色
-            r, g, b = self._pixel_rgb(img, w, h, close_pt[0], close_pt[1])
-            if not (r >= 185 and 75 <= g <= 185 and b <= 110 and r > g + 20):
+            # 區域 1：關閉按鈕附近 36×36 → 橘色比例（容許 ±18px 位移）
+            close_orange = self._region_light_ratio(
+                img, w, h,
+                (close_pt[0] - 18, close_pt[1] - 18, close_pt[0] + 18, close_pt[1] + 18),
+                lambda r, g, b: r >= 185 and 75 <= g <= 185 and b <= 110 and r > g + 20,
+            )
+            if close_orange < 0.06:
                 return False
 
-            # 錨點 2：面板內容中央 (430, 260) → 奶油色
-            r, g, b = self._pixel_rgb(img, w, h, 430, 260)
-            body_cream = r >= 210 and g >= 180 and b >= 110
+            # 區域 2：面板內容中央 60×60 → 奶油色比例（容許 ±30px 位移）
+            body_cream = self._region_light_ratio(
+                img, w, h, (400, 230, 460, 290),
+                lambda r, g, b: r >= 210 and g >= 180 and b >= 110,
+            )
 
-            # 錨點 3：頭像區中央 (370, 175) → 深色人物圖
-            r, g, b = self._pixel_rgb(img, w, h, 370, 175)
-            avatar_dark = max(r, g, b) <= 115
+            # 區域 3：頭像區 50×50 → 深色比例（人物圖案）
+            avatar_dark = self._region_light_ratio(
+                img, w, h, (345, 150, 395, 200),
+                lambda r, g, b: max(r, g, b) <= 115,
+            )
 
-            return body_cream or avatar_dark
+            return body_cream >= 0.25 or avatar_dark >= 0.08
         except Exception:
             return False
 
