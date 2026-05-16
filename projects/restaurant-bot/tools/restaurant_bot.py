@@ -2238,21 +2238,34 @@ asyncio.run(run())
             self._reset_after_fishing_result(on_status, seat, slot_idx=slot_idx)
             return True
 
-        # 等浮標入水穩定（替代原本的 _wait_for_fishing_started）
+        # 等浮標入水穩定，同時主動偵測資料卡與殘留彈窗
         on_status("釣魚：等待浮標入水…")
-        if not self.wait(1.5):
+        settle_deadline = time.time() + 1.5
+        while time.time() < settle_deadline and not self._stop.is_set():
+            if self._close_player_card_popup(on_status):
+                self.wait(0.3)
+                return True
+            if self._handle_fishing_popup(on_status, slot_idx=slot_idx):
+                self._reset_after_fishing_result(on_status, seat, slot_idx=slot_idx)
+                return True
+            time.sleep(0.1)
+        if self._stop.is_set():
             return True
 
         # 等上鉤
         bite = self._wait_for_fish_bite(on_status, cast_pt, bobber_pt, slot_idx=slot_idx)
 
         if bite is True:
-            self._reel_until_popup(on_status, bobber_pt, slot_idx=slot_idx)
+            reel_ok = self._reel_until_popup(on_status, bobber_pt, slot_idx=slot_idx)
+            if not reel_ok:
+                # 收桿後沒偵測到彈窗，仍嘗試關閉可能殘留的資料卡
+                self._close_player_card_popup(on_status)
         elif bite == "popup":
             self._clear_fishing_popup_fast(on_status, timeout=1.0, slot_idx=slot_idx)
         else:
             on_status("釣魚：等待時間內沒有上鉤，重新下竿")
-            self.click_real(*cast_pt, delay=0.1)
+            self.click_real(*cast_pt, delay=0.3)
+            self._close_player_card_popup(on_status)
             self._clear_fishing_popup_fast(on_status, timeout=0.5, slot_idx=slot_idx)
 
         self._reset_after_fishing_result(on_status, seat, slot_idx=slot_idx)
