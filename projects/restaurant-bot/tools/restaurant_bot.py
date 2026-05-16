@@ -630,6 +630,13 @@ asyncio.run(run())
         self.click_real(*confirm_btn, delay=0.8)
         return "unknown_confirm"
 
+    def _pixel_rgb(self, img, w, h, mole_x, mole_y):
+        """回傳 Mole 座標 (mole_x, mole_y) 對應到視窗像素的 (r, g, b)。"""
+        scale = max(w / MOLE_W, h / MOLE_H)
+        px = max(0, min(w - 1, int(mole_x * scale)))
+        py = max(0, min(h - 1, int(mole_y * scale)))
+        return img.getpixel((px, py))
+
     def _region_light_ratio(self, img, w, h, box, predicate):
         scale = max(w / MOLE_W, h / MOLE_H)
         x1, y1, x2, y2 = box
@@ -1751,32 +1758,21 @@ asyncio.run(run())
             img, w, h = capture_window(self.hwnd)
             img = img.convert("RGB")
             close_pt = tuple(self.settings.get("btn_profile_card_close", DEFAULT_SETTINGS["btn_profile_card_close"]))
-            close_orange = self._region_light_ratio(
-                img, w, h, (close_pt[0] - 18, close_pt[1] - 18, close_pt[0] + 18, close_pt[1] + 18),
-                lambda r, g, b: r >= 190 and 75 <= g <= 180 and b <= 100 and r > g + 25,
-            )
-            panel_orange = self._region_light_ratio(
-                img, w, h, (300, 90, 570, 435),
-                lambda r, g, b: r >= 185 and 75 <= g <= 185 and b <= 110 and r > g + 20,
-            )
-            panel_cream = self._region_light_ratio(
-                img, w, h, (325, 120, 545, 405),
-                lambda r, g, b: r >= 220 and g >= 195 and b >= 135,
-            )
-            avatar_dark = self._region_light_ratio(
-                img, w, h, (325, 120, 415, 235),
-                lambda r, g, b: max(r, g, b) <= 95,
-            )
-            icon_row = self._region_light_ratio(
-                img, w, h, (340, 330, 530, 405),
-                lambda r, g, b: max(r, g, b) - min(r, g, b) >= 55 and max(r, g, b) >= 110,
-            )
-            return (
-                close_orange >= 0.08
-                and panel_orange >= 0.07
-                and panel_cream >= 0.18
-                and (avatar_dark >= 0.06 or icon_row >= 0.12)
-            )
+
+            # 錨點 1：關閉按鈕 → 橘色
+            r, g, b = self._pixel_rgb(img, w, h, close_pt[0], close_pt[1])
+            if not (r >= 185 and 75 <= g <= 185 and b <= 110 and r > g + 20):
+                return False
+
+            # 錨點 2：面板內容中央 (430, 260) → 奶油色
+            r, g, b = self._pixel_rgb(img, w, h, 430, 260)
+            body_cream = r >= 210 and g >= 180 and b >= 110
+
+            # 錨點 3：頭像區中央 (370, 175) → 深色人物圖
+            r, g, b = self._pixel_rgb(img, w, h, 370, 175)
+            avatar_dark = max(r, g, b) <= 115
+
+            return body_cream or avatar_dark
         except Exception:
             return False
 
@@ -3192,16 +3188,17 @@ class App:
                                      state=tk.DISABLED)
         self.login_btn  = ttk.Button(grp_run, text="手動登入", command=self._manual_login, width=12)
         self.help_btn   = ttk.Button(grp_run, text="使用說明", command=self._show_help, width=12)
+        self.folder_btn  = ttk.Button(grp_run, text="截圖資料夾", command=self._open_screenshot_folder, width=12)
         self.start_btn.pack(side=tk.LEFT, padx=(0, 8), pady=2)
         self.fishing_btn.pack(side=tk.LEFT, padx=(0, 8), pady=2)
         self.stop_btn.pack(side=tk.LEFT, padx=(0, 8), pady=2)
         self.login_btn.pack(side=tk.LEFT, padx=(0, 8), pady=2)
-        self.help_btn.pack(side=tk.LEFT, pady=2)
+        self.help_btn.pack(side=tk.LEFT, padx=(0, 8), pady=2)
+        self.folder_btn.pack(side=tk.LEFT, pady=2)
 
         # ── 工具 ─────────────────────────────────────────
         grp_tool = ttk.LabelFrame(f, text="工具", padding=(10, 4))
-        if self.debug_ui:
-            grp_tool.pack(fill=tk.X)
+        grp_tool.pack(fill=tk.X)
         self.testdet_btn = ttk.Button(grp_tool, text="偵測測試", command=self._open_detect_test)
         self.preview_btn = ttk.Button(grp_tool, text="預覽座標", command=self._preview_coords)
         self.snap_btn    = ttk.Button(grp_tool, text="立即截圖", command=self._take_live_snap)
@@ -3210,8 +3207,8 @@ class App:
         self.debug_btn   = ttk.Checkbutton(grp_tool, text="Debug 截圖",
                                            variable=self._debug_var,
                                            command=self._toggle_debug)
-        for btn in (self.testdet_btn, self.preview_btn, self.snap_btn,
-                    self.testnav_btn, self.debug_btn):
+        self.preview_btn.pack(side=tk.LEFT, padx=3, pady=4)
+        for btn in (self.testdet_btn, self.snap_btn, self.testnav_btn, self.debug_btn):
             if self.debug_ui:
                 btn.pack(side=tk.LEFT, padx=3, pady=4)
 
@@ -3263,6 +3260,10 @@ class App:
             messagebox.showinfo("Debug 截圖", f"已開啟，截圖存到：\n{DEBUG_DIR}")
         else:
             messagebox.showinfo("Debug 截圖", "已關閉。")
+
+    def _open_screenshot_folder(self):
+        os.makedirs(DEBUG_DIR, exist_ok=True)
+        os.startfile(DEBUG_DIR)
 
     def _browse_flash_exe(self):
         path = filedialog.askopenfilename(
