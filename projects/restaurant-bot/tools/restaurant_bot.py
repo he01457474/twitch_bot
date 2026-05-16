@@ -2283,7 +2283,11 @@ asyncio.run(run())
             self._reset_after_fishing_result(on_status, seat, slot_idx=slot_idx)
             return True
         if started == "timeout":
-            bite = self._wait_for_fish_bite(on_status, cast_pt, bobber_pt, slot_idx=slot_idx, override_timeout=10)
+            on_status("釣魚：下竿後浮標無動態，重試下竿")
+            self.click_real(*cast_pt, delay=0.3)
+            self._clear_fishing_popup_fast(on_status, timeout=0.5, slot_idx=slot_idx)
+            self._reset_after_fishing_result(on_status, seat, slot_idx=slot_idx)
+            return True
         elif not started:
             self._clear_fishing_popup_fast(on_status, timeout=0.5, slot_idx=slot_idx)
             self.wait(0.4)
@@ -2388,6 +2392,10 @@ asyncio.run(run())
                         break
                     if not self._navigate_to_fishing(on_status, slot_idx):
                         break
+                    continue
+
+                if self._close_player_card_popup(on_status):
+                    self.wait(0.3)
                     continue
 
                 if self._clear_fishing_popup_fast(on_status, timeout=0.8, slot_idx=slot_idx):
