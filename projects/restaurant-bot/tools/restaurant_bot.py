@@ -1759,13 +1759,13 @@ asyncio.run(run())
             img = img.convert("RGB")
             close_pt = tuple(self.settings.get("btn_profile_card_close", DEFAULT_SETTINGS["btn_profile_card_close"]))
 
-            # 區域 1：關閉按鈕附近 36×36 → 橘色比例（容許 ±18px 位移）
-            close_orange = self._region_light_ratio(
+            # 區域 1：關閉按鈕附近 36×36 → 粉紅/洋紅比例（實測 255,112,192，容許 ±18px 位移）
+            close_pink = self._region_light_ratio(
                 img, w, h,
                 (close_pt[0] - 18, close_pt[1] - 18, close_pt[0] + 18, close_pt[1] + 18),
-                lambda r, g, b: r >= 185 and 75 <= g <= 185 and b <= 110 and r > g + 20,
+                lambda r, g, b: r >= 200 and b >= 140 and g <= 155 and r > g + 80 and b > g + 30,
             )
-            if close_orange < 0.06:
+            if close_pink < 0.06:
                 return False
 
             # 區域 2：面板下段白色內容區 60×50 → 白/奶油色比例（容許 ±25px 位移）
@@ -2234,7 +2234,9 @@ asyncio.run(run())
         on_status(f"釣魚：點椅子 {slot_idx + 1}/{seat_count}")
         self.click_real(*seat, delay=0.9)
 
-        # 座下後立即清除遮擋（資料卡 / 殘留彈窗）
+        # 座下後立即清除遮擋（資料卡 / 殘留彈窗 / 通知）
+        if self._handle_known_notice_popup(on_status):
+            return True
         if self._close_player_card_popup(on_status):
             self.wait(0.3)
             return True
@@ -2242,10 +2244,12 @@ asyncio.run(run())
             self._reset_after_fishing_result(on_status, seat, slot_idx=slot_idx)
             return True
 
-        # 等浮標入水穩定，同時主動偵測資料卡與殘留彈窗
+        # 等浮標入水穩定，同時主動偵測資料卡 / 通知 / 殘留彈窗
         on_status("釣魚：等待浮標入水…")
         settle_deadline = time.time() + 1.5
         while time.time() < settle_deadline and not self._stop.is_set():
+            if self._handle_known_notice_popup(on_status):
+                return True
             if self._close_player_card_popup(on_status):
                 self.wait(0.3)
                 return True
@@ -2262,13 +2266,15 @@ asyncio.run(run())
         if bite is True:
             reel_ok = self._reel_until_popup(on_status, bobber_pt, slot_idx=slot_idx)
             if not reel_ok:
-                # 收桿後沒偵測到彈窗，仍嘗試關閉可能殘留的資料卡
+                # 收桿後沒偵測到彈窗，清除可能殘留的通知 / 資料卡
+                self._handle_known_notice_popup(on_status)
                 self._close_player_card_popup(on_status)
         elif bite == "popup":
             self._clear_fishing_popup_fast(on_status, timeout=1.0, slot_idx=slot_idx)
         else:
             on_status("釣魚：等待時間內沒有上鉤，重新下竿")
             self.click_real(*cast_pt, delay=0.3)
+            self._handle_known_notice_popup(on_status)
             self._close_player_card_popup(on_status)
             self._clear_fishing_popup_fast(on_status, timeout=0.5, slot_idx=slot_idx)
 
@@ -2365,6 +2371,14 @@ asyncio.run(run())
                 _cleared = False
                 if self._close_player_card_popup(on_status):
                     self.wait(0.3)
+                    # 資料卡可能導致角色離座，先走一步讓下一輪能坐回椅子
+                    _leave_pts = self.settings.get("fishing_leave_pts") or []
+                    _si = slot_idx % len(seats)
+                    if _leave_pts and _si < len(_leave_pts) and _leave_pts[_si]:
+                        on_status("釣魚：資料卡關閉，步行重定位…")
+                        self.click_real(*tuple(_leave_pts[_si]), delay=0.5)
+                    _cleared = True
+                if self._handle_known_notice_popup(on_status):
                     _cleared = True
                 if self._clear_fishing_popup_fast(on_status, timeout=0.5, slot_idx=slot_idx):
                     seat = seats[slot_idx % len(seats)]
