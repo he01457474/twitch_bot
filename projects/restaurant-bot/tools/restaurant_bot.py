@@ -2653,6 +2653,9 @@ asyncio.run(run())
         return None
 
     def _after_login_action(self, on_status, after_login="restaurant"):
+        if after_login == "none":
+            on_status("登入完成，已進入遊戲場景…")
+            return True
         self._clear_blocking_overlays(on_status, close_recipe=True, attempts=2)
         if after_login == "restaurant":
             return self._navigate_to_restaurant_after_login(on_status)
@@ -2667,6 +2670,9 @@ asyncio.run(run())
         btn_quick = tuple(self.settings.get("btn_quick_start", [456, 517]))
         self._close_happy_spin_popup(on_status)
 
+        # 優先用視覺分數快速判斷（不依賴 OCR 文字偵測）
+        if self._is_game_scene_loaded_fast():
+            return self._after_login_action(on_status, after_login)
         if self._wait_for_game_scene(timeout=0.8, on_status=None, require_text=True):
             return self._after_login_action(on_status, after_login)
 
