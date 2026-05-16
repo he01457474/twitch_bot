@@ -113,11 +113,20 @@ DEFAULT_SETTINGS = {
     "fishing_confirm_btn":     [480, 395],  # 釣魚結果 / 失敗彈窗確認
     "fishing_wait_seconds":    25,
     "fishing_bite_threshold":  16,
+    "fishing_bite_strong_threshold": 24,
+    "fishing_bite_move_threshold": 5.0,
+    "fishing_bite_frame_threshold": 9.0,
+    "fishing_bite_hits":       1,
+    "fishing_bite_interval":   0.05,
+    "fishing_wait_click_interval": 0.18,
     "fishing_start_timeout":   3.0,
     "fishing_motion_threshold": 3.0,
     "fishing_bobber_move_threshold": 1.2,
     "fishing_reel_timeout":    3.0,
-    "fishing_popup_close_delay": 0.9,
+    "fishing_reel_start_delay": 0.00,
+    "fishing_reel_click_interval": 0.08,
+    "fishing_popup_close_delay": 0.18,
+    "btn_profile_card_close": [545, 110],
     "fishing_reset_delay":     1.2,
     "fishing_reset_mode":      "delay",
     "btn_fishing_nav":         None,   # 開地圖導航按鈕（左下角固定）
@@ -692,9 +701,11 @@ asyncio.run(run())
             return None
         return None
 
-    def _handle_known_notice_popup(self, log=None):
+    def _handle_known_notice_popup(self, log=None, allow_star=True):
         notice = self._detect_known_notice_popup()
         if not notice:
+            return False
+        if notice == "star" and not allow_star:
             return False
         if notice == "star":
             buttons = [(480, 468), (480, 462)]
@@ -711,7 +722,7 @@ asyncio.run(run())
                 break
         return True
 
-    def _clear_blocking_overlays(self, log=None, close_recipe=False, attempts=3):
+    def _clear_blocking_overlays(self, log=None, close_recipe=False, attempts=3, allow_star=True):
         handled = False
 
         def _log(msg):
@@ -722,7 +733,11 @@ asyncio.run(run())
             if self._stop.is_set():
                 break
 
-            if self._handle_known_notice_popup(log):
+            if self._close_player_card_popup(log):
+                handled = True
+                continue
+
+            if self._handle_known_notice_popup(log, allow_star=allow_star):
                 handled = True
                 continue
 
@@ -1696,11 +1711,115 @@ asyncio.run(run())
             return "unknown"
         return None
 
+    def _looks_like_fishing_result_popup(self):
+        if not self.hwnd:
+            return False
+        try:
+            img, w, h = capture_window(self.hwnd)
+            img = img.convert("RGB")
+            btn = tuple(self.settings.get("fishing_confirm_btn", DEFAULT_SETTINGS["fishing_confirm_btn"]))
+            confirm_orange = self._region_light_ratio(
+                img, w, h, (btn[0] - 55, btn[1] - 20, btn[0] + 55, btn[1] + 22),
+                lambda r, g, b: r >= 185 and 65 <= g <= 175 and b <= 90 and r > g + 25,
+            )
+            panel_cream = self._region_light_ratio(
+                img, w, h, (345, 230, 615, 420),
+                lambda r, g, b: r >= 230 and g >= 210 and b >= 165,
+            )
+            panel_border = self._region_light_ratio(
+                img, w, h, (325, 210, 635, 445),
+                lambda r, g, b: r >= 190 and 80 <= g <= 170 and b <= 90 and r > g + 25,
+            )
+            center_dark_text = self._region_light_ratio(
+                img, w, h, (370, 245, 590, 315),
+                lambda r, g, b: max(r, g, b) <= 95,
+            )
+            return (
+                confirm_orange >= 0.045
+                and panel_cream >= 0.28
+                and (panel_border >= 0.035 or center_dark_text >= 0.015)
+            )
+        except Exception:
+            return False
+
+    def _detect_player_card_popup(self):
+        if not self.hwnd:
+            return False
+        try:
+            img, w, h = capture_window(self.hwnd)
+            img = img.convert("RGB")
+            close_pt = tuple(self.settings.get("btn_profile_card_close", DEFAULT_SETTINGS["btn_profile_card_close"]))
+            close_orange = self._region_light_ratio(
+                img, w, h, (close_pt[0] - 18, close_pt[1] - 18, close_pt[0] + 18, close_pt[1] + 18),
+                lambda r, g, b: r >= 190 and 75 <= g <= 180 and b <= 100 and r > g + 25,
+            )
+            panel_orange = self._region_light_ratio(
+                img, w, h, (300, 90, 570, 435),
+                lambda r, g, b: r >= 185 and 75 <= g <= 185 and b <= 110 and r > g + 20,
+            )
+            panel_cream = self._region_light_ratio(
+                img, w, h, (325, 120, 545, 405),
+                lambda r, g, b: r >= 220 and g >= 195 and b >= 135,
+            )
+            avatar_dark = self._region_light_ratio(
+                img, w, h, (325, 120, 415, 235),
+                lambda r, g, b: max(r, g, b) <= 95,
+            )
+            icon_row = self._region_light_ratio(
+                img, w, h, (340, 330, 530, 405),
+                lambda r, g, b: max(r, g, b) - min(r, g, b) >= 55 and max(r, g, b) >= 110,
+            )
+            return (
+                close_orange >= 0.08
+                and panel_orange >= 0.07
+                and panel_cream >= 0.18
+                and (avatar_dark >= 0.06 or icon_row >= 0.12)
+            )
+        except Exception:
+            return False
+
+    def _close_player_card_popup(self, log=None):
+        if not self._detect_player_card_popup():
+            return False
+        close_pt = tuple(self.settings.get("btn_profile_card_close", DEFAULT_SETTINGS["btn_profile_card_close"]))
+        if log:
+            log("\u5075\u6e2c\u5230\u4eba\u7269\u8cc7\u6599\u5361\uff0c\u95dc\u9589\u5f8c\u91cd\u65b0\u9032\u5165\u91e3\u9b5a\u72c0\u614b")
+        self.click_real(*close_pt, delay=0.18)
+        return True
+
     def _classify_fishing_text(self, text):
         clean = re.sub(r"\s+", "", text or "")
+        if any(word in clean for word in (
+            "\u5f88\u591a\u9b5a", "\u5f88\u591a\u9c7c", "\u751f\u614b\u5e73\u8861", "\u751f\u6001\u5e73\u8861",
+            "\u660e\u5929\u518d\u4f86", "\u660e\u5929\u518d\u6765", "\u4fdd\u6301\u751f\u614b", "\u4fdd\u6301\u751f\u6001",
+        )):
+            return "limit"
+        if any(word in clean for word in (
+            "\u91e3\u5230", "\u9493\u5230", "\u767e\u5bf6\u7bb1", "\u767e\u5b9d\u7bb1",
+            "\u9b5a\u7a2e", "\u9c7c\u79cd", "\u5df2\u7d93\u653e\u5165", "\u5df2\u7ecf\u653e\u5165",
+        )):
+            return "caught"
+        if any(word in clean for word in (
+            "\u932f\u904e", "\u9519\u8fc7", "\u9b5a\u8dd1", "\u9c7c\u8dd1",
+            "\u4e0b\u6b21\u6536\u687f", "\u4e0b\u6b21\u6536\u6746", "\u53ca\u6642", "\u53ca\u65f6",
+        )):
+            return "missed"
+        if any(word in clean for word in (
+            "\u5eda\u85dd", "\u53a8\u827a", "\u661f\u7d1a", "\u661f\u7ea7", "\u6a19\u6e96", "\u6807\u51c6",
+            "\u734e\u52f5", "\u5956\u52b1", "\u9910\u5ef3", "\u9910\u5385", "\u98df\u8b5c", "\u98df\u8c31",
+        )):
+            return "notice"
         limit_words = ("很多魚", "很多鱼", "生態平衡", "生态平衡", "明天再來", "明天再来")
+        non_fishing_words = (
+            "廚藝", "厨艺", "星級", "星级", "標準", "标准", "獎勵", "奖励",
+            "餐廳", "餐厅", "烹飪", "烹饪", "菜色", "食譜", "食谱",
+            "恭喜", "提升", "提高", "達到", "达到", "魔法", "經驗", "经验",
+            "å»šè—", "æ˜Ÿç´š", "æ¨™æº–", "çŽå‹µ", "é¤å»³",
+        )
         caught_words = ("釣到", "钓到", "百寶箱", "百宝箱", "魚種", "鱼种")
         missed_words = ("錯過", "错过", "魚跑", "鱼跑", "下次收桿", "下次收杆", "及時", "及时")
+        if any(word in clean for word in non_fishing_words):
+            return "notice"
         if any(word in clean for word in limit_words):
             return "limit"
         if any(word in clean for word in caught_words):
@@ -1716,6 +1835,50 @@ asyncio.run(run())
         try:
             rgb = img.convert("RGB")
             w, h = rgb.size
+
+            def ratio(box, predicate, step=2):
+                x1, y1, x2, y2 = box
+                x1, y1 = max(0, int(x1 * w)), max(0, int(y1 * h))
+                x2, y2 = min(w, int(x2 * w)), min(h, int(y2 * h))
+                if x2 <= x1 or y2 <= y1:
+                    return 0.0
+                total = 0
+                hits = 0
+                for y in range(y1, y2, step):
+                    for x in range(x1, x2, step):
+                        total += 1
+                        if predicate(*rgb.getpixel((x, y))):
+                            hits += 1
+                return hits / max(1, total)
+
+            right_orange = ratio(
+                (0.55, 0.08, 0.98, 0.82),
+                lambda r, g, b: r >= 165 and 70 <= g <= 180 and b <= 100 and r > g + 20,
+            )
+            right_cream = ratio(
+                (0.55, 0.08, 0.98, 0.82),
+                lambda r, g, b: r >= 225 and g >= 200 and 130 <= b <= 210,
+            )
+            # 做菜升星彈窗右側通常是兩個橘框文字區；釣魚結果彈窗右側不會有這種結構。
+            if right_orange >= 0.045 and right_cream >= 0.28:
+                return "notice"
+
+            top_blue = ratio(
+                (0.32, 0.08, 0.68, 0.38),
+                lambda r, g, b: b >= 115 and g >= 85 and r <= 150 and b > r + 20,
+            )
+            lower_blue = ratio(
+                (0.28, 0.36, 0.58, 0.72),
+                lambda r, g, b: b >= 115 and g >= 85 and r <= 150 and b > r + 20,
+            )
+            lower_green = ratio(
+                (0.46, 0.43, 0.74, 0.74),
+                lambda r, g, b: g >= 120 and r <= 180 and b <= 150 and g > r + 20,
+            )
+            if top_blue >= 0.025 and top_blue > lower_blue * 1.25 and lower_green < 0.035:
+                return "caught"
+            if lower_blue >= 0.025 and (lower_green >= 0.025 or lower_blue > top_blue * 1.15):
+                return "missed"
 
             def color_score(box):
                 x1, y1, x2, y2 = box
@@ -1745,6 +1908,19 @@ asyncio.run(run())
         except Exception:
             pass
         return "unknown"
+
+    def _classify_fishing_result(self, popup_img):
+        text = self._ocr_image(popup_img) if popup_img is not None else ""
+        self._last_ocr_text = text.strip()
+        text_result = self._classify_fishing_text(text)
+        visual_result = self._classify_fishing_image(popup_img)
+
+        if text_result in ("caught", "missed", "limit", "notice"):
+            return text_result, text, visual_result
+        if visual_result in ("caught", "missed", "limit", "notice"):
+            tagged = (text + f" [visual={visual_result}]").strip()
+            return visual_result, tagged, visual_result
+        return "unknown", text, visual_result
 
     def _extract_fishing_item(self, text, result):
         if result != "caught":
@@ -1811,10 +1987,16 @@ asyncio.run(run())
 
     def _record_fishing_popup_async(self, log, slot_idx, popup_img):
         def worker():
-            text = self._ocr_image(popup_img) if popup_img is not None else ""
-            self._last_ocr_text = text.strip()
-            result = self._classify_fishing_text(text)
+            result, text, visual_result = self._classify_fishing_result(popup_img)
+            if result == "notice":
+                if log:
+                    log("釣魚：偵測到非釣魚彈窗，已關閉但不記錄")
+                return
             visual_result = self._classify_fishing_image(popup_img)
+            if visual_result == "notice":
+                if log:
+                    log("釣魚：偵測到做菜升星彈窗，已關閉但不記錄")
+                return
             if result == "unknown" and visual_result != "unknown":
                 result = visual_result
                 text = (text + f" [visual={visual_result}]").strip()
@@ -1839,23 +2021,39 @@ asyncio.run(run())
             self._fishing_popup_handled = False
             self._fishing_limit_reached = False
 
-    def _handle_fishing_popup(self, log=None, slot_idx=0):
-        if not self._has_popup_panel_fast():
-            return False
+    def _close_fishing_result_popup(self, log=None, slot_idx=0):
         pt = tuple(self.settings.get("fishing_confirm_btn", DEFAULT_SETTINGS["fishing_confirm_btn"]))
         now = time.time()
         if now - self._last_fishing_popup_click_at < 2.0:
             self.click_real(*pt, delay=0.04)
-            return True
+            return "result"
+
         self._last_fishing_popup_click_at = now
-        popup_img = self._capture_mole_region((320, 210, 640, 430))
-        close_delay = float(self.settings.get("fishing_popup_close_delay", 0.9))
+        close_delay = min(0.25, float(self.settings.get("fishing_popup_close_delay", 0.18)))
         if close_delay > 0 and not self.wait(close_delay):
-            return False
+            return None
+
+        popup_img = self._capture_mole_region((300, 190, 660, 450))
         self.click_real(*pt, delay=0.04)
         self._fishing_popup_handled = True
         self._record_fishing_popup_async(log, slot_idx, popup_img)
-        return True
+        return "result"
+
+    def _wait_and_close_fishing_result_popup(self, log=None, slot_idx=0, timeout=0.0):
+        deadline = time.time() + max(0.0, float(timeout))
+        while not self._stop.is_set():
+            if self._close_player_card_popup(log):
+                return "profile"
+            if self._handle_known_notice_popup(log, allow_star=False):
+                return "notice"
+            if self._looks_like_fishing_result_popup():
+                return self._close_fishing_result_popup(log, slot_idx=slot_idx)
+            if time.time() >= deadline:
+                return None
+            time.sleep(0.04)
+
+    def _handle_fishing_popup(self, log=None, slot_idx=0):
+        return self._wait_and_close_fishing_result_popup(log, slot_idx=slot_idx, timeout=0.0) is not None
 
     def _reset_after_fishing_result(self, on_status, seat=None, slot_idx=0):
         if not self._fishing_popup_handled:
@@ -1891,17 +2089,15 @@ asyncio.run(run())
         time.sleep(1.0)
 
     def _clear_fishing_popup_fast(self, log=None, timeout=1.5, slot_idx=0):
-        handled = False
-        deadline = time.time() + timeout
-        while time.time() < deadline and not self._stop.is_set():
-            if self._handle_fishing_popup(log, slot_idx=slot_idx):
-                handled = True
-                time.sleep(0.06)
-                continue
-            if handled:
+        handled = self._wait_and_close_fishing_result_popup(log, slot_idx=slot_idx, timeout=timeout)
+        if not handled:
+            return False
+        gone_deadline = time.time() + 1.2
+        while time.time() < gone_deadline and not self._stop.is_set():
+            if not self._has_popup_panel_fast():
                 break
-            time.sleep(0.04)
-        return handled
+            time.sleep(0.08)
+        return True
 
     def _bobber_center(self, img):
         if img is None:
@@ -1927,6 +2123,9 @@ asyncio.run(run())
         timeout = float(self.settings.get("fishing_start_timeout", 3.0))
         threshold = float(self.settings.get("fishing_motion_threshold", 3.0))
         move_threshold = float(self.settings.get("fishing_bobber_move_threshold", 1.2))
+        bite_threshold = float(self.settings.get("fishing_bite_threshold", 16))
+        strong_bite_threshold = float(self.settings.get("fishing_bite_strong_threshold", 24))
+        bite_move_threshold = float(self.settings.get("fishing_bite_move_threshold", 5.0))
         box = self._fishing_bobber_box(bobber_pt)
 
         baseline = self._capture_mole_region(box)
@@ -1947,8 +2146,14 @@ asyncio.run(run())
             if base_center and center:
                 move = ((center[0] - base_center[0]) ** 2 + (center[1] - base_center[1]) ** 2) ** 0.5
                 best_move = max(best_move, move)
-                if move >= move_threshold:
+                if score >= bite_threshold or move >= bite_move_threshold:
+                    on_status(f"釣魚：浮標一開始就大幅變動，直接收桿（差異 {score:.1f} / 位移 {move:.1f}）")
+                    return "bite"
+                if score >= threshold or move >= move_threshold:
                     return True
+            elif score >= strong_bite_threshold:
+                on_status(f"釣魚：浮標一開始就大幅變動，直接收桿（差異 {score:.1f}）")
+                return "bite"
             elif score >= threshold:
                 return True
             time.sleep(0.12)
@@ -1959,55 +2164,129 @@ asyncio.run(run())
     def _wait_for_fish_bite(self, on_status, click_pt, bobber_pt=None, slot_idx=0, override_timeout=None):
         wait_sec = override_timeout if override_timeout is not None else int(self.settings.get("fishing_wait_seconds", 25))
         threshold = float(self.settings.get("fishing_bite_threshold", 16))
+        strong_threshold = float(self.settings.get("fishing_bite_strong_threshold", 24))
+        move_threshold = float(self.settings.get("fishing_bite_move_threshold", 5.0))
+        frame_threshold = float(self.settings.get("fishing_bite_frame_threshold", 9.0))
+        hits_needed = 1
+        interval = max(0.03, float(self.settings.get("fishing_bite_interval", 0.05)))
+        wait_click_interval = max(0.0, float(self.settings.get("fishing_wait_click_interval", 0.18)))
+        tap_pt = tuple(bobber_pt or click_pt)
         box = self._fishing_bobber_box(bobber_pt or click_pt)
 
         # 丟竿後浮標會先穩定一下，再用這張當等待基準。
-        if not self.wait(0.8):
-            return False
         baseline = self._capture_mole_region(box)
         if baseline is None:
             return False
+        base_center = self._bobber_center(baseline)
+        prev = baseline
 
         deadline = time.time() + wait_sec
         last_report = 0
         consecutive_hits = 0
+        best_score = 0.0
+        best_move = 0.0
+        next_wait_click = 0.0
         while time.time() < deadline and not self._stop.is_set():
             if self._handle_fishing_popup(on_status, slot_idx=slot_idx):
                 return "popup"
 
+            now = time.time()
+            if wait_click_interval > 0 and now >= next_wait_click:
+                self.click_real(*tap_pt, delay=0.0)
+                next_wait_click = now + wait_click_interval
+
             current = self._capture_mole_region(box)
-            score = self._image_diff_score(baseline, current)
-            if score >= threshold:
+            baseline_score = self._image_diff_score(baseline, current)
+            frame_score = self._image_diff_score(prev, current)
+            score = max(baseline_score, frame_score)
+            best_score = max(best_score, score)
+
+            center = self._bobber_center(current)
+            move = 0.0
+            if base_center and center:
+                move = ((center[0] - base_center[0]) ** 2 + (center[1] - base_center[1]) ** 2) ** 0.5
+                best_move = max(best_move, move)
+
+            if baseline_score >= strong_threshold or frame_score >= strong_threshold or move >= move_threshold:
+                on_status(f"釣魚：偵測到上鉤，立即收桿（差異 {score:.1f} / 位移 {move:.1f}）")
+                return True
+
+            if baseline_score >= threshold or frame_score >= frame_threshold:
                 consecutive_hits += 1
-                if consecutive_hits >= 3:
+                if consecutive_hits >= hits_needed:
                     on_status(f"釣魚：浮標變化 {score:.1f}，收竿")
                     return True
             else:
                 consecutive_hits = 0
+                baseline = current
+                if center:
+                    base_center = center
+            prev = current
 
             if time.time() - last_report >= 1.0:
                 rem = max(0, int(deadline - time.time()))
                 on_status(f"釣魚中，等待上鉤…（剩 {rem} 秒）")
                 last_report = time.time()
-            if not self.wait(0.08):
+            if not self.wait(interval):
                 return False
         return False
 
     def _reel_until_popup(self, on_status, click_pt, slot_idx=0):
         timeout = float(self.settings.get("fishing_reel_timeout", 3.0))
+        start_delay = min(0.12, float(self.settings.get("fishing_reel_start_delay", 0.0)))
+        click_interval = max(0.05, float(self.settings.get("fishing_reel_click_interval", 0.08)))
         deadline = time.time() + timeout
-        on_status("釣魚：已上鉤，連續收桿確認…")
+        on_status("釣魚：已上鉤，準備收桿…")
+        if start_delay > 0 and not self.wait(start_delay):
+            return False
+        next_click = 0.0
         while time.time() < deadline and not self._stop.is_set():
             if self._handle_fishing_popup(on_status, slot_idx=slot_idx):
                 return True
-            if not (win32api.GetAsyncKeyState(win32con.VK_LBUTTON) & 0x8000):
+            now = time.time()
+            if now >= next_click:
                 self.click_real(*click_pt, delay=0.02)
-            if self._clear_fishing_popup_fast(on_status, timeout=0.18, slot_idx=slot_idx):
+                next_click = now + click_interval
+            if self._clear_fishing_popup_fast(on_status, timeout=0.12, slot_idx=slot_idx):
                 return True
             if not self.wait(0.08):
                 return False
         on_status("釣魚：收桿後沒有看到結果彈窗，重試下竿")
         return False
+
+    def _run_single_fishing_cycle(self, on_status, seat, cast_pt, bobber_pt, slot_idx, seat_count):
+        on_status(f"釣魚：點椅子 {slot_idx + 1}/{seat_count}")
+        self.click_real(*seat, delay=0.9)
+
+        started = self._wait_for_fishing_started(on_status, bobber_pt, slot_idx=slot_idx)
+        if started == "popup":
+            self._reset_after_fishing_result(on_status, seat, slot_idx=slot_idx)
+            return True
+        if started == "bite":
+            self._reel_until_popup(on_status, bobber_pt, slot_idx=slot_idx)
+            self._reset_after_fishing_result(on_status, seat, slot_idx=slot_idx)
+            return True
+        if started == "timeout":
+            bite = self._wait_for_fish_bite(on_status, cast_pt, bobber_pt, slot_idx=slot_idx, override_timeout=10)
+        elif not started:
+            self._clear_fishing_popup_fast(on_status, timeout=0.5, slot_idx=slot_idx)
+            self.wait(0.4)
+            return True
+        else:
+            bite = self._wait_for_fish_bite(on_status, cast_pt, bobber_pt, slot_idx=slot_idx)
+
+        if bite is True:
+            self._reel_until_popup(on_status, bobber_pt, slot_idx=slot_idx)
+            self._reset_after_fishing_result(on_status, seat, slot_idx=slot_idx)
+        elif bite == "popup":
+            self._clear_fishing_popup_fast(on_status, timeout=1.0, slot_idx=slot_idx)
+            self._reset_after_fishing_result(on_status, seat, slot_idx=slot_idx)
+        else:
+            on_status("釣魚：等待時間內沒有上鉤，重新下竿")
+            self.click_real(*cast_pt, delay=0.1)
+            self._clear_fishing_popup_fast(on_status, timeout=0.8, slot_idx=slot_idx)
+            self._reset_after_fishing_result(on_status, seat, slot_idx=slot_idx)
+        return True
 
     def run_fishing(self, on_status):
         self._stop.clear()
@@ -2035,11 +2314,12 @@ asyncio.run(run())
         slot_idx = max(0, min(max_slots - 1, slot_idx))
         try:
             on_status(f"釣魚模式啟動：固定使用釣位 {slot_idx + 1}")
-            self._clear_blocking_overlays(on_status, close_recipe=True)
             if not self._is_in_fishing_area():
                 on_status("釣魚：不在釣魚場景，嘗試導航…")
                 if not self._navigate_to_fishing(on_status, slot_idx):
                     return
+
+            self._clear_blocking_overlays(on_status, close_recipe=True, allow_star=False)
 
             while not self._stop.is_set():
                 if not self._is_window_alive():
@@ -2102,38 +2382,9 @@ asyncio.run(run())
                 seat = seats[slot_idx % len(seats)]
                 cast_pt = cast_pts[slot_idx % len(cast_pts)]
                 bobber_pt = bobber_pts[slot_idx % len(bobber_pts)]
-                on_status(f"釣魚：點椅子 {slot_idx + 1}/{len(seats)}")
-                self.click_real(*seat, delay=0.9)
-                started = self._wait_for_fishing_started(on_status, bobber_pt, slot_idx=slot_idx)
-                if started == "popup":
-                    self._reset_after_fishing_result(on_status, seat, slot_idx=slot_idx)
-                    continue
-                if started == "timeout":
-                    bite = self._wait_for_fish_bite(on_status, cast_pt, bobber_pt, slot_idx=slot_idx, override_timeout=10)
-                    if bite is True:
-                        self._reel_until_popup(on_status, cast_pt, slot_idx=slot_idx)
-                        self._reset_after_fishing_result(on_status, seat, slot_idx=slot_idx)
-                    elif bite == "popup":
-                        self._clear_fishing_popup_fast(on_status, timeout=1.0, slot_idx=slot_idx)
-                        self._reset_after_fishing_result(on_status, seat, slot_idx=slot_idx)
-                    continue
-                if not started:
-                    self._clear_fishing_popup_fast(on_status, timeout=0.5, slot_idx=slot_idx)
-                    self.wait(0.4)
-                    continue
-                bite = self._wait_for_fish_bite(on_status, cast_pt, bobber_pt, slot_idx=slot_idx)
-
-                if bite is True:
-                    self._reel_until_popup(on_status, cast_pt, slot_idx=slot_idx)
-                    self._reset_after_fishing_result(on_status, seat, slot_idx=slot_idx)
-                elif bite == "popup":
-                    self._clear_fishing_popup_fast(on_status, timeout=1.0, slot_idx=slot_idx)
-                    self._reset_after_fishing_result(on_status, seat, slot_idx=slot_idx)
-                else:
-                    on_status("釣魚：等待逾時，重新下竿")
-                    self.click_real(*cast_pt, delay=0.1)
-                    self._clear_fishing_popup_fast(on_status, timeout=0.8, slot_idx=slot_idx)
-                    self._reset_after_fishing_result(on_status, seat, slot_idx=slot_idx)
+                self._run_single_fishing_cycle(
+                    on_status, seat, cast_pt, bobber_pt, slot_idx, len(seats)
+                )
         finally:
             if self._fishing_limit_reached:
                 try:
@@ -2226,11 +2477,31 @@ asyncio.run(run())
         """偵測歡樂轉轉彈窗。
         只把大型彈窗文字算進來，避免右上角小活動圖示被誤認成彈窗。"""
         text = self._ocr_screen_region(220, 70, 780, 540)
-        if not text:
+        if text:
+            has_title = any(kw in text for kw in ["歡樂", "欢乐", "转转", "轉轉", "天天"])
+            has_body = any(kw in text for kw in ["啟動", "启动", "剩餘", "剩余", "抽獎", "抽奖", "輪盤", "轮盘"])
+            if has_title or has_body:
+                return True
+
+        try:
+            img, w, h = capture_window(self.hwnd)
+            img = img.convert("RGB")
+            btn = tuple(self.settings.get("btn_happy_spin_close", [705, 105]))
+            close_red = self._region_light_ratio(
+                img, w, h, (btn[0] - 18, btn[1] - 18, btn[0] + 18, btn[1] + 18),
+                lambda r, g, b: r >= 165 and 40 <= g <= 150 and b <= 95 and r > g + 35,
+            )
+            panel_yellow = self._region_light_ratio(
+                img, w, h, (245, 75, 725, 525),
+                lambda r, g, b: r >= 210 and g >= 145 and b <= 120,
+            )
+            panel_cream = self._region_light_ratio(
+                img, w, h, (300, 145, 660, 460),
+                lambda r, g, b: r >= 230 and g >= 205 and b >= 145,
+            )
+            return close_red >= 0.06 and panel_yellow >= 0.18 and panel_cream >= 0.18
+        except Exception:
             return False
-        has_title = any(kw in text for kw in ["歡樂", "转转", "轉轉", "天天"])
-        has_body = any(kw in text for kw in ["啟動", "启动", "剩餘", "剩余"])
-        return has_title and has_body
 
     def _close_happy_spin_popup(self, on_status=None):
         if not self._detect_happy_spin_popup():
@@ -2381,7 +2652,14 @@ asyncio.run(run())
                     return key
         return None
 
-    def _login_flow(self, on_status):
+    def _after_login_action(self, on_status, after_login="restaurant"):
+        self._clear_blocking_overlays(on_status, close_recipe=True, attempts=2)
+        if after_login == "restaurant":
+            return self._navigate_to_restaurant_after_login(on_status)
+        on_status("登入完成，已進入遊戲場景…")
+        return True
+
+    def _login_flow(self, on_status, after_login="restaurant"):
         """從主畫面完成整個登入流程直到進入遊戲。
         會先偵測目前停在哪個登入畫面，從正確步驟繼續。"""
         btn_start = tuple(self.settings.get("btn_game_start",  [484, 398]))
@@ -2390,7 +2668,7 @@ asyncio.run(run())
         self._close_happy_spin_popup(on_status)
 
         if self._wait_for_game_scene(timeout=0.8, on_status=None, require_text=True):
-            return self._navigate_to_restaurant_after_login(on_status)
+            return self._after_login_action(on_status, after_login)
 
         # 偵測目前停在哪個畫面，決定從哪步開始
         screen = self._detect_login_screen()
@@ -2462,9 +2740,9 @@ asyncio.run(run())
         self._handle_notice_popup(on_status)
         if not self.wait(1.0):
             return False
-        return self._navigate_to_restaurant_after_login(on_status)
+        return self._after_login_action(on_status, after_login)
 
-    def _launch_flash_and_login(self, on_status):
+    def _launch_flash_and_login(self, on_status, after_login="restaurant"):
         """Flash 閃退：重啟 exe → 開啟遊戲 URL → 走登入流程。"""
         import subprocess
         exe  = (self.settings.get("flash_exe_path") or "").strip()
@@ -2500,7 +2778,7 @@ asyncio.run(run())
             return False
 
         # 走登入流程
-        return self._login_flow(on_status)
+        return self._login_flow(on_status, after_login=after_login)
 
     def run(self, page, dish, scan_interval, antlag_minutes, on_status):
         self._stop.clear()
@@ -2681,20 +2959,29 @@ class App:
                        "game_url",
                        "btn_disconnect_confirm", "btn_notice_ok", "btn_online_time_ok",
                        "btn_game_start", "btn_login", "btn_quick_start",
-                       "btn_happy_spin_close",
+                       "btn_happy_spin_close", "btn_profile_card_close",
                        "btn_land", "btn_land_restaurant",
                        "fishing_seats", "fishing_leave_pts", "fishing_limit_stop_pts",
                        "fishing_cast_pt", "fishing_cast_pts",
                        "fishing_bobber_pt", "fishing_bobber_pts",
                        "fishing_confirm_btn",
+                       "fishing_bite_strong_threshold",
+                       "fishing_bite_move_threshold",
+                       "fishing_bite_frame_threshold",
+                       "fishing_bite_hits", "fishing_bite_interval",
+                       "fishing_wait_click_interval",
                        "fishing_start_timeout", "fishing_motion_threshold",
                        "fishing_bobber_move_threshold",
                        "fishing_reel_timeout",
+                       "fishing_reel_start_delay", "fishing_reel_click_interval",
                        "fishing_popup_close_delay", "fishing_reset_delay",
                        "fishing_reset_mode",
                        "btn_fishing_nav", "fishing_nav_scene_pt",
                        "fishing_nav_detail_pt",
-                       "fishing_area_check_pt", "fishing_area_color")
+                       "fishing_area_check_pt", "fishing_area_color",
+                       "main_screen_check_pt", "main_screen_check_color",
+                       "login_screen_check_pt", "login_screen_check_color",
+                       "server_screen_check_pt", "server_screen_check_color")
         self._extra_settings = {k: settings[k] for k in _extra_keys}
         self.bot = RestaurantBot(self.stoves, self.recipe, settings)
         self._build_ui(settings)
@@ -3629,10 +3916,10 @@ class App:
                 hwnd = self.bot.find_window()
                 if hwnd:
                     self.bot.hwnd = hwnd
-                    self.bot._login_flow(self._on_status)
+                    self.bot._login_flow(self._on_status, after_login="none")
                 else:
                     self._on_status("找不到 Flash Player 視窗，嘗試自動開啟…")
-                    self.bot._launch_flash_and_login(self._on_status)
+                    self.bot._launch_flash_and_login(self._on_status, after_login="none")
             finally:
                 self.root.after(0, lambda: self._set_running(False))
         threading.Thread(target=_run, daemon=True).start()

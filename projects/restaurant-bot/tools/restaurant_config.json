@@ -662,12 +662,12 @@
     "smoke_pct_threshold": 0.15,
     "game_url": "http://mole.61.com.tw/Client.swf",
     "btn_disconnect_confirm": [
-      478,
-      382
+      498,
+      369
     ],
     "btn_notice_ok": [
-      474,
-      356
+      480,
+      346
     ],
     "btn_online_time_ok": [
       474,
@@ -688,6 +688,10 @@
     "btn_happy_spin_close": [
       700,
       133
+    ],
+    "btn_profile_card_close": [
+      545,
+      110
     ],
     "btn_land": [
       880,
@@ -796,15 +800,71 @@
       ]
     ],
     "fishing_confirm_btn": [
-      475,
-      344
+      480,
+      343
     ],
+    "fishing_bite_strong_threshold": 24,
+    "fishing_bite_move_threshold": 5.0,
+    "fishing_bite_frame_threshold": 9.0,
+    "fishing_bite_hits": 2,
+    "fishing_bite_interval": 0.05,
+    "fishing_wait_click_interval": 0.18,
     "fishing_start_timeout": 3.0,
     "fishing_motion_threshold": 3.0,
     "fishing_bobber_move_threshold": 1.2,
     "fishing_reel_timeout": 3.0,
+    "fishing_reel_start_delay": 0.18,
+    "fishing_reel_click_interval": 0.35,
     "fishing_popup_close_delay": 0.55,
     "fishing_reset_delay": 0.8,
-    "fishing_reset_mode": "delay"
+    "fishing_reset_mode": "delay",
+    "btn_fishing_nav": [
+      37,
+      510
+    ],
+    "fishing_nav_scene_pt": [
+      306,
+      192
+    ],
+    "fishing_nav_detail_pt": [
+      603,
+      276
+    ],
+    "fishing_area_check_pt": [
+      556,
+      459
+    ],
+    "fishing_area_color": [
+      105,
+      179,
+      209
+    ],
+    "main_screen_check_pt": [
+      480,
+      469
+    ],
+    "main_screen_check_color": [
+      244,
+      217,
+      200
+    ],
+    "login_screen_check_pt": [
+      477,
+      473
+    ],
+    "login_screen_check_color": [
+      252,
+      194,
+      146
+    ],
+    "server_screen_check_pt": [
+      608,
+      475
+    ],
+    "server_screen_check_color": [
+      255,
+      255,
+      255
+    ]
   }
 }
