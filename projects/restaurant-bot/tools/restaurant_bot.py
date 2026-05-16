@@ -3490,6 +3490,10 @@ class App:
             if s.get("fishing_area_check_pt"):
                 square(*s["fishing_area_check_pt"], "#00d4aa", "釣魚確認點", r=8)
 
+            # 彈窗按鈕
+            if s.get("btn_profile_card_close"):
+                dot(*s["btn_profile_card_close"], "#ff70c0", "資料卡X")
+
             # 縮放顯示
             disp_scale = min(900/game_w, 580/game_h, 1.0)
             disp_w = int(game_w * disp_scale)
@@ -3507,12 +3511,19 @@ class App:
             canvas.photo = photo
             canvas_holder[0] = canvas
 
-            # 滑鼠移動顯示摩爾座標
+            # 滑鼠移動顯示摩爾座標 + RGB 顏色
             total_scale = scale * disp_scale
-            def on_move(event, _ts=total_scale):
+            img_rgb = img.convert("RGB")
+            def on_move(event, _ts=total_scale, _ds=disp_scale, _img=img_rgb):
                 mx = int(event.x / _ts)
                 my = int(event.y / _ts)
-                coord_var.set(f"摩爾座標：({mx}, {my})")
+                px = max(0, min(_img.width  - 1, int(event.x / _ds)))
+                py = max(0, min(_img.height - 1, int(event.y / _ds)))
+                try:
+                    r, g, b = _img.getpixel((px, py))[:3]
+                    coord_var.set(f"摩爾座標：({mx}, {my})    RGB ({r}, {g}, {b})")
+                except Exception:
+                    coord_var.set(f"摩爾座標：({mx}, {my})")
             canvas.bind("<Motion>", on_move)
             canvas.bind("<Leave>",  lambda e: coord_var.set("移動滑鼠查看座標"))
 
@@ -3530,6 +3541,7 @@ class App:
             ("#7090ff", "◆ 門口"),
             ("#ff6090", "■ 餐廳"),
             ("#30a0ff", "● 導航"),
+            ("#ff70c0", "● 彈窗按鈕"),
         ]
         legend_frame = ttk.Frame(win)
         legend_frame.pack(side=tk.TOP, fill=tk.X, padx=8, pady=(0, 2))
