@@ -50,6 +50,11 @@ DEFAULT_CONFIG = {
         "left": 0.17, "top": 0.27,
         "right": 0.74, "bottom": 0.34,
     },
+    "popup_full_region": {           # 完整彈窗區域（送 Claude API 用）
+        "left": 0.15, "top": 0.09,
+        "right": 0.76, "bottom": 0.36,
+    },
+    "api_key": "",                   # Anthropic API Key（留空則使用 Windows OCR）
 }
 
 _OCR_SCRIPT = r"""
@@ -105,6 +110,62 @@ def capture_window(hwnd):
     img = Image.frombuffer("RGB", (info["bmWidth"], info["bmHeight"]),
                            raw, "raw", "BGRX", 0, 1)
     return img, w, h
+
+
+# ── Claude API 視覺辨識 ───────────────────────────────────────────────────────
+
+def claude_read_popup(pil_img, api_key):
+    """把彈窗截圖送 Claude API，回傳 (question_text, [opt1,opt2,opt3,opt4])。
+    失敗回傳 (None, [])。需安裝 anthropic 套件：pip install anthropic"""
+    try:
+        import anthropic, base64, json as _json
+        buf = io.BytesIO()
+        img = pil_img.convert("RGB")
+        # 確保圖片夠大，辨識更準確
+        if max(img.width, img.height) < 600:
+            scale = max(2, 600 // max(img.width, img.height))
+            img = img.resize((img.width * scale, img.height * scale),
+                             Image.Resampling.LANCZOS)
+        img.save(buf, format="PNG")
+        b64 = base64.b64encode(buf.getvalue()).decode()
+
+        client = anthropic.Anthropic(api_key=api_key)
+        resp   = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=400,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image",
+                        "source": {"type": "base64", "media_type": "image/png", "data": b64},
+                    },
+                    {
+                        "type": "text",
+                        "text": (
+                            '這是一個武俠遊戲的問答截圖（繁體中文）。'
+                            '請讀出題目文字和四個選項，以JSON格式回傳，只輸出JSON不加任何說明：'
+                            '{"question":"完整題目文字","options":["選項1","選項2","選項3","選項4"]}'
+                        ),
+                    },
+                ],
+            }],
+        )
+        raw  = resp.content[0].text.strip()
+        # 容忍 markdown code block 包裝
+        raw  = re.sub(r'^```[a-z]*\n?', '', raw).rstrip('`').strip()
+        data = _json.loads(raw)
+        q    = data.get("question", "").strip()
+        opts = data.get("options", [])
+        if isinstance(opts, list):
+            opts = [str(o).strip() for o in opts[:4]]
+        while len(opts) < 4:
+            opts.append("")
+        return q, opts
+    except ImportError:
+        return None, []   # anthropic 未安裝
+    except Exception:
+        return None, []
 
 
 # ── 感知哈希 ──────────────────────────────────────────────────────────────────
@@ -350,15 +411,28 @@ class QuizDetector:
             on_status(f"題庫命中：{entry['question'][:20]}")
             return dict(entry, source="題庫", phash=ph)
 
-        # 2. OCR 辨識
-        on_status("題庫未命中，OCR 辨識中…")
-        q_text   = ocr_image(q_img)
-        opt_img  = self._crop(img, w, h, "options_region")
-        opt_text = ocr_image(opt_img)
-        options  = self._parse_options(opt_text)
+        # 2. 文字辨識：優先 Claude API，fallback Windows OCR
+        api_key  = self.config.get("api_key", "").strip()
+        q_text   = ""
+        options  = []
+
+        if api_key:
+            on_status("題庫未命中，Claude API 辨識中…")
+            full_img = self._crop(img, w, h, "popup_full_region")
+            q_text, options = claude_read_popup(full_img, api_key)
+            if not q_text:
+                on_status("API 辨識失敗，改用 Windows OCR…")
 
         if not q_text:
-            on_status("OCR 辨識失敗，請確認視窗是否在前景")
+            if not api_key:
+                on_status("題庫未命中，OCR 辨識中…")
+            q_text   = ocr_image(q_img)
+            opt_img  = self._crop(img, w, h, "options_region")
+            opt_text = ocr_image(opt_img)
+            options  = self._parse_options(opt_text)
+
+        if not q_text:
+            on_status("辨識失敗，請確認視窗是否在前景")
             return None
 
         self._last_q = q_text
@@ -606,6 +680,37 @@ class QuizApp:
 
         self._cfg_vars = {}
 
+        # API Key 設定（獨立，用密碼欄位）
+        tk.Label(f, text="Claude API Key（辨識題目用）", bg=BG2, fg=ACCENT,
+                 font=("Microsoft JhengHei UI", 10, "bold")).pack(anchor="w")
+        api_row = tk.Frame(f, bg=BG2)
+        api_row.pack(fill=tk.X, pady=2)
+        tk.Label(api_row, text="ANTHROPIC_API_KEY", bg=BG2, fg=TEXT_NORM,
+                 font=("Microsoft JhengHei UI", 9),
+                 width=22, anchor="w").pack(side=tk.LEFT)
+        api_var = tk.StringVar(value=self.config.get("api_key", ""))
+        self._cfg_vars["api_key"] = api_var
+        api_entry = tk.Entry(api_row, textvariable=api_var, width=28,
+                             show="*",
+                             bg="#22223A", fg=TEXT_NORM, insertbackground=TEXT_NORM,
+                             relief=tk.FLAT)
+        api_entry.pack(side=tk.LEFT, padx=4)
+        # 切換顯示/隱藏
+        def _toggle_show(btn=None, entry=api_entry):
+            if entry.cget("show") == "*":
+                entry.configure(show="")
+                if btn: btn.configure(text="隱藏")
+            else:
+                entry.configure(show="*")
+                if btn: btn.configure(text="顯示")
+        show_btn = tk.Button(api_row, text="顯示", bg=BG2, fg=TEXT_DIM,
+                             relief=tk.FLAT, padx=4, font=("Microsoft JhengHei UI", 8),
+                             command=lambda: _toggle_show(show_btn))
+        show_btn.pack(side=tk.LEFT)
+        tk.Label(f, text="留空則使用 Windows OCR（效果較差）", bg=BG2, fg=TEXT_DIM,
+                 font=("Microsoft JhengHei UI", 8)).pack(anchor="w", padx=4)
+
+        tk.Label(f, text="", bg=BG2).pack()
         tk.Label(f, text="彈窗偵測設定", bg=BG2, fg=ACCENT,
                  font=("Microsoft JhengHei UI", 10, "bold")).pack(anchor="w")
         row(f, "偵測點 X 比例", "popup_check_x", "0.0–1.0，視窗左→右")
@@ -753,9 +858,15 @@ class QuizApp:
             self.db_tree.insert("", "end", values=(q, f"{idx}. {t}", src))
 
     def _apply_cfg(self):
+        # 純字串欄位（不嘗試轉數字）
+        _str_keys = {"api_key"}
         for key, var in self._cfg_vars.items():
+            raw = var.get()
+            if key in _str_keys:
+                self.config[key] = raw
+                continue
             try:
-                val = float(var.get())
+                val = float(raw)
                 if "." in key:
                     region_key, sub = key.split(".", 1)
                     if region_key not in self.config:
