@@ -458,7 +458,7 @@ class QuizDetector:
             "phash":       ph,
         }
 
-    def run(self, on_result, on_status, on_error):
+    def run(self, on_result, on_status, on_error, on_popup_gone=None):
         """主監測迴圈（在子執行緒執行）。"""
         self._stop.clear()
         found = self.find_window()
@@ -476,9 +476,13 @@ class QuizDetector:
                     on_error("遊戲視窗已關閉")
                     return
                 img, w, h = capture_window(self.hwnd)
+                was_on    = self._popup_on
                 result    = self.process_frame(img, w, h, on_status)
                 if result:
                     on_result(result)
+                # 彈窗剛消失時通知 UI
+                if was_on and not self._popup_on and on_popup_gone:
+                    on_popup_gone()
             except Exception as e:
                 on_status(f"錯誤：{e}")
             self._stop.wait(0.5)
@@ -509,6 +513,7 @@ class QuizApp:
         self.detector = QuizDetector(self.config, self.db)
         self._thread  = None
         self._current = None
+        self._pinned  = True   # True=常駐置頂，False=偵測到題目才彈出
 
         self._build_ui()
 
@@ -631,6 +636,16 @@ class QuizApp:
             command=self._fix_answer, state=tk.DISABLED,
         )
         self.fix_btn.pack(side=tk.LEFT, padx=(6, 0))
+
+        # 釘選置頂切換
+        self.pin_btn = tk.Button(
+            btn_row, text="📌",
+            font=("Segoe UI Emoji", 13),
+            bg="#2C3E50", fg="#F1C40F", activebackground="#34495E",
+            relief=tk.FLAT, padx=6, pady=3,
+            command=self._toggle_pin,
+        )
+        self.pin_btn.pack(side=tk.RIGHT)
 
         # 狀態列
         self.status_var = tk.StringVar(value="就緒，按「開始監測」後會自動尋找遊戲視窗")
@@ -755,6 +770,16 @@ class QuizApp:
 
     # ── 控制 ──
 
+    def _toggle_pin(self):
+        self._pinned = not self._pinned
+        if self._pinned:
+            self.pin_btn.configure(fg="#F1C40F")   # 金色=已釘選
+            self.root.attributes("-topmost", True)
+            self.root.deiconify()
+        else:
+            self.pin_btn.configure(fg="#555577")    # 暗色=未釘選
+            self.root.attributes("-topmost", False)
+
     def _toggle_monitor(self):
         if self._thread and self._thread.is_alive():
             self.detector.stop()
@@ -766,13 +791,38 @@ class QuizApp:
             self._thread = threading.Thread(
                 target=self.detector.run,
                 args=(self._on_result, self._set_status, self._on_error),
+                kwargs={"on_popup_gone": self._on_popup_gone},
                 daemon=True,
             )
             self._thread.start()
 
     def _on_result(self, result):
         self._current = result
+        # 未釘選時彈出視窗
+        if not self._pinned:
+            self.root.after(0, self._popup_window)
         self.root.after(0, self._show_result, result)
+
+    def _popup_window(self):
+        """把視窗帶到前景（未釘選模式用）。"""
+        self.root.deiconify()
+        self.root.attributes("-topmost", True)
+        self.root.lift()
+        self.root.after(50, lambda: self.root.attributes("-topmost", not self._pinned and False or True))
+        # 短暫置頂確保跳出來，之後若未釘選就放掉
+        if not self._pinned:
+            self.root.after(500, lambda: self.root.attributes("-topmost", False))
+
+    def _on_popup_gone(self):
+        """題目消失後（未釘選模式）延遲 3 秒縮回背景。"""
+        if not self._pinned:
+            self.root.after(3000, self._auto_hide)
+
+    def _auto_hide(self):
+        """把視窗降到背景（未釘選模式）。"""
+        if not self._pinned:
+            self.root.attributes("-topmost", False)
+            self.root.lower()
 
     def _on_error(self, msg):
         self.root.after(0, lambda: [
