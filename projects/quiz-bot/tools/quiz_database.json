@@ -1,0 +1,1304 @@
+{
+  "entries": [
+    {
+      "phash": 0,
+      "question": "遊戲中，初始玩家在未使用任何虛寶前，一開始身上可用的道具欄總共是幾格？",
+      "answer_idx": null,
+      "answer_text": "30",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "遊戲中的AI晶片，一個可以使用多久？",
+      "answer_idx": null,
+      "answer_text": "24小時",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "每次使用錢莊的花費？",
+      "answer_idx": null,
+      "answer_text": "50兩",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "哪個人物不是紅樓夢的主角？",
+      "answer_idx": null,
+      "answer_text": "曹雪芹",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "思樂冰英文？",
+      "answer_idx": null,
+      "answer_text": "Slurpee",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "哪個不是莎士比亞四大悲劇之一？",
+      "answer_idx": null,
+      "answer_text": "羅蜜歐與茱麗葉",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "孔子是那一個省份的人？",
+      "answer_idx": null,
+      "answer_text": "山東省曲阜縣",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "蔡依琳的英文名字？",
+      "answer_idx": null,
+      "answer_text": "jolin",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "使用錢莊要多少錢？",
+      "answer_idx": null,
+      "answer_text": "50元",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "好萊塢的英文？",
+      "answer_idx": null,
+      "answer_text": "Hollywood",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "美國國旗的星星代表？",
+      "answer_idx": null,
+      "answer_text": "州",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "網路遊戲黃易群俠傳是以下那間公司策劃製作的遊戲？",
+      "answer_idx": null,
+      "answer_text": "中華網龍",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "漫畫「SNOOPY」中，SNOOPY的主人叫什麼名字？",
+      "answer_idx": null,
+      "answer_text": "查理布朗",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "空氣污指標的英文縮寫是？",
+      "answer_idx": null,
+      "answer_text": "PSI",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "1001-899等於？",
+      "answer_idx": 2,
+      "answer_text": "102",
+      "options": [
+        "101",
+        "102",
+        "111",
+        "112"
+      ],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "下列那一項不屬於奧運的體操類項目？",
+      "answer_idx": null,
+      "answer_text": "舉重",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "遊戲中，合成雪蜂蜜的材料，下列何者為非？",
+      "answer_idx": null,
+      "answer_text": "麥芽",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "知名卡通角色「哆啦A夢」的耳朵是被什麼咬掉的？",
+      "answer_idx": null,
+      "answer_text": "老鼠",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "電影「超人特攻隊」中，媽媽的特異功能是什麼？",
+      "answer_idx": null,
+      "answer_text": "身體伸縮",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "三隻小豬故事裡，他們沒有蓋那一種房屋？",
+      "answer_idx": null,
+      "answer_text": "海砂屋",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "下列那一家公司沒有生產數位相機？",
+      "answer_idx": null,
+      "answer_text": "Chinesegame",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "三國時代有「小霸王」稱號的人物是下列何人？",
+      "answer_idx": null,
+      "answer_text": "孫策",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "「相對論」是由誰提出的？",
+      "answer_idx": null,
+      "answer_text": "愛因斯坦",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "主持人豬哥亮的女兒是以下那位？",
+      "answer_idx": null,
+      "answer_text": "謝金燕",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "男廁裡的「小便斗」最主要的功用是？",
+      "answer_idx": null,
+      "answer_text": "上小號",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "遊戲中使用一個貼身腰包，可以讓身上欄位多幾格？",
+      "answer_idx": null,
+      "answer_text": "6格",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "下列那一項不是節約用水的方法？",
+      "answer_idx": null,
+      "answer_text": "天天洗泡澡",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "遊戲中「蓋世英雄」任務，一天可以解幾次？",
+      "answer_idx": null,
+      "answer_text": "1次",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "中國第一枚可載人火箭為？",
+      "answer_idx": null,
+      "answer_text": "神舟五號",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "所謂的「昇華」是指物體的何種變化？",
+      "answer_idx": null,
+      "answer_text": "固態直接變成氣態",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "下列那一種顏色，忍者龜的眼罩沒有？",
+      "answer_idx": null,
+      "answer_text": "黑",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "三角形面積公式？",
+      "answer_idx": null,
+      "answer_text": "底*高/2",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "面積最小的國家是？",
+      "answer_idx": null,
+      "answer_text": "梵蒂岡",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "電影中黃飛鴻是與哪位女性互有好感？",
+      "answer_idx": 1,
+      "answer_text": "十三姨",
+      "options": [
+        "十三姨",
+        "滿姨",
+        "十八姨",
+        "大姨媽"
+      ],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "太陽早上是由哪邊升起？",
+      "answer_idx": null,
+      "answer_text": "東方",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "奧運是每幾年舉辦一次？",
+      "answer_idx": null,
+      "answer_text": "四年",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "卡通「櫻桃小丸子」裏的藤木同學被誰喜歡？",
+      "answer_idx": null,
+      "answer_text": "吉川綠",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "周杰倫成名曲：「手牽手一步兩步三步四步望著天」歌曲名稱是？",
+      "answer_idx": null,
+      "answer_text": "星晴",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "哈利波特中的嘿美是什麼動物？",
+      "answer_idx": null,
+      "answer_text": "貓頭鷹",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "99×99＝？",
+      "answer_idx": null,
+      "answer_text": "9801",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "哈利波特第六集的名稱？",
+      "answer_idx": null,
+      "answer_text": "混血王子的背叛",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "遊戲中，某功能可以佈置一個屬於自己的室內環境，叫做？",
+      "answer_idx": null,
+      "answer_text": "人造空間",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "科學小飛俠的主要敵人是？",
+      "answer_idx": null,
+      "answer_text": "惡魔黨",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "月球繞著地球運轉，稱為？",
+      "answer_idx": null,
+      "answer_text": "公轉",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "時鐘六點的時候，分針和時針的角度是？",
+      "answer_idx": null,
+      "answer_text": "180度",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "哪一個不是虛空裂縫的選項？",
+      "answer_idx": null,
+      "answer_text": "深紅虛空",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "交通安全宣導「酒後不開車，開車不喝___」，缺空是填何字？",
+      "answer_idx": null,
+      "answer_text": "酒",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "稱呼自己媽媽的媽媽叫做？",
+      "answer_idx": null,
+      "answer_text": "外婆",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "彩虹除了紅橙綠藍靛紫以外還有那一種顏色？",
+      "answer_idx": null,
+      "answer_text": "黃色",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "遊戲中，開啟寵物介面的圖示是？",
+      "answer_idx": null,
+      "answer_text": "馬",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "下列那一部電視劇不屬於「瓊瑤」的作品？",
+      "answer_idx": null,
+      "answer_text": "懷玉公主",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "以下四種動物比較，嘴巴可以張最大的動物是？",
+      "answer_idx": null,
+      "answer_text": "河馬",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "下列那一項不是屬於汽車的品牌？",
+      "answer_idx": null,
+      "answer_text": "BMX",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "「浪子回頭○○○」中的○○○是什麼？",
+      "answer_idx": null,
+      "answer_text": "金不換",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "歌曲「忠孝東路走九遍」的原唱組合是？",
+      "answer_idx": null,
+      "answer_text": "動力火車",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "騎車在路上遇到警察路檢攔車時，應該如何反應？",
+      "answer_idx": null,
+      "answer_text": "減速靠邊接受檢查",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "下列哪一樣食物不算是蔬果類？",
+      "answer_idx": null,
+      "answer_text": "豬頭皮",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "下列人物中哪一個是曹操的兒子？",
+      "answer_idx": null,
+      "answer_text": "曹丕",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "人在江湖，下一句是？",
+      "answer_idx": null,
+      "answer_text": "身不由己",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "指針型時鐘，當長針與短針相疊的時侯，是幾點？",
+      "answer_idx": null,
+      "answer_text": "12點",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "最狹長的國家？",
+      "answer_idx": null,
+      "answer_text": "智利",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "遊戲中的經商技能必須等級到達幾及才能修練？",
+      "answer_idx": null,
+      "answer_text": "40級",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "蹓狗時，狗狗若在路邊大便，飼主應該如何處理較恰當？",
+      "answer_idx": null,
+      "answer_text": "將狗大便處理乾淨",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "蝸牛是哪一類動物？",
+      "answer_idx": null,
+      "answer_text": "軟體動物",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "聖經故事中的伊甸園，夏娃聽了哪種動物的話吃了蘋果？",
+      "answer_idx": null,
+      "answer_text": "蛇",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "下列人物中哪一個是劉備的兒子？",
+      "answer_idx": null,
+      "answer_text": "劉禪",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "左岸咖啡的由來是哪個國家？",
+      "answer_idx": null,
+      "answer_text": "法國",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "常看到標榜抗紫外線的英文說法是？",
+      "answer_idx": null,
+      "answer_text": "抗UV",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "以下哪一種恐龍是草食性的？",
+      "answer_idx": null,
+      "answer_text": "劍龍",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "荷蘭的國花是？",
+      "answer_idx": 4,
+      "answer_text": "鬱金香",
+      "options": [
+        "康乃馨",
+        "玫瑰",
+        "向日葵",
+        "鬱金香"
+      ],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "健保幾年開始？",
+      "answer_idx": null,
+      "answer_text": "84年",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "史瑞克是啥顏色？",
+      "answer_idx": null,
+      "answer_text": "綠色",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "假設今天是10日那昨天的後天是幾日？",
+      "answer_idx": null,
+      "answer_text": "11日",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "遊戲中一塊AI晶片可用多少小時？",
+      "answer_idx": null,
+      "answer_text": "24時",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "哪個人物沒有在史瑞克電影中出現？",
+      "answer_idx": null,
+      "answer_text": "小熊維尼",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "1點的時候時鐘是呈幾度？",
+      "answer_idx": null,
+      "answer_text": "30度",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "蜘蛛人的基本配色是什麼？",
+      "answer_idx": null,
+      "answer_text": "紅和藍",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "下列那一項不是奧運的游泳項目？",
+      "answer_idx": null,
+      "answer_text": "水母漂",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "指針型時鐘呈直角時是幾點？",
+      "answer_idx": null,
+      "answer_text": "3點",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "給小狗吃啥會不舒服？",
+      "answer_idx": null,
+      "answer_text": "巧克力",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "遊戲中的「大俠選邊站」，一場是幾個題目？",
+      "answer_idx": null,
+      "answer_text": "10題",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "遊戲中的武功「狂浪七轉」是師承何處？",
+      "answer_idx": null,
+      "answer_text": "祕笈",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "以下哪一個不屬於遊戲中的「採集」技能？",
+      "answer_idx": null,
+      "answer_text": "拾荒",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "卡通「櫻桃小丸子」，熱愛足球的一對好朋友是？",
+      "answer_idx": null,
+      "answer_text": "大野和杉山",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "大唐雙龍傳中，跋鋒寒所使用的武器是哪一種？",
+      "answer_idx": null,
+      "answer_text": "劍",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "12星座名稱中，哪一種動物有出現？",
+      "answer_idx": null,
+      "answer_text": "羊",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "用來表示聲音強度的單位叫做？",
+      "answer_idx": null,
+      "answer_text": "分貝",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "12生肖中，沒有哪一種動物？",
+      "answer_idx": null,
+      "answer_text": "獅",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "「他作惡多端，罪狀說也說不完，真可以後是□□□□」",
+      "answer_idx": null,
+      "answer_text": "罄竹難書",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "下列哪一個人並未演出電影「射鵰英雄傳之東成西就」？",
+      "answer_idx": null,
+      "answer_text": "周星馳",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "下列何者不是忍者亂太郎的老師？",
+      "answer_idx": null,
+      "answer_text": "山田太郎",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "下列成語，何者表示「貪得無厭」？",
+      "answer_idx": null,
+      "answer_text": "得隴望蜀",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "世界上最深的海溝？",
+      "answer_idx": null,
+      "answer_text": "馬里亞納海溝",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "以下那部卡通超過二百集？",
+      "answer_idx": null,
+      "answer_text": "科學小飛俠",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "夜盲症是因為缺少了什麼？",
+      "answer_idx": null,
+      "answer_text": "維他命Ａ",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "法網○○？",
+      "answer_idx": null,
+      "answer_text": "恢恢",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "酸雨的定義？",
+      "answer_idx": null,
+      "answer_text": "PH 5.0 以下",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "飲冰室文集的作者是？",
+      "answer_idx": null,
+      "answer_text": "梁啟超",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "血癌的原因？",
+      "answer_idx": null,
+      "answer_text": "白血球",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "美男型藝人賀軍翔的綽號是？",
+      "answer_idx": null,
+      "answer_text": "賀小美",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "日劇「神啊，請多給我一點時間」的男主角是？",
+      "answer_idx": null,
+      "answer_text": "金城武",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "電影「少林足球」中，六師弟的武功是？",
+      "answer_idx": null,
+      "answer_text": "輕功水上飄",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "古代科舉考試中，得到第一名稱之為？",
+      "answer_idx": null,
+      "answer_text": "狀元",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "藝人「周杰倫」的英文名字是？",
+      "answer_idx": null,
+      "answer_text": "Jay",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "電影導演盧貝松是哪一國人？",
+      "answer_idx": null,
+      "answer_text": "法國",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "靈獸剛開始哪個數值不是隨機的？",
+      "answer_idx": null,
+      "answer_text": "忠誠度",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "裝備欄的快速鍵是？",
+      "answer_idx": null,
+      "answer_text": "Alt+E",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "藝人鄭進一的弟弟叫啥名字？",
+      "answer_idx": null,
+      "answer_text": "鄭進二",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "「布宜諾斯艾利斯」為何者國家的首都？",
+      "answer_idx": null,
+      "answer_text": "阿根廷",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "西方的孟子？",
+      "answer_idx": null,
+      "answer_text": "柏拉圖",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "天府之國？",
+      "answer_idx": null,
+      "answer_text": "四川",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "三國志的小霸王？",
+      "answer_idx": null,
+      "answer_text": "孫策",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "賭神愛吃的巧克力？",
+      "answer_idx": null,
+      "answer_text": "HERSLEY",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "SARS是經由何種途徑傳染？",
+      "answer_idx": null,
+      "answer_text": "飛沫",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "電影「賭神」中，高進說自己摸戒指這個小動作是在他最近幾副牌中加進去的？",
+      "answer_idx": null,
+      "answer_text": "500副",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "卡通「我們這一家」，四主角之一的姐姐叫做？",
+      "answer_idx": null,
+      "answer_text": "橘子",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "死亡遊戲中有參與演出的NBA球星？",
+      "answer_idx": null,
+      "answer_text": "賈霸",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "中國文字中的宇宙是？",
+      "answer_idx": null,
+      "answer_text": "時間與空間的綜合",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "2000年奧運在？",
+      "answer_idx": null,
+      "answer_text": "雪梨",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "台灣為何地震頻繁？",
+      "answer_idx": null,
+      "answer_text": "太平洋板塊和菲律賓板塊擠壓",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "勁辣雞腿堡是哪家速食店的商品？",
+      "answer_idx": null,
+      "answer_text": "麥當勞",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "海賊王的主角叫什麼名字？",
+      "answer_idx": null,
+      "answer_text": "魯夫",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "牙膏中的防蛀成分是？",
+      "answer_idx": null,
+      "answer_text": "氟",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "虱目魚在台灣的別稱之一是？",
+      "answer_idx": null,
+      "answer_text": "國姓魚（以上皆對）",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "烏腳病是因為體內含有哪種物質過多？",
+      "answer_idx": null,
+      "answer_text": "砷",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "99×99等於？",
+      "answer_idx": null,
+      "answer_text": "9801",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "哪一個不是象形文字？",
+      "answer_idx": null,
+      "answer_text": "男",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "哪一個不是喬傑利家族的藝人團體？",
+      "answer_idx": null,
+      "answer_text": "黑澀會美眉",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "代言爭鮮壽司的團體是？",
+      "answer_idx": null,
+      "answer_text": "黑澀會美眉",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "兩極在哪個季節會出現永晝或永夜？",
+      "answer_idx": null,
+      "answer_text": "冬天",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "SBL的中文是？",
+      "answer_idx": null,
+      "answer_text": "超級籃球聯賽",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "四君子中沒有哪一個？（梅蘭竹菊）",
+      "answer_idx": null,
+      "answer_text": "松",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "下列哪一個曾經出現在變形金剛電影中？",
+      "answer_idx": null,
+      "answer_text": "柯博文",
+      "options": [],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "哪一個英文字母往左或右反轉都長的一樣？",
+      "answer_idx": 1,
+      "answer_text": "E",
+      "options": [
+        "E",
+        "G",
+        "P",
+        "A"
+      ],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "遊戲中，怪物等級的顏色顯示，哪一種沒有？",
+      "answer_idx": 3,
+      "answer_text": "橘色",
+      "options": [
+        "紫色",
+        "紅色",
+        "橘色",
+        "藍色"
+      ],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "電影「哈利波特」中，「嘿美」是什麼動物？",
+      "answer_idx": 1,
+      "answer_text": "貓頭鷹",
+      "options": [
+        "貓頭鷹",
+        "蟾蜍",
+        "老鼠",
+        "獨角獸"
+      ],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "忍者龜在眼睛所綁的毛巾顏色，哪一種沒有？",
+      "answer_idx": 4,
+      "answer_text": "黑",
+      "options": [
+        "紅",
+        "橘",
+        "藍",
+        "黑"
+      ],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "遊戲中，一級戰場是限制幾級的玩家才能進入？",
+      "answer_idx": 3,
+      "answer_text": "15~25級",
+      "options": [
+        "5~15級",
+        "10~25級",
+        "15~25級",
+        "15~35級"
+      ],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "以下哪一個不屬於遊戲中的「合成」技能？",
+      "answer_idx": 1,
+      "answer_text": "鞋匠",
+      "options": [
+        "鞋匠",
+        "挖洞",
+        "縫紉",
+        "裁縫"
+      ],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "哈利波特第六集是？",
+      "answer_idx": 4,
+      "answer_text": "混血王子的背叛",
+      "options": [
+        "阿茲卡班的逃犯",
+        "消失的密室",
+        "鳳凰會的密令",
+        "混血王子的背叛"
+      ],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "以下面積最小的國是？",
+      "answer_idx": 1,
+      "answer_text": "梵蒂岡",
+      "options": [
+        "梵蒂岡",
+        "盧森堡",
+        "吐瓦魯",
+        "諾魯"
+      ],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "金門位於台北的何方？",
+      "answer_idx": 2,
+      "answer_text": "西北方",
+      "options": [
+        "東南方",
+        "西北方",
+        "西南方",
+        "東北方"
+      ],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "下哪一家公司沒有生產數位相機？",
+      "answer_idx": 4,
+      "answer_text": "Chinesegamer",
+      "options": [
+        "Panasonic",
+        "SNOY",
+        "Canon",
+        "Chinesegamer"
+      ],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "唐詩「春眠不覺曉」的下一句是？",
+      "answer_idx": 3,
+      "answer_text": "處處聞啼鳥",
+      "options": [
+        "處處聞蹄烏",
+        "處處聞啼烏",
+        "處處聞啼鳥",
+        "處處聞堤鳥"
+      ],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "遊戲中，AI晶片用完了，可以向誰購買？",
+      "answer_idx": 1,
+      "answer_text": "馬博士",
+      "options": [
+        "馬博士",
+        "馬小九",
+        "馬德雷",
+        "馬兩捷"
+      ],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "開啟人造空間前，何項功能不可設定？",
+      "answer_idx": 4,
+      "answer_text": "等級限制",
+      "options": [
+        "空間名稱",
+        "人數限制",
+        "進入密碼",
+        "等級限制"
+      ],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "以下哪一各武功不是師承傅君婥？",
+      "answer_idx": 4,
+      "answer_text": "急行術",
+      "options": [
+        "心如止水",
+        "後天真氣",
+        "逆天遁術",
+        "急行術"
+      ],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "遊戲中，等級經驗值百分比，有到小數點後幾位？",
+      "answer_idx": 2,
+      "answer_text": "2",
+      "options": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "遊戲中，給靈獸為食能量藥水，靈獸能量最多可到幾星？",
+      "answer_idx": 2,
+      "answer_text": "12星",
+      "options": [
+        "10星",
+        "12星",
+        "14星",
+        "15星"
+      ],
+      "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 0,
+      "question": "下列哪一間店家不是賣披薩的？",
+      "answer_idx": 2,
+      "answer_text": "吉野家",
+      "options": [
+        "必勝客",
+        "吉野家",
+        "拿坡里",
+        "達美樂"
+      ],
+      "source": "巴哈姆特題庫"
+    }
+  ]
+}
