@@ -203,6 +203,7 @@ async def initialize_tokens_async():
     except: pass
 
     async def validate(tk, label="Token"):
+        """回傳 data dict 表示成功，"scope_error" 表示 token 有效但缺少必要權限，None 表示 token 無效或過期。"""
         if not tk: return None
         try:
             async with aiohttp.ClientSession() as s, s.get("https://id.twitch.tv/oauth2/validate", headers={"Authorization": f"OAuth {tk.replace('oauth:', '')}"}) as r:
@@ -212,8 +213,8 @@ async def initialize_tokens_async():
                 scopes = set(data.get("scopes", []))
                 missing = [name for scope, name in REQUIRED_USER_TOKEN_SCOPES.items() if scope not in scopes]
                 if missing:
-                    logging.error(f"❌ {label} 缺少必要權限：{', '.join(missing)}。請重新執行 authorize_chat_badge.bat 後再啟動 BOT。")
-                    return None
+                    logging.error(f"❌ {label} 缺少必要權限：{', '.join(missing)}。")
+                    return "scope_error"
                 return data
         except Exception as e:
             logging.error(f"❌ {label} 驗證失敗：{e}")
@@ -227,28 +228,57 @@ async def initialize_tokens_async():
                 await db.commit()
         except: pass
 
-    if env_access and await validate(env_access, ".env Token"):
+    env_v = await validate(env_access, ".env Token") if env_access else None
+    db_v = await validate(db_acc, "資料庫 Token") if db_acc else None
+
+    if env_v and env_v != "scope_error":
         logging.info("✅ 檢測通過：使用 .env 設定的 Token"); await save(env_access, env_refresh)
         return env_access, env_refresh, f"oauth:{env_access.replace('oauth:', '')}"
-    elif db_acc and await validate(db_acc, "資料庫 Token"):
+    elif db_v and db_v != "scope_error":
         logging.info("✅ 檢測通過：使用 資料庫 儲存的 Token")
         return db_acc, db_ref or env_refresh, f"oauth:{db_acc.replace('oauth:', '')}"
-    else:
-        logging.warning("⚠️ 所有 Token 皆失效，嘗試刷新...")
+
+    # 若任一 token 有效但缺少 scope，刷新無法補救，直接要求重新授權
+    if env_v == "scope_error" or db_v == "scope_error":
+        logging.error("❌ 現有 Token 缺少必要權限，刷新無法修復。請重新執行 authorize_chat_badge.bat 取得完整授權。")
+        return None, None, None
+
+    logging.warning("⚠️ 所有 Token 皆失效，嘗試刷新...")
+
+    async def try_refresh(ref_tok, label):
+        if not ref_tok: return None
         try:
-            async with aiohttp.ClientSession() as s, s.post("https://id.twitch.tv/oauth2/token", data={"grant_type": "refresh_token", "refresh_token": env_refresh or db_ref, "client_id": CLIENT_ID, "client_secret": CLIENT_SECRET}) as r:
-                if r.status == 200 and (d := await r.json()) and await validate(d["access_token"], "刷新後 Token"):
-                    await save(d["access_token"], d.get("refresh_token", env_refresh or db_ref))
-                    logging.info("🔧 Token 已自動修復並存檔")
-                    return d["access_token"], d.get("refresh_token", env_refresh or db_ref), f"oauth:{d['access_token'].replace('oauth:', '')}"
-        except: pass
-        fallback_token = os.getenv("TWITCH_TOKEN")
-        if fallback_token and await validate(fallback_token, ".env TWITCH_TOKEN"):
+            async with aiohttp.ClientSession() as s, s.post("https://id.twitch.tv/oauth2/token", data={"grant_type": "refresh_token", "refresh_token": ref_tok, "client_id": CLIENT_ID, "client_secret": CLIENT_SECRET}) as r:
+                if r.status != 200: return None
+                d = await r.json()
+                v = await validate(d["access_token"], f"刷新後 Token ({label})")
+                if v and v != "scope_error":
+                    new_ref = d.get("refresh_token", ref_tok)
+                    await save(d["access_token"], new_ref)
+                    logging.info(f"🔧 Token 已自動修復並存檔 (使用 {label})")
+                    return d["access_token"], new_ref, f"oauth:{d['access_token'].replace('oauth:', '')}"
+                if v == "scope_error":
+                    logging.error(f"❌ {label} 刷新後 Token 仍缺少必要權限，請重新執行 authorize_chat_badge.bat 取得完整授權。")
+        except Exception as e:
+            logging.error(f"❌ {label} 刷新失敗：{e}")
+        return None
+
+    # 優先用資料庫刷新金鑰（由 authorize_chat_badge.bat 寫入，scope 完整）；再試 .env 的
+    refreshed = await try_refresh(db_ref, "資料庫刷新金鑰")
+    if not refreshed and env_refresh and env_refresh != db_ref:
+        refreshed = await try_refresh(env_refresh, ".env 刷新金鑰")
+    if refreshed:
+        return refreshed
+
+    fallback_token = os.getenv("TWITCH_TOKEN")
+    if fallback_token:
+        fv = await validate(fallback_token, ".env TWITCH_TOKEN")
+        if fv and fv != "scope_error":
             logging.warning("⚠️ 使用 .env TWITCH_TOKEN fallback 啟動。建議重新執行 authorize_chat_badge.bat 更新資料庫 token。")
             return fallback_token, None, fallback_token
 
-        logging.error("❌ Token 刷新失敗或權限不足，停止啟動。Twitch 不允許程式自動補新權限，請重新執行 authorize_chat_badge.bat 取得完整授權。")
-        return None, None, None
+    logging.error("❌ Token 刷新失敗或權限不足，停止啟動。請重新執行 authorize_chat_badge.bat 取得完整授權。")
+    return None, None, None
 
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
