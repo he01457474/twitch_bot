@@ -401,6 +401,8 @@ class RestaurantBot:
         self._fishing_record_lock = threading.Lock()
         self._fishing_popup_handled = False
         self._fishing_limit_reached = False
+        self._fishing_skip_seat_click = False
+        self._fishing_last_was_missed = False
 
     def _debug_capture(self, label, markers=None):
         """
@@ -2007,6 +2009,8 @@ asyncio.run(run())
             self._last_fishing_popup_click_at = 0.0
             self._fishing_popup_handled = False
             self._fishing_limit_reached = False
+            self._fishing_skip_seat_click = False
+            self._fishing_last_was_missed = False
 
     def _close_fishing_result_popup(self, log=None, slot_idx=0):
         pt = tuple(self.settings.get("fishing_confirm_btn", DEFAULT_SETTINGS["fishing_confirm_btn"]))
@@ -2023,6 +2027,8 @@ asyncio.run(run())
         popup_img = self._capture_mole_region((300, 190, 660, 450))
         self.click_real(*pt, delay=0.04)
         self._fishing_popup_handled = True
+        # 快速視覺判斷是否「魚跑了」（無 OCR，供 _reset_after_fishing_result 即時使用）
+        self._fishing_last_was_missed = (self._classify_fishing_image(popup_img) == "missed")
         self._record_fishing_popup_async(log, slot_idx, popup_img)
         return "result"
 
@@ -2048,8 +2054,12 @@ asyncio.run(run())
         self._fishing_popup_handled = False
         reset_delay = float(self.settings.get("fishing_reset_delay", 1.2))
         if self.settings.get("fishing_reset_mode", "delay") != "leave":
-            on_status("釣魚：等待收桿動畫結束…")
-            self.wait(reset_delay)
+            # 魚跑了不會有收桿動畫，直接跳過等待；釣到魚才需要等動畫
+            if not self._fishing_last_was_missed:
+                on_status("釣魚：等待收桿動畫結束…")
+                self.wait(reset_delay)
+            # delay 模式玩家留在座位，下一輪直接下竿不需再點椅子
+            self._fishing_skip_seat_click = True
             return
         leave_pts = self.settings.get("fishing_leave_pts") or []
         if leave_pts and slot_idx < len(leave_pts) and leave_pts[slot_idx]:
@@ -2057,11 +2067,15 @@ asyncio.run(run())
         else:
             leave_pt = None
         if not leave_pt:
-            self.wait(reset_delay)
+            # leave 模式但沒有設定離座點，行為同 delay
+            if not self._fishing_last_was_missed:
+                self.wait(reset_delay)
+            self._fishing_skip_seat_click = True
             return
         on_status("釣魚：離座復位，避免收桿動畫卡住…")
         self.click_real(*leave_pt, delay=0.12)
         self.wait(reset_delay)
+        # 玩家已離座，下一輪需要重新點椅子
 
     def _move_aside_after_fishing_limit(self, on_status, seat=None, slot_idx=0):
         stop_pts = self.settings.get("fishing_limit_stop_pts") or []
@@ -2212,8 +2226,14 @@ asyncio.run(run())
         return False
 
     def _run_single_fishing_cycle(self, on_status, seat, cast_pt, bobber_pt, slot_idx, seat_count):
-        on_status(f"釣魚：點椅子 {slot_idx + 1}/{seat_count}")
-        self.click_real(*seat, delay=0.9)
+        # 上輪結果若玩家仍在座位（delay 模式），跳過點椅子避免點到人物觸發資料卡
+        skip_seat = self._fishing_skip_seat_click
+        self._fishing_skip_seat_click = False
+        if skip_seat:
+            on_status(f"釣魚：玩家已在釣位 {slot_idx + 1}/{seat_count}，直接下竿")
+        else:
+            on_status(f"釣魚：點椅子 {slot_idx + 1}/{seat_count}")
+            self.click_real(*seat, delay=0.9)
 
         # 座下後立即清除遮擋（資料卡 / 殘留彈窗 / 通知）
         if self._handle_known_notice_popup(on_status):
