@@ -2659,14 +2659,18 @@ asyncio.run(run())
         btn_quick = tuple(self.settings.get("btn_quick_start", [456, 517]))
         self._close_happy_spin_popup(on_status)
 
-        # 優先用視覺分數快速判斷（不依賴 OCR 文字偵測）
-        if self._is_game_scene_loaded_fast():
-            return self._after_login_action(on_status, after_login)
-        if self._wait_for_game_scene(timeout=0.8, on_status=None, require_text=True):
-            return self._after_login_action(on_status, after_login)
-
-        # 偵測目前停在哪個畫面，決定從哪步開始
+        # 先偵測登入畫面：若確定在登入流程（主畫面/選角/選伺服器），
+        # 不做「已在遊戲」快速跳過，避免主畫面橘色背景誤觸判斷。
         screen = self._detect_login_screen()
+
+        if not screen:
+            # 不在已知登入畫面，才做視覺快速判斷
+            if self._is_game_scene_loaded_fast():
+                return self._after_login_action(on_status, after_login)
+            if self._wait_for_game_scene(timeout=0.8, on_status=None, require_text=True):
+                return self._after_login_action(on_status, after_login)
+            # 快速判斷未命中，重新偵測畫面狀態
+            screen = self._detect_login_screen()
         if screen == "server":
             start_from = 3
         elif screen == "login":
