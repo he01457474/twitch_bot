@@ -397,6 +397,10 @@ class QuizDetector:
         q_img = self._crop(img, w, h, "question_region")
         ph    = compute_phash(q_img)
 
+        # 全黑/全白畫面（phash=0 或全1）代表截圖無效，跳過避免浪費 API
+        if ph == 0 or ph == (1 << 64) - 1:
+            return None
+
         # 同一題跳過
         if self._last_ph is not None and phash_distance(ph, self._last_ph) < 4:
             return None
