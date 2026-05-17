@@ -578,6 +578,32 @@ class QuizApp:
                   font=("Microsoft JhengHei UI", 14, "bold"),
                   fg="#FFAA00", bg=BG, pady=2).pack(fill=tk.X)
 
+        # 方位圖（2×2，顯示哪個角落是答案）
+        # 遊戲中：1=左上、2=右上、3=右下、4=左下
+        # 格子順序：TL=1, TR=2, BL=4, BR=3
+        self._map_canvas = tk.Canvas(f, bg=BG, width=160, height=72, highlightthickness=0)
+        self._map_canvas.pack(pady=(0, 2))
+        CW, CH = 72, 30
+        GAP = 4
+        # (col, row, zone_number, label)
+        _zones = [(0, 0, 1, "1\n左上"), (1, 0, 2, "2\n右上"),
+                  (0, 1, 4, "4\n左下"), (1, 1, 3, "3\n右下")]
+        self._map_rects  = {}   # zone_num -> rect_id
+        self._map_texts  = {}   # zone_num -> text_id
+        _x0 = 8
+        _y0 = 4
+        for col, row, zn, lbl in _zones:
+            x1 = _x0 + col * (CW + GAP)
+            y1 = _y0 + row * (CH + GAP)
+            x2, y2 = x1 + CW, y1 + CH
+            rid = self._map_canvas.create_rectangle(x1, y1, x2, y2,
+                                                     fill="#222240", outline="#444466", width=1)
+            tid = self._map_canvas.create_text((x1+x2)//2, (y1+y2)//2,
+                                                text=lbl, fill="#666688",
+                                                font=("Microsoft JhengHei UI", 8), justify="center")
+            self._map_rects[zn] = rid
+            self._map_texts[zn] = tid
+
         # 題目文字
         self.q_var = tk.StringVar(value="等待題目出現…")
         self._lbl(f, textvariable=self.q_var,
@@ -852,6 +878,15 @@ class QuizApp:
             opt  = options[i] if i < len(options) else ""
             star = "★ " if idx == i + 1 else "   "
             var.set(f"{star}{i+1}. {opt}")
+
+        # 更新方位圖高亮
+        for zn in range(1, 5):
+            if idx and zn == idx:
+                fill, text_col = ACCENT, "#FFFFFF"
+            else:
+                fill, text_col = "#222240", "#666688"
+            self._map_canvas.itemconfigure(self._map_rects[zn], fill=fill)
+            self._map_canvas.itemconfigure(self._map_texts[zn], fill=text_col)
 
         has_q = bool(question)
         self.save_btn.configure(state=tk.NORMAL if has_q else tk.DISABLED)
