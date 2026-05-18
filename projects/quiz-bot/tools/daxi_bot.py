@@ -451,6 +451,8 @@ class DaxiApp:
         self._mode    = tk.StringVar(value="quiz4")
 
         self._build_ui()
+        # 啟動時強制拉到前景一次（之後不常駐置頂）
+        self.root.after(100, self._initial_focus)
 
     # ── 設定 ──
 
@@ -768,6 +770,13 @@ class DaxiApp:
         ttk.Button(btn_row, text="測試截圖辨識", command=self._test_recognition).pack(side=tk.LEFT)
 
     # ── 控制 ──
+
+    def _initial_focus(self):
+        """啟動時拉到前景一次，不設常駐置頂。"""
+        self.root.attributes("-topmost", True)
+        self.root.lift()
+        self.root.focus_force()
+        self.root.after(200, lambda: self.root.attributes("-topmost", False))
 
     def _toggle_pin(self):
         self._pinned = not self._pinned
