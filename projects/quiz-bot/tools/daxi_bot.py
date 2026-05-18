@@ -137,6 +137,26 @@ def ocr_image(pil_img, on_detail=None):
         if on_detail: on_detail(f"OCR 例外：{type(e).__name__}: {e}")
         return ""
 
+def ocr_parse_quiz(pil_img, on_detail=None):
+    """OCR 整張彈窗圖，用文字結構切出題目和選項，不依賴座標。
+    回傳 (question_str, [opt1, opt2, opt3, opt4])。"""
+    text = ocr_image(pil_img, on_detail=on_detail)
+    if not text:
+        return "", []
+    # 去除計時器
+    text = re.sub(r'剩[餘余]時間\s*\d+\s*秒?', '', text)
+    text = re.sub(r'\d+\s*秒', '', text)
+    # 找第一個選項標記：(1) / 1) / Ⅰ) / ⑴ 等
+    m = re.search(r'[\(（【]?\s*[1１Ⅰ⑴]\s*[\)）】]', text)
+    if not m:
+        return text.strip(), []
+    question = text[:m.start()].strip()
+    opts_text = text[m.start():]
+    # 把 (1)(2)(3)(4) 當分隔符切開
+    parts = re.split(r'[\(（【]?\s*[1-4１-４Ⅰ-Ⅳ⑴-⑷]\s*[\)）】]', opts_text)
+    options = [p.strip() for p in parts if p.strip()][:4]
+    return question, options
+
 def claude_read_popup(pil_img, api_key, on_detail=None):
     """回傳 (question_str, options_list) — 四選一用。"""
     try:
@@ -498,9 +518,8 @@ class GameDetector:
             self._record_api_call(ph)
         if not q_text:
             on_status("OCR 辨識中…")
-            q_text  = ocr_image(q_img, on_detail=self._on_detail)
-            opt_img = self._crop(img, w, h, "options_region")
-            options = self._parse_options(ocr_image(opt_img))
+            full = self._crop(img, w, h, "popup_full_region")
+            q_text, options = ocr_parse_quiz(full, on_detail=self._on_detail)
         if not q_text:
             on_status("辨識失敗"); return None
 
@@ -531,7 +550,8 @@ class GameDetector:
             self._record_api_call(ph)
         if not q_text:
             on_status("OCR 辨識中…")
-            q_text = ocr_image(q_img, on_detail=self._on_detail)
+            full = self._crop(img, w, h, "popup_full_region")
+            q_text, _ = ocr_parse_quiz(full, on_detail=self._on_detail)
         if not q_text:
             on_status("辨識失敗"); return None
 
@@ -1530,18 +1550,6 @@ class DaxiApp:
                     api_key    = self.config.get("api_key","").strip()
                     gm_model   = self.config.get("gemini_model","gemini-2.0-flash")
 
-                    def _popup_crop(reg_key):
-                        pf  = self.config.get("popup_full_region", {"left":0,"top":0,"right":1,"bottom":1})
-                        reg = self.config.get(reg_key, {})
-                        fiw, fih = full_img.size
-                        pfw = max(pf.get("right",1) - pf.get("left",0), 0.001)
-                        pfh = max(pf.get("bottom",1) - pf.get("top",0), 0.001)
-                        x1 = int((reg.get("left",0)  - pf.get("left",0)) / pfw * fiw)
-                        y1 = int((reg.get("top",0)   - pf.get("top",0))  / pfh * fih)
-                        x2 = int((reg.get("right",1) - pf.get("left",0)) / pfw * fiw)
-                        y2 = int((reg.get("bottom",1)- pf.get("top",0))  / pfh * fih)
-                        return full_img.crop((max(0,x1), max(0,y1), min(fiw,x2), min(fih,y2)))
-
                     if mode == "quiz4":
                         q_text, options, src = "", [], "Windows OCR"
                         if gemini_key:
@@ -1555,8 +1563,7 @@ class DaxiApp:
                             q_text, options = claude_read_popup(full_img, api_key, on_detail=_detail)
                             if q_text: src = "Claude API"
                         if not q_text:
-                            q_text  = ocr_image(_popup_crop("question_region"), on_detail=_detail)
-                            options = self.detector._parse_options(ocr_image(_popup_crop("options_region")))
+                            q_text, options = ocr_parse_quiz(full_img, on_detail=_detail)
                         _append(f"\n辨識方式：{src}\n","dim")
                         _append("題目：","head"); _append(f"{q_text or '（無法辨識）'}\n")
                         _append("選項：\n","head")
@@ -1574,7 +1581,7 @@ class DaxiApp:
                             q_text = claude_read_question(full_img, api_key, on_detail=_detail)
                             if q_text: src = "Claude API"
                         if not q_text:
-                            q_text = ocr_image(_popup_crop("question_region"), on_detail=_detail)
+                            q_text, _ = ocr_parse_quiz(full_img, on_detail=_detail)
                         _append(f"\n辨識方式：{src}\n","dim")
                         _append("題目：","head"); _append(f"{q_text or '（無法辨識）'}\n")
                         if q_text:
