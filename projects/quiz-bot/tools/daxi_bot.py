@@ -746,9 +746,12 @@ class DaxiApp:
         for i in range(4):
             v = tk.StringVar(value=f"  {i+1}. ")
             self.opt_vars.append(v)
-            self._lbl(self._frame_quiz4, textvariable=v,
-                      font=("Microsoft JhengHei UI", 11),
-                      fg=OPT_COLORS[i], bg=BG, anchor="w").pack(fill=tk.X)
+            lbl = self._lbl(self._frame_quiz4, textvariable=v,
+                            font=("Microsoft JhengHei UI", 11),
+                            fg=OPT_COLORS[i], bg=BG, anchor="w",
+                            cursor="hand2")
+            lbl.pack(fill=tk.X)
+            lbl.bind("<Button-1>", lambda e, idx=i+1: self._click_option(idx))
 
         self.source_var4 = tk.StringVar(value="")
         self._lbl(self._frame_quiz4, textvariable=self.source_var4,
@@ -1221,6 +1224,23 @@ class DaxiApp:
             self._set_status(f"已存入選邊站題庫：{q[:25]}…")
             self._refresh_dbs()
 
+    def _click_option(self, idx):
+        """點選選項 label 直接設定答案並存入題庫。"""
+        if not self._current or self._mode.get() != "quiz4": return
+        opts = self._current.get("options", [])
+        self._current["answer_idx"]  = idx
+        self._current["answer_text"] = opts[idx-1] if idx <= len(opts) else ""
+        self._show_result(self._current)
+        q = self._current.get("question", "")
+        if q:
+            self.db4.upsert(self._current.get("phash") or 0, q, idx,
+                            self._current.get("answer_text",""),
+                            self._current.get("options",[]))
+            ans_t = self._current.get("answer_text","")
+            self._set_status(f"答案 {idx} 已記錄：{q[:20]}…")
+            self._add_notif(f"四選一 → 答案確認 {idx}. {ans_t[:18]}", "ok")
+            self._refresh_db4()
+
     def _fix_answer(self):
         if not self._current or self._mode.get() != "quiz4": return
         dlg = simpledialog.askstring(
@@ -1229,11 +1249,7 @@ class DaxiApp:
             parent=self.root,
         )
         if dlg and dlg.strip() in ("1","2","3","4"):
-            idx  = int(dlg.strip())
-            opts = self._current.get("options",[])
-            self._current["answer_idx"]  = idx
-            self._current["answer_text"] = opts[idx-1] if idx<=len(opts) else ""
-            self._show_result(self._current)
+            self._click_option(int(dlg.strip()))
 
     def _refresh_db4(self):
         self.db4_tree.tag_configure("no_ans", foreground="#E67E22")
