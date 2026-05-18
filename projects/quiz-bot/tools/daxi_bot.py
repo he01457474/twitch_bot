@@ -12,6 +12,7 @@ import re
 import io
 import subprocess
 import datetime
+import time
 from difflib import SequenceMatcher
 import win32gui
 import win32ui
@@ -273,19 +274,23 @@ class SidestandDatabase:
 
 class GameDetector:
     def __init__(self, config, db4, dbs):
-        self.config    = config
-        self.db4       = db4
-        self.dbs       = dbs
-        self.mode      = "quiz4"      # "quiz4" | "sidestand"
-        self._stop     = threading.Event()
-        self._popup_on = False
-        self._last_ph  = None
-        self.hwnd      = None
+        self.config         = config
+        self.db4            = db4
+        self.dbs            = dbs
+        self.mode           = "quiz4"      # "quiz4" | "sidestand"
+        self._stop          = threading.Event()
+        self._popup_on      = False
+        self._last_ph       = None
+        self._last_api_ph   = None
+        self._last_api_time = 0.0
+        self.hwnd           = None
 
     def set_mode(self, mode):
-        self.mode      = mode
-        self._popup_on = False
-        self._last_ph  = None
+        self.mode           = mode
+        self._popup_on      = False
+        self._last_ph       = None
+        self._last_api_ph   = None
+        self._last_api_time = 0.0
 
     def find_window(self):
         result = []
@@ -312,6 +317,19 @@ class GameDetector:
         if not pixels: return 255
         return sum(sum(p) for p in pixels) / (len(pixels) * 3)
 
+    def _can_call_api(self, ph):
+        """同一題目只呼叫一次 API：phash 相近 or 冷卻期內直接跳過。"""
+        cooldown = self.config.get("api_cooldown", 10)
+        if self._last_api_ph is not None and phash_distance(ph, self._last_api_ph) < 10:
+            return False
+        if time.time() - self._last_api_time < cooldown:
+            return False
+        return True
+
+    def _record_api_call(self, ph):
+        self._last_api_ph   = ph
+        self._last_api_time = time.time()
+
     def _parse_options(self, text):
         if not text: return ["","","",""]
         for pat in [r'[ABCD][\.、\s]', r'[1234][\.、\s]']:
@@ -330,7 +348,10 @@ class GameDetector:
         visible = self.sample_brightness(img, w, h) < self.config.get("popup_brightness_threshold", 80)
         if not visible:
             if self._popup_on:
-                self._popup_on = False; self._last_ph = None
+                self._popup_on      = False
+                self._last_ph       = None
+                self._last_api_ph   = None
+                self._last_api_time = 0.0
                 on_status("等待題目…")
             return None
         if not self._popup_on:
@@ -356,9 +377,10 @@ class GameDetector:
 
         api_key = self.config.get("api_key", "").strip()
         q_text, options = "", []
-        if api_key:
+        if api_key and self._can_call_api(ph):
             on_status("Claude API 辨識中…")
             q_text, options = claude_read_popup(self._crop(img, w, h, "popup_full_region"), api_key)
+            self._record_api_call(ph)
         if not q_text:
             on_status("OCR 辨識中…")
             q_text  = ocr_image(q_img)
@@ -379,9 +401,10 @@ class GameDetector:
     def _process_sidestand(self, img, w, h, q_img, ph, on_status):
         api_key = self.config.get("api_key", "").strip()
         q_text  = ""
-        if api_key:
+        if api_key and self._can_call_api(ph):
             on_status("Claude API 辨識中…")
             q_text = claude_read_question(self._crop(img, w, h, "popup_full_region"), api_key)
+            self._record_api_call(ph)
         if not q_text:
             on_status("OCR 辨識中…")
             q_text = ocr_image(q_img)
