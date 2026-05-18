@@ -438,7 +438,7 @@ class DaxiApp:
         self.root    = root
         self.root.title("大俠活動輔助")
         self.root.configure(bg=BG)
-        self.root.attributes("-topmost", True)
+        self.root.attributes("-topmost", False)
         self.root.resizable(False, False)
 
         self.config   = self._load_config()
@@ -447,7 +447,7 @@ class DaxiApp:
         self.detector = GameDetector(self.config, self.db4, self.dbs)
         self._thread  = None
         self._current = None
-        self._pinned  = True
+        self._pinned  = False
         self._mode    = tk.StringVar(value="quiz4")
 
         self._build_ui()
@@ -632,7 +632,7 @@ class DaxiApp:
         self.pin_btn = tk.Button(
             btn_row, text="📌",
             font=("Segoe UI Emoji", 13),
-            bg="#2C3E50", fg="#F1C40F", activebackground="#34495E",
+            bg="#2C3E50", fg="#555577", activebackground="#34495E",
             relief=tk.FLAT, padx=6, pady=3,
             command=self._toggle_pin,
         )
