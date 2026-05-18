@@ -795,8 +795,9 @@ class QuizApp:
         tk.Label(f, text="", bg=BG2).pack()
         btn_row = tk.Frame(f, bg=BG2)
         btn_row.pack()
-        ttk.Button(btn_row, text="儲存設定", command=self._apply_cfg).pack(side=tk.LEFT, padx=6)
-        ttk.Button(btn_row, text="測試偵測點亮度", command=self._test_brightness).pack(side=tk.LEFT)
+        ttk.Button(btn_row, text="儲存設定",       command=self._apply_cfg).pack(side=tk.LEFT, padx=6)
+        ttk.Button(btn_row, text="測試亮度",       command=self._test_brightness).pack(side=tk.LEFT, padx=6)
+        ttk.Button(btn_row, text="測試截圖辨識",   command=self._test_recognition).pack(side=tk.LEFT)
 
     # ── 控制 ──
 
@@ -968,6 +969,119 @@ class QuizApp:
         self.detector.config = self.config
         self._save_config()
         messagebox.showinfo("設定", "設定已儲存")
+
+    def _test_recognition(self):
+        """截圖並跑完整辨識流程，結果顯示在獨立視窗。"""
+        found = self.detector.find_window()
+        if not found:
+            messagebox.showwarning("提示", "找不到遊戲視窗，請先開啟遊戲")
+            return
+        hwnd, title = found
+
+        win = tk.Toplevel(self.root)
+        win.title("截圖辨識測試")
+        win.configure(bg=BG)
+        win.resizable(False, False)
+        win.attributes("-topmost", True)
+
+        tk.Label(win, text="截圖辨識測試", bg=BG, fg=ACCENT,
+                 font=("Microsoft JhengHei UI", 12, "bold")).pack(pady=(8, 2))
+
+        status_lbl = tk.Label(win, text="截圖中…", bg=BG, fg=TEXT_DIM,
+                              font=("Microsoft JhengHei UI", 9))
+        status_lbl.pack()
+
+        # 彈窗區域預覽
+        preview_lbl = tk.Label(win, bg="#111122", relief=tk.SUNKEN,
+                               text="（預覽）", fg=TEXT_DIM,
+                               font=("Microsoft JhengHei UI", 8))
+        preview_lbl.pack(padx=12, pady=6, ipadx=4, ipady=4)
+
+        # 結果文字框
+        result_txt = tk.Text(win, bg=BG2, fg=TEXT_NORM, height=12, width=50,
+                             font=("Microsoft JhengHei UI", 10),
+                             relief=tk.FLAT, state=tk.DISABLED, wrap=tk.WORD)
+        result_txt.pack(padx=10, pady=(0, 10))
+
+        def _append(text, tag=None):
+            result_txt.configure(state=tk.NORMAL)
+            if tag:
+                result_txt.insert("end", text, tag)
+            else:
+                result_txt.insert("end", text)
+            result_txt.configure(state=tk.DISABLED)
+
+        result_txt.tag_configure("ok",   foreground="#2ECC71")
+        result_txt.tag_configure("warn", foreground="#E67E22")
+        result_txt.tag_configure("err",  foreground=ACCENT)
+        result_txt.tag_configure("dim",  foreground=TEXT_DIM)
+        result_txt.tag_configure("head", foreground="#FFAA00", font=("Microsoft JhengHei UI", 10, "bold"))
+
+        def run():
+            try:
+                img, w, h = capture_window(hwnd)
+                brightness  = self.detector.sample_brightness(img, w, h)
+                threshold   = self.config.get("popup_brightness_threshold", 80)
+                popup_ok    = brightness < threshold
+
+                # 預覽圖（彈窗完整區域）
+                full_img = self.detector._crop(img, w, h, "popup_full_region")
+                pw, ph2  = full_img.size
+                max_w    = 380
+                scale    = min(max_w / pw, 1.0)
+                preview  = full_img.resize((int(pw * scale), max(1, int(ph2 * scale))),
+                                           Image.Resampling.LANCZOS)
+                tk_img   = ImageTk.PhotoImage(preview)
+
+                lines = []
+
+                def update_ui():
+                    preview_lbl.configure(image=tk_img, text="")
+                    preview_lbl.image = tk_img
+
+                    _append(f"遊戲：{title}\n", "dim")
+                    _append(f"偵測點亮度：{brightness:.1f}  門檻：{threshold}\n")
+                    if popup_ok:
+                        _append("→ 彈窗已偵測到\n", "ok")
+                    else:
+                        _append("→ 彈窗未偵測到（亮度高於門檻）\n", "warn")
+                        _append("\n請在遊戲題目彈窗出現時再測一次。\n", "dim")
+                        status_lbl.configure(text="完成（彈窗未出現）")
+                        return
+
+                    # 辨識
+                    api_key = self.config.get("api_key", "").strip()
+                    q_text  = ""
+                    options = []
+
+                    if api_key:
+                        _append("\n呼叫 Claude API 辨識…\n", "dim")
+                        status_lbl.configure(text="API 辨識中…")
+                        # 重跑（在 update_ui 裡跑 I/O 不好，但 Toplevel 是新的事件迴圈所以 OK）
+                        q_text, options = claude_read_popup(full_img, api_key)
+                        src = "Claude API"
+                    else:
+                        q_img   = self.detector._crop(img, w, h, "question_region")
+                        opt_img = self.detector._crop(img, w, h, "options_region")
+                        q_text  = ocr_image(q_img)
+                        options = self.detector._parse_options(ocr_image(opt_img))
+                        src = "Windows OCR"
+
+                    _append(f"\n辨識方式：{src}\n", "dim")
+                    _append(f"題目：", "head")
+                    _append(f"{q_text or '（無法辨識）'}\n")
+                    _append("\n選項：\n", "head")
+                    for i, opt in enumerate(options[:4]):
+                        _append(f"  {i+1}. {opt}\n")
+
+                    status_lbl.configure(text="辨識完成")
+
+                win.after(0, update_ui)
+
+            except Exception as e:
+                win.after(0, lambda: status_lbl.configure(text=f"錯誤：{e}"))
+
+        threading.Thread(target=run, daemon=True).start()
 
     def _test_brightness(self):
         found = self.detector.find_window()
