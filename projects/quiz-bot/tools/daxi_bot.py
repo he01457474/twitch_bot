@@ -775,6 +775,18 @@ class DaxiApp:
         self._lbl(self._frame_side, textvariable=self.source_vars,
                   font=("Microsoft JhengHei UI", 8), fg=TEXT_DIM, bg=BG).pack(pady=(0,2))
 
+        # 快速 O/X 點擊列
+        ox_row = tk.Frame(self._frame_side, bg=BG)
+        ox_row.pack(fill=tk.X, pady=(4, 2))
+        self._ox_o_btn = tk.Label(ox_row, text="O  正確", font=("Microsoft JhengHei UI",14,"bold"),
+                                  fg=COL_O, bg=BG2, padx=20, pady=6, cursor="hand2", relief=tk.FLAT)
+        self._ox_o_btn.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0,4))
+        self._ox_o_btn.bind("<Button-1>", lambda e: self._click_ox("O"))
+        self._ox_x_btn = tk.Label(ox_row, text="X  錯誤", font=("Microsoft JhengHei UI",14,"bold"),
+                                  fg=COL_X, bg=BG2, padx=20, pady=6, cursor="hand2", relief=tk.FLAT)
+        self._ox_x_btn.pack(side=tk.LEFT, expand=True, fill=tk.X)
+        self._ox_x_btn.bind("<Button-1>", lambda e: self._click_ox("X"))
+
         # 初始顯示四選一
         self._frame_quiz4.pack(fill=tk.X)
 
@@ -1200,29 +1212,24 @@ class DaxiApp:
             self._refresh_db4()
         else:
             ans = self._current.get("answer")
-            if not ans:
-                win = tk.Toplevel(self.root)
-                win.title("選擇答案"); win.configure(bg=BG)
-                win.attributes("-topmost", True); win.resizable(False, False)
-                tk.Label(win, text=f"題目：{q[:40]}", bg=BG, fg=TEXT_NORM,
-                         font=("Microsoft JhengHei UI",10), padx=12, pady=8).pack()
-                chosen = tk.StringVar()
-                br = tk.Frame(win, bg=BG); br.pack(pady=(0,10))
-                def pick(v): chosen.set(v); win.destroy()
-                tk.Button(br, text="O（正確）", font=("Microsoft JhengHei UI",14,"bold"),
-                          bg=COL_O, fg="white", relief=tk.FLAT, padx=14, pady=6,
-                          command=lambda: pick("O")).pack(side=tk.LEFT, padx=8)
-                tk.Button(br, text="X（錯誤）", font=("Microsoft JhengHei UI",14,"bold"),
-                          bg=COL_X, fg="white", relief=tk.FLAT, padx=14, pady=6,
-                          command=lambda: pick("X")).pack(side=tk.LEFT, padx=8)
-                win.wait_window()
-                if not chosen.get(): return
-                ans = chosen.get()
-                self._current["answer"] = ans
-                self._show_result(self._current)
-            self.dbs.add(q, ans)
-            self._set_status(f"已存入選邊站題庫：{q[:25]}…")
-            self._refresh_dbs()
+            if ans:
+                self.dbs.add(q, ans)
+                self._set_status(f"已存入選邊站題庫：{q[:25]}…")
+                self._refresh_dbs()
+            else:
+                self._set_status("請直接點畫面上的 O / X 設定答案")
+
+    def _click_ox(self, ans):
+        """點擊 O/X 按鈕直接設定選邊站答案並存入題庫。"""
+        if not self._current or self._mode.get() != "sidestand": return
+        q = self._current.get("question", "")
+        if not q: return
+        self._current["answer"] = ans
+        self._show_result(self._current)
+        self.dbs.add(q, ans)
+        self._set_status(f"答案 {ans} 已記錄：{q[:20]}…")
+        self._add_notif(f"選邊站 → 答案確認 {ans}", "ok")
+        self._refresh_dbs()
 
     def _click_option(self, idx):
         """點選選項 label 直接設定答案並存入題庫。"""
