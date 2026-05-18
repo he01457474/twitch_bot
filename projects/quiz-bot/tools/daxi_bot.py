@@ -640,9 +640,10 @@ class DaxiApp:
         self.pin_btn.pack(side=tk.RIGHT)
 
         self.status_var = tk.StringVar(value="就緒，按「開始監測」後會自動尋找遊戲視窗")
-        self._lbl(f, textvariable=self.status_var,
+        self.status_lbl = self._lbl(f, textvariable=self.status_var,
                   font=("Microsoft JhengHei UI", 8), fg="#666688", bg=BG,
-                  wraplength=390, justify=tk.LEFT, anchor="w").pack(fill=tk.X, pady=(4,0))
+                  wraplength=390, justify=tk.LEFT, anchor="w")
+        self.status_lbl.pack(fill=tk.X, pady=(4,0))
 
     def _switch_mode(self, mode):
         self._mode.set(mode)
@@ -686,6 +687,9 @@ class DaxiApp:
         btn_row.pack(fill=tk.X)
         ttk.Button(btn_row, text="刪除選取", command=self._delete_db4).pack(side=tk.LEFT, padx=6, pady=4)
         ttk.Button(btn_row, text="重新整理", command=self._refresh_db4).pack(side=tk.LEFT)
+        tk.Label(btn_row, text="（雙擊列可修改答案）", bg=BG2, fg=TEXT_DIM,
+                 font=("Microsoft JhengHei UI", 8)).pack(side=tk.LEFT, padx=8)
+        self.db4_tree.bind("<Double-Button-1>", self._edit_db4_entry)
         self._refresh_db4()
 
     def _build_dbs(self, f):
@@ -703,6 +707,9 @@ class DaxiApp:
         btn_row.pack(fill=tk.X)
         ttk.Button(btn_row, text="刪除選取", command=self._delete_dbs).pack(side=tk.LEFT, padx=6, pady=4)
         ttk.Button(btn_row, text="重新整理", command=self._refresh_dbs).pack(side=tk.LEFT)
+        tk.Label(btn_row, text="（雙擊列可修改答案）", bg=BG2, fg=TEXT_DIM,
+                 font=("Microsoft JhengHei UI", 8)).pack(side=tk.LEFT, padx=8)
+        self.dbs_tree.bind("<Double-Button-1>", self._edit_dbs_entry)
         self._refresh_dbs()
 
     def _build_cfg(self, f):
@@ -797,6 +804,27 @@ class DaxiApp:
         self._current = result
         if not self._pinned: self.root.after(0, self._popup_window)
         self.root.after(0, self._show_result, result)
+        # 自動加入題庫（無答案的新題目）
+        q = result.get("question", "")
+        if q:
+            mode = self._mode.get()
+            if mode == "quiz4" and not result.get("answer_idx"):
+                if not self.db4.lookup(question=q):
+                    self.db4.upsert(result.get("phash") or 0, q, None, "",
+                                    result.get("options", []))
+                    self.root.after(0, self._notify_auto_added, "quiz4")
+                    self.root.after(0, self._refresh_db4)
+            elif mode == "sidestand" and not result.get("answer"):
+                if not self.dbs.lookup(q, threshold=0.9):
+                    self.dbs.add(q, None)
+                    self.root.after(0, self._notify_auto_added, "sidestand")
+                    self.root.after(0, self._refresh_dbs)
+
+    def _notify_auto_added(self, mode):
+        tab = "四選一題庫" if mode == "quiz4" else "選邊站題庫"
+        self.status_lbl.configure(fg="#E67E22")
+        self.status_var.set(f"⚠ 未知題目已自動加入「{tab}」（尚無答案），請雙擊補充")
+        self.root.after(8000, lambda: self.status_lbl.configure(fg="#666688"))
 
     def _popup_window(self):
         self.root.deiconify()
@@ -930,18 +958,102 @@ class DaxiApp:
             self._show_result(self._current)
 
     def _refresh_db4(self):
+        self.db4_tree.tag_configure("no_ans", foreground="#E67E22")
         for item in self.db4_tree.get_children(): self.db4_tree.delete(item)
         for e in self.db4.entries:
-            idx = e.get("answer_idx","?")
-            t   = e.get("answer_text","")[:15]
-            self.db4_tree.insert("","end", values=(
-                e.get("question","")[:28], f"{idx}. {t}", e.get("source","")[:8]))
+            idx  = e.get("answer_idx")
+            t    = e.get("answer_text","")[:15]
+            tag  = ("no_ans",) if not idx else ()
+            self.db4_tree.insert("","end", tags=tag, values=(
+                e.get("question","")[:28],
+                f"{idx}. {t}" if idx else "（待填）",
+                e.get("source","")[:8]))
 
     def _refresh_dbs(self):
+        self.dbs_tree.tag_configure("no_ans", foreground="#E67E22")
         for item in self.dbs_tree.get_children(): self.dbs_tree.delete(item)
         for e in self.dbs.entries:
-            self.dbs_tree.insert("","end", values=(
-                e.get("question","")[:50], e.get("answer","?")))
+            ans = e.get("answer")
+            tag = ("no_ans",) if not ans else ()
+            self.dbs_tree.insert("","end", tags=tag, values=(
+                e.get("question","")[:50], ans or "（待填）"))
+
+    def _edit_db4_entry(self, event):
+        sel = self.db4_tree.selection()
+        if not sel: return
+        idx  = self.db4_tree.index(sel[0])
+        entry = self.db4.entries[idx]
+        q    = entry.get("question", "")
+        opts = entry.get("options", [])
+
+        win = tk.Toplevel(self.root)
+        win.title("修改答案"); win.configure(bg=BG)
+        win.attributes("-topmost", True); win.resizable(False, False)
+
+        tk.Label(win, text=q, bg=BG, fg=TEXT_NORM, wraplength=360,
+                 font=("Microsoft JhengHei UI", 10), padx=12, pady=8,
+                 justify=tk.LEFT).pack(fill=tk.X)
+        tk.Label(win, text="選擇正確答案：", bg=BG, fg=TEXT_DIM,
+                 font=("Microsoft JhengHei UI", 9)).pack(anchor="w", padx=12)
+
+        chosen = tk.IntVar(value=entry.get("answer_idx") or 0)
+        btn_frame = tk.Frame(win, bg=BG); btn_frame.pack(padx=12, pady=6, fill=tk.X)
+        for i in range(4):
+            opt_text = opts[i] if i < len(opts) else f"選項 {i+1}"
+            tk.Radiobutton(btn_frame, text=f"{i+1}. {opt_text}",
+                           variable=chosen, value=i+1,
+                           bg=BG, fg=OPT_COLORS[i], selectcolor="#222240",
+                           font=("Microsoft JhengHei UI", 10),
+                           activebackground=BG).pack(anchor="w", pady=2)
+
+        def confirm():
+            v = chosen.get()
+            if v in (1, 2, 3, 4):
+                ans_text = opts[v-1] if v <= len(opts) else ""
+                self.db4.entries[idx]["answer_idx"]  = v
+                self.db4.entries[idx]["answer_text"] = ans_text
+                self.db4._save()
+                self._refresh_db4()
+                self._set_status(f"已更新答案：{q[:20]}… → {v}")
+            win.destroy()
+
+        btn_row = tk.Frame(win, bg=BG); btn_row.pack(pady=(4, 10))
+        tk.Button(btn_row, text="確認", bg=ACCENT, fg="white", relief=tk.FLAT,
+                  padx=16, pady=4, font=("Microsoft JhengHei UI", 10),
+                  command=confirm).pack(side=tk.LEFT, padx=6)
+        tk.Button(btn_row, text="取消", bg=BG2, fg=TEXT_NORM, relief=tk.FLAT,
+                  padx=16, pady=4, font=("Microsoft JhengHei UI", 10),
+                  command=win.destroy).pack(side=tk.LEFT)
+
+    def _edit_dbs_entry(self, event):
+        sel = self.dbs_tree.selection()
+        if not sel: return
+        idx   = self.dbs_tree.index(sel[0])
+        entry = self.dbs.entries[idx]
+        q     = entry.get("question", "")
+
+        win = tk.Toplevel(self.root)
+        win.title("修改答案"); win.configure(bg=BG)
+        win.attributes("-topmost", True); win.resizable(False, False)
+
+        tk.Label(win, text=q, bg=BG, fg=TEXT_NORM, wraplength=360,
+                 font=("Microsoft JhengHei UI", 11), padx=12, pady=10,
+                 justify=tk.LEFT).pack(fill=tk.X)
+
+        def pick(v):
+            self.dbs.entries[idx]["answer"] = v
+            self.dbs._save()
+            self._refresh_dbs()
+            self._set_status(f"已更新答案：{q[:20]}… → {v}")
+            win.destroy()
+
+        btn_row = tk.Frame(win, bg=BG); btn_row.pack(pady=(0, 14))
+        tk.Button(btn_row, text="O（正確）", font=("Microsoft JhengHei UI", 14, "bold"),
+                  bg=COL_O, fg="white", relief=tk.FLAT, padx=16, pady=6,
+                  command=lambda: pick("O")).pack(side=tk.LEFT, padx=10)
+        tk.Button(btn_row, text="X（錯誤）", font=("Microsoft JhengHei UI", 14, "bold"),
+                  bg=COL_X, fg="white", relief=tk.FLAT, padx=16, pady=6,
+                  command=lambda: pick("X")).pack(side=tk.LEFT, padx=10)
 
     def _delete_db4(self):
         sel = self.db4_tree.selection()
