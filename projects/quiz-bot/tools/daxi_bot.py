@@ -43,6 +43,9 @@ DEFAULT_CONFIG = {
     "question_region":  {"left": 0.17, "top": 0.12, "right": 0.74, "bottom": 0.27},
     "options_region":   {"left": 0.17, "top": 0.27, "right": 0.74, "bottom": 0.34},
     "popup_full_region":{"left": 0.15, "top": 0.09, "right": 0.76, "bottom": 0.36},
+    "map_name_region":  {"left": 0.57, "top": 0.00, "right": 0.90, "bottom": 0.07},
+    "quiz_map_keywords": [],   # 留空 = 不篩選；填入關鍵字才啟用地圖過濾
+    "map_check_interval": 3,   # 地圖名稱重新 OCR 的間隔秒數
     "api_key": "",
     "match_threshold": 0.72,
 }
@@ -292,15 +295,21 @@ class GameDetector:
         self._last_ph       = None
         self._last_api_ph   = None
         self._last_api_time = 0.0
-        self.hwnd           = None
-        self._on_detail     = on_detail or (lambda m: None)
+        self.hwnd            = None
+        self._on_detail      = on_detail or (lambda m: None)
+        self._map_ok         = True   # 預設 True，關鍵字空清單時不擋
+        self._map_check_time = 0.0
+        self._last_map_text  = ""
 
     def set_mode(self, mode):
-        self.mode           = mode
-        self._popup_on      = False
-        self._last_ph       = None
-        self._last_api_ph   = None
-        self._last_api_time = 0.0
+        self.mode            = mode
+        self._popup_on       = False
+        self._last_ph        = None
+        self._last_api_ph    = None
+        self._last_api_time  = 0.0
+        self._map_ok         = True
+        self._map_check_time = 0.0
+        self._last_map_text  = ""
 
     def find_window(self):
         result = []
@@ -326,6 +335,29 @@ class GameDetector:
         pixels = list(region.getdata())
         if not pixels: return 255
         return sum(sum(p) for p in pixels) / (len(pixels) * 3)
+
+    def _check_map_name(self, img, w, h):
+        """定期 OCR 右上地圖名稱，有關鍵字才允許進入辨識流程。"""
+        keywords = self.config.get("quiz_map_keywords", [])
+        if not keywords:
+            return True  # 未設定關鍵字 → 不篩選
+        now = time.time()
+        if now - self._map_check_time < self.config.get("map_check_interval", 3):
+            return self._map_ok  # 使用快取
+        self._map_check_time = now
+        map_img = self._crop(img, w, h, "map_name_region")
+        text = ocr_image(map_img).strip()
+        if not text:
+            return self._map_ok  # OCR 失敗 → 保持上一次判斷
+        matched = any(kw in text for kw in keywords)
+        if text != self._last_map_text:
+            self._last_map_text = text
+            if matched:
+                self._on_detail(f"地圖：{text[:30]}（活動場景，啟動辨識）")
+            else:
+                self._on_detail(f"地圖：{text[:30]}（非活動場景，略過）")
+        self._map_ok = matched
+        return matched
 
     def _can_call_api(self, ph):
         """同一題目只呼叫一次 API：phash 相近 or 冷卻期內直接跳過。"""
@@ -355,6 +387,15 @@ class GameDetector:
         return (lines + ["","","",""])[:4]
 
     def process_frame(self, img, w, h, on_status):
+        if not self._check_map_name(img, w, h):
+            if self._popup_on:
+                self._popup_on      = False
+                self._last_ph       = None
+                self._last_api_ph   = None
+                self._last_api_time = 0.0
+            on_status("非活動場景，等待中…")
+            return None
+
         visible = self.sample_brightness(img, w, h) < self.config.get("popup_brightness_threshold", 80)
         if not visible:
             if self._popup_on:
@@ -833,9 +874,34 @@ class DaxiApp:
                      relief=tk.FLAT).pack(side=tk.LEFT, padx=4)
 
         tk.Label(f, text="", bg=BG2).pack()
+        tk.Label(f, text="地圖名稱過濾（右上角）", bg=BG2, fg=ACCENT,
+                 font=("Microsoft JhengHei UI",10,"bold")).pack(anchor="w")
+        tk.Label(f, text="設定後只在指定場景啟動辨識；留空關鍵字欄位 = 不過濾",
+                 bg=BG2, fg=TEXT_DIM, font=("Microsoft JhengHei UI",8)).pack(anchor="w", padx=4)
+        for sub in ["left","top","right","bottom"]:
+            r3 = tk.Frame(f, bg=BG2); r3.pack(fill=tk.X, pady=1)
+            tk.Label(r3, text=f"  map_name_region.{sub}", bg=BG2, fg=TEXT_NORM,
+                     font=("Microsoft JhengHei UI",9), width=22, anchor="w").pack(side=tk.LEFT)
+            val = self.config.get("map_name_region",{}).get(sub, 0)
+            var = tk.StringVar(value=str(val))
+            self._cfg_vars[f"map_name_region.{sub}"] = var
+            tk.Entry(r3, textvariable=var, width=8,
+                     bg="#22223A", fg=TEXT_NORM, insertbackground=TEXT_NORM,
+                     relief=tk.FLAT).pack(side=tk.LEFT, padx=4)
+        kw_row = tk.Frame(f, bg=BG2); kw_row.pack(fill=tk.X, pady=2)
+        tk.Label(kw_row, text="  活動關鍵字（逗號分隔）", bg=BG2, fg=TEXT_NORM,
+                 font=("Microsoft JhengHei UI",9), width=22, anchor="w").pack(side=tk.LEFT)
+        kw_str = ",".join(self.config.get("quiz_map_keywords", []))
+        self._kw_var = tk.StringVar(value=kw_str)
+        tk.Entry(kw_row, textvariable=self._kw_var, width=22,
+                 bg="#22223A", fg=TEXT_NORM, insertbackground=TEXT_NORM,
+                 relief=tk.FLAT).pack(side=tk.LEFT, padx=4)
+
+        tk.Label(f, text="", bg=BG2).pack()
         btn_row = tk.Frame(f, bg=BG2); btn_row.pack()
         ttk.Button(btn_row, text="儲存設定",     command=self._apply_cfg).pack(side=tk.LEFT, padx=6)
         ttk.Button(btn_row, text="測試亮度",     command=self._test_brightness).pack(side=tk.LEFT, padx=6)
+        ttk.Button(btn_row, text="測試地圖名稱", command=self._test_map_name).pack(side=tk.LEFT, padx=6)
         ttk.Button(btn_row, text="測試截圖辨識", command=self._test_recognition).pack(side=tk.LEFT)
 
     # ── 控制 ──
@@ -1171,9 +1237,28 @@ class DaxiApp:
                     self.config[key] = val
             except ValueError:
                 pass
+        # 關鍵字欄位（逗號分隔字串 → list）
+        kw_raw = self._kw_var.get().strip()
+        self.config["quiz_map_keywords"] = [k.strip() for k in kw_raw.split(",") if k.strip()]
         self.detector.config = self.config
         self._save_config()
         messagebox.showinfo("設定","設定已儲存")
+
+    def _test_map_name(self):
+        found = self.detector.find_window()
+        if not found: messagebox.showwarning("提示","找不到遊戲視窗"); return
+        hwnd, _ = found
+        try:
+            img, w, h = capture_window(hwnd)
+            map_img = self.detector._crop(img, w, h, "map_name_region")
+            text = ocr_image(map_img).strip()
+            keywords = self.config.get("quiz_map_keywords", [])
+            matched = any(kw in text for kw in keywords) if keywords else True
+            status = "✓ 符合關鍵字（辨識會啟動）" if matched else "✗ 不符合關鍵字（辨識被略過）"
+            messagebox.showinfo("地圖名稱測試",
+                f"OCR 結果：「{text or '（空）'}」\n關鍵字：{keywords or '（未設定）'}\n{status}")
+        except Exception as e:
+            messagebox.showerror("錯誤", str(e))
 
     def _test_brightness(self):
         found = self.detector.find_window()
