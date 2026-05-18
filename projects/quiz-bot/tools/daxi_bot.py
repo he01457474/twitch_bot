@@ -990,10 +990,11 @@ class DaxiApp:
 
         tk.Label(f, text="", bg=BG2).pack()
         btn_row = tk.Frame(f, bg=BG2); btn_row.pack()
-        ttk.Button(btn_row, text="儲存設定",     command=self._apply_cfg).pack(side=tk.LEFT, padx=6)
-        ttk.Button(btn_row, text="測試亮度",     command=self._test_brightness).pack(side=tk.LEFT, padx=6)
-        ttk.Button(btn_row, text="測試地圖名稱", command=self._test_map_name).pack(side=tk.LEFT, padx=6)
-        ttk.Button(btn_row, text="測試截圖辨識", command=self._test_recognition).pack(side=tk.LEFT)
+        ttk.Button(btn_row, text="儲存設定",       command=self._apply_cfg).pack(side=tk.LEFT, padx=6)
+        ttk.Button(btn_row, text="測試亮度",       command=self._test_brightness).pack(side=tk.LEFT, padx=6)
+        ttk.Button(btn_row, text="測試地圖名稱",   command=self._test_map_name).pack(side=tk.LEFT, padx=6)
+        ttk.Button(btn_row, text="測試截圖辨識",   command=self._test_recognition).pack(side=tk.LEFT, padx=6)
+        ttk.Button(btn_row, text="從截圖檔案辨識", command=self._test_recognition_file).pack(side=tk.LEFT)
 
     # ── 控制 ──
 
@@ -1438,14 +1439,43 @@ class DaxiApp:
         found = self.detector.find_window()
         if not found: messagebox.showwarning("提示","找不到遊戲視窗，請先開啟遊戲"); return
         hwnd, title = found
-        mode = self._mode.get()
 
-        win = tk.Toplevel(self.root)
+        def get_img():
+            img, w, h = capture_window(hwnd)
+            brightness = self.detector.sample_brightness(img, w, h)
+            threshold  = self.config.get("popup_brightness_threshold", 80)
+            return img, w, h, f"遊戲：{title}", brightness, threshold
+
+        self._open_recognition_dialog(get_img)
+
+    def _test_recognition_file(self):
+        from tkinter import filedialog
+        path = filedialog.askopenfilename(
+            title="選擇遊戲截圖",
+            filetypes=[("圖片", "*.png *.jpg *.jpeg *.bmp"), ("所有檔案", "*.*")],
+        )
+        if not path: return
+        try:
+            img = Image.open(path).convert("RGB")
+        except Exception as e:
+            messagebox.showerror("錯誤", f"無法開啟圖片：{e}"); return
+        w, h  = img.size
+        label = f"檔案：{os.path.basename(path)}"
+
+        def get_img():
+            # 檔案模式：不做亮度判斷，直接當彈窗已出現
+            return img, w, h, label, None, None
+
+        self._open_recognition_dialog(get_img)
+
+    def _open_recognition_dialog(self, get_img_fn):
+        mode = self._mode.get()
+        win  = tk.Toplevel(self.root)
         win.title("截圖辨識測試"); win.configure(bg=BG)
         win.resizable(False, False); win.attributes("-topmost", True)
         tk.Label(win, text=f"截圖辨識測試（{'四選一' if mode=='quiz4' else '選邊站'}）",
                  bg=BG, fg=ACCENT, font=("Microsoft JhengHei UI",12,"bold")).pack(pady=(8,2))
-        status_lbl = tk.Label(win, text="截圖中…", bg=BG, fg=TEXT_DIM,
+        status_lbl = tk.Label(win, text="載入中…", bg=BG, fg=TEXT_DIM,
                               font=("Microsoft JhengHei UI",9))
         status_lbl.pack()
         preview_lbl = tk.Label(win, bg="#111122", relief=tk.SUNKEN, text="（預覽）",
@@ -1468,23 +1498,26 @@ class DaxiApp:
 
         def run():
             try:
-                img, w, h  = capture_window(hwnd)
-                brightness  = self.detector.sample_brightness(img, w, h)
-                threshold   = self.config.get("popup_brightness_threshold", 80)
-                popup_ok    = brightness < threshold
-                full_img    = self.detector._crop(img, w, h, "popup_full_region")
-                pw, ph2     = full_img.size
-                scale       = min(380/pw, 1.0)
-                preview     = full_img.resize((int(pw*scale), max(1,int(ph2*scale))), Image.Resampling.LANCZOS)
-                tk_img      = ImageTk.PhotoImage(preview)
+                img, w, h, label, brightness, threshold = get_img_fn()
+                full_img = self.detector._crop(img, w, h, "popup_full_region")
+                pw, ph2  = full_img.size
+                scale    = min(380/pw, 1.0)
+                preview  = full_img.resize((int(pw*scale), max(1,int(ph2*scale))), Image.Resampling.LANCZOS)
+                tk_img   = ImageTk.PhotoImage(preview)
 
                 def update_ui():
                     preview_lbl.configure(image=tk_img, text=""); preview_lbl.image = tk_img
-                    _append(f"遊戲：{title}\n","dim")
-                    _append(f"亮度：{brightness:.1f}  門檻：{threshold}\n")
-                    _append("→ 彈窗已偵測到\n","ok") if popup_ok else _append("→ 未偵測到彈窗\n","warn")
-                    if not popup_ok:
-                        status_lbl.configure(text="完成（彈窗未出現）"); return
+                    _append(f"{label}\n", "dim")
+
+                    # 亮度資訊（即時截圖才有）
+                    if brightness is not None:
+                        popup_ok = brightness < threshold
+                        _append(f"亮度：{brightness:.1f}  門檻：{threshold}\n")
+                        _append("→ 彈窗已偵測到\n","ok") if popup_ok else _append("→ 未偵測到彈窗\n","warn")
+                        if not popup_ok:
+                            status_lbl.configure(text="完成（彈窗未出現）"); return
+                    else:
+                        _append("→ 檔案模式，直接辨識\n","dim")
 
                     def _detail(msg):
                         win.after(0, lambda m=msg: _append(f"  ⚠ {m}\n", "warn"))
@@ -1492,6 +1525,7 @@ class DaxiApp:
                     gemini_key = self.config.get("gemini_api_key","").strip()
                     api_key    = self.config.get("api_key","").strip()
                     gm_model   = self.config.get("gemini_model","gemini-2.0-flash")
+
                     if mode == "quiz4":
                         q_text, options, src = "", [], "Windows OCR"
                         if gemini_key:
