@@ -55,10 +55,10 @@ DEFAULT_CONFIG = {
 _OCR_SCRIPT = r"""
 import sys, asyncio
 sys.stdout.reconfigure(encoding='utf-8')
-import winsdk.windows.media.ocr as ocr
-import winsdk.windows.globalization as glob
-import winsdk.windows.graphics.imaging as wgi
-import winsdk.windows.storage.streams as wss
+import winrt.windows.media.ocr as ocr
+import winrt.windows.globalization as glob
+import winrt.windows.graphics.imaging as wgi
+import winrt.windows.storage.streams as wss
 async def run():
     data = sys.stdin.buffer.read()
     stream = wss.InMemoryRandomAccessStream()

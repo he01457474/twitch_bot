@@ -458,14 +458,14 @@ class RestaurantBot:
     def _ocr_image(self, pil_img):
         """用 Windows 內建 OCR 辨識 PIL Image，回傳文字字串。
         透過 subprocess 執行，避免 worker thread COM apartment 衝突。
-        需要 winsdk 套件（pip install winsdk）；未安裝時回傳空字串。"""
+        需要 winrt-* 套件（pip install winrt-runtime winrt-Windows.Media.Ocr ...）；未安裝時回傳空字串。"""
         _OCR_SCRIPT = r"""
 import sys, asyncio, io
 sys.stdout.reconfigure(encoding='utf-8')
-import winsdk.windows.media.ocr as ocr
-import winsdk.windows.globalization as glob
-import winsdk.windows.graphics.imaging as wgi
-import winsdk.windows.storage.streams as wss
+import winrt.windows.media.ocr as ocr
+import winrt.windows.globalization as glob
+import winrt.windows.graphics.imaging as wgi
+import winrt.windows.storage.streams as wss
 
 async def run():
     data = sys.stdin.buffer.read()
