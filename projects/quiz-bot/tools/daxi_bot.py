@@ -767,7 +767,8 @@ class DaxiApp:
                             fg=OPT_COLORS[i], bg=BG, anchor="w",
                             cursor="hand2")
             lbl.pack(fill=tk.X)
-            lbl.bind("<Button-1>", lambda e, idx=i+1: self._click_option(idx))
+            lbl.bind("<ButtonPress-1>",   lambda e, l=lbl: l.configure(bg="#2A2A4A"))
+            lbl.bind("<ButtonRelease-1>", lambda e, l=lbl, idx=i+1: (l.configure(bg=BG), self._click_option(idx)))
 
         # ── 選邊站顯示區（左右分欄） ──
         self._frame_side = tk.Frame(f, bg=BG)
@@ -807,11 +808,13 @@ class DaxiApp:
         self._ox_o_btn = tk.Label(ox_row, text="O  正確", font=("Microsoft JhengHei UI",14,"bold"),
                                   fg=COL_O, bg=BG2, padx=20, pady=6, cursor="hand2", relief=tk.FLAT)
         self._ox_o_btn.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0,4))
-        self._ox_o_btn.bind("<Button-1>", lambda e: self._click_ox("O"))
+        self._ox_o_btn.bind("<ButtonPress-1>",   lambda e: self._ox_o_btn.configure(bg="#1A5C38"))
+        self._ox_o_btn.bind("<ButtonRelease-1>", lambda e: (self._ox_o_btn.configure(bg=BG2), self._click_ox("O")))
         self._ox_x_btn = tk.Label(ox_row, text="X  錯誤", font=("Microsoft JhengHei UI",14,"bold"),
                                   fg=COL_X, bg=BG2, padx=20, pady=6, cursor="hand2", relief=tk.FLAT)
         self._ox_x_btn.pack(side=tk.LEFT, expand=True, fill=tk.X)
-        self._ox_x_btn.bind("<Button-1>", lambda e: self._click_ox("X"))
+        self._ox_x_btn.bind("<ButtonPress-1>",   lambda e: self._ox_x_btn.configure(bg="#6B1A1A"))
+        self._ox_x_btn.bind("<ButtonRelease-1>", lambda e: (self._ox_x_btn.configure(bg=BG2), self._click_ox("X")))
 
         # 初始顯示四選一
         self._frame_quiz4.pack(fill=tk.X)
