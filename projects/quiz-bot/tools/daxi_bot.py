@@ -113,7 +113,7 @@ def phash_distance(a, b):
         c += x & 1; x >>= 1
     return c
 
-def ocr_image(pil_img):
+def ocr_image(pil_img, on_detail=None):
     try:
         buf = io.BytesIO()
         pil_img.save(buf, format="PNG")
@@ -121,11 +121,18 @@ def ocr_image(pil_img):
             [sys.executable, "-c", _OCR_SCRIPT],
             input=buf.getvalue(), capture_output=True, timeout=10,
         )
+        if proc.returncode != 0 and on_detail:
+            err = proc.stderr.decode("utf-8", errors="replace").strip()
+            on_detail(f"OCR 程序錯誤（returncode={proc.returncode}）：{err[:120]}")
+        elif not proc.stdout.strip() and proc.stderr.strip() and on_detail:
+            err = proc.stderr.decode("utf-8", errors="replace").strip()
+            on_detail(f"OCR 無結果，stderr：{err[:120]}")
         return proc.stdout.decode("utf-8", errors="replace").strip()
-    except Exception:
+    except Exception as e:
+        if on_detail: on_detail(f"OCR 例外：{type(e).__name__}: {e}")
         return ""
 
-def claude_read_popup(pil_img, api_key):
+def claude_read_popup(pil_img, api_key, on_detail=None):
     """回傳 (question_str, options_list) — 四選一用。"""
     try:
         import anthropic, base64, json as _j
@@ -150,10 +157,11 @@ def claude_read_popup(pil_img, api_key):
         opts = [str(o).strip() for o in data.get("options", [])[:4]]
         while len(opts) < 4: opts.append("")
         return q, opts
-    except Exception:
+    except Exception as e:
+        if on_detail: on_detail(f"API(popup) 錯誤：{type(e).__name__}: {str(e)[:100]}")
         return "", []
 
-def claude_read_question(pil_img, api_key):
+def claude_read_question(pil_img, api_key, on_detail=None):
     """回傳 question_str — 選邊站用（只讀題目）。"""
     try:
         import anthropic, base64
@@ -173,7 +181,8 @@ def claude_read_question(pil_img, api_key):
             ]}],
         )
         return resp.content[0].text.strip()
-    except Exception:
+    except Exception as e:
+        if on_detail: on_detail(f"API(question) 錯誤：{type(e).__name__}: {str(e)[:100]}")
         return ""
 
 # ── 題庫 ───────────────────────────────────────────────────────────────────────
@@ -273,7 +282,7 @@ class SidestandDatabase:
 # ── 偵測器 ─────────────────────────────────────────────────────────────────────
 
 class GameDetector:
-    def __init__(self, config, db4, dbs):
+    def __init__(self, config, db4, dbs, on_detail=None):
         self.config         = config
         self.db4            = db4
         self.dbs            = dbs
@@ -284,6 +293,7 @@ class GameDetector:
         self._last_api_ph   = None
         self._last_api_time = 0.0
         self.hwnd           = None
+        self._on_detail     = on_detail or (lambda m: None)
 
     def set_mode(self, mode):
         self.mode           = mode
@@ -379,11 +389,13 @@ class GameDetector:
         q_text, options = "", []
         if api_key and self._can_call_api(ph):
             on_status("Claude API 辨識中…")
-            q_text, options = claude_read_popup(self._crop(img, w, h, "popup_full_region"), api_key)
+            q_text, options = claude_read_popup(
+                self._crop(img, w, h, "popup_full_region"), api_key,
+                on_detail=self._on_detail)
             self._record_api_call(ph)
         if not q_text:
             on_status("OCR 辨識中…")
-            q_text  = ocr_image(q_img)
+            q_text  = ocr_image(q_img, on_detail=self._on_detail)
             opt_img = self._crop(img, w, h, "options_region")
             options = self._parse_options(ocr_image(opt_img))
         if not q_text:
@@ -403,11 +415,13 @@ class GameDetector:
         q_text  = ""
         if api_key and self._can_call_api(ph):
             on_status("Claude API 辨識中…")
-            q_text = claude_read_question(self._crop(img, w, h, "popup_full_region"), api_key)
+            q_text = claude_read_question(
+                self._crop(img, w, h, "popup_full_region"), api_key,
+                on_detail=self._on_detail)
             self._record_api_call(ph)
         if not q_text:
             on_status("OCR 辨識中…")
-            q_text = ocr_image(q_img)
+            q_text = ocr_image(q_img, on_detail=self._on_detail)
         if not q_text:
             on_status("辨識失敗"); return None
 
@@ -838,7 +852,10 @@ class DaxiApp:
             self.start_btn.configure(text="開始監測", bg="#2ECC71")
             self._set_status("已停止")
         else:
-            self.detector = GameDetector(self.config, self.db4, self.dbs)
+            self.detector = GameDetector(
+                self.config, self.db4, self.dbs,
+                on_detail=lambda m: self.root.after(0, self._add_notif, m, "warn"),
+            )
             self.detector.set_mode(self._mode.get())
             self.start_btn.configure(text="停止監測", bg="#C0392B")
             self._thread = threading.Thread(
@@ -1223,15 +1240,18 @@ class DaxiApp:
                     if not popup_ok:
                         status_lbl.configure(text="完成（彈窗未出現）"); return
 
+                    def _detail(msg):
+                        win.after(0, lambda m=msg: _append(f"  ⚠ {m}\n", "warn"))
+
                     api_key = self.config.get("api_key","").strip()
                     if mode == "quiz4":
                         if api_key:
                             _append("\nClaude API 辨識中…\n","dim")
                             status_lbl.configure(text="API 辨識中…")
-                            q_text, options = claude_read_popup(full_img, api_key)
+                            q_text, options = claude_read_popup(full_img, api_key, on_detail=_detail)
                             src = "Claude API"
                         else:
-                            q_text  = ocr_image(self.detector._crop(img,w,h,"question_region"))
+                            q_text  = ocr_image(self.detector._crop(img,w,h,"question_region"), on_detail=_detail)
                             opt_img = self.detector._crop(img,w,h,"options_region")
                             options = self.detector._parse_options(ocr_image(opt_img))
                             src = "Windows OCR"
@@ -1243,10 +1263,10 @@ class DaxiApp:
                         if api_key:
                             _append("\nClaude API 辨識中…\n","dim")
                             status_lbl.configure(text="API 辨識中…")
-                            q_text = claude_read_question(full_img, api_key)
+                            q_text = claude_read_question(full_img, api_key, on_detail=_detail)
                             src = "Claude API"
                         else:
-                            q_text = ocr_image(self.detector._crop(img,w,h,"question_region"))
+                            q_text = ocr_image(self.detector._crop(img,w,h,"question_region"), on_detail=_detail)
                             src = "Windows OCR"
                         _append(f"\n辨識方式：{src}\n","dim")
                         _append("題目：","head"); _append(f"{q_text or '（無法辨識）'}\n")
