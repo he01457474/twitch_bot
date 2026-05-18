@@ -46,6 +46,8 @@ DEFAULT_CONFIG = {
     "map_name_region":  {"left": 0.67, "top": 0.00, "right": 0.82, "bottom": 0.05},
     "quiz_map_keywords": [],   # 留空 = 不篩選；填入關鍵字才啟用地圖過濾
     "map_check_interval": 3,   # 地圖名稱重新 OCR 的間隔秒數
+    "gemini_api_key": "",
+    "gemini_model": "gemini-2.0-flash",
     "api_key": "",
     "match_threshold": 0.72,
 }
@@ -186,6 +188,55 @@ def claude_read_question(pil_img, api_key, on_detail=None):
         return resp.content[0].text.strip()
     except Exception as e:
         if on_detail: on_detail(f"API(question) 錯誤：{type(e).__name__}: {str(e)[:100]}")
+        return ""
+
+def gemini_read_popup(pil_img, api_key, model="gemini-2.0-flash", on_detail=None):
+    """回傳 (question_str, options_list) — 四選一用。"""
+    try:
+        import google.generativeai as genai, json as _j
+        genai.configure(api_key=api_key)
+        m = genai.GenerativeModel(model)
+        buf = io.BytesIO()
+        img = pil_img.convert("RGB")
+        if max(img.width, img.height) < 600:
+            s = max(2, 600 // max(img.width, img.height))
+            img = img.resize((img.width * s, img.height * s), Image.Resampling.LANCZOS)
+        img.save(buf, format="PNG")
+        image_part = {"mime_type": "image/png", "data": buf.getvalue()}
+        resp = m.generate_content([
+            image_part,
+            '這是一個武俠遊戲的問答截圖（繁體中文）。請讀出題目和選項，以JSON格式回傳（只輸出JSON）：{"question":"完整題目文字","options":["選項1","選項2","選項3","選項4"]}',
+        ])
+        raw  = re.sub(r'^```[a-z]*\n?', '', resp.text.strip()).rstrip('`').strip()
+        data = _j.loads(raw)
+        q    = data.get("question", "").strip()
+        opts = [str(o).strip() for o in data.get("options", [])[:4]]
+        while len(opts) < 4: opts.append("")
+        return q, opts
+    except Exception as e:
+        if on_detail: on_detail(f"Gemini(popup) 錯誤：{type(e).__name__}: {str(e)[:100]}")
+        return "", []
+
+def gemini_read_question(pil_img, api_key, model="gemini-2.0-flash", on_detail=None):
+    """回傳 question_str — 選邊站用。"""
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+        m = genai.GenerativeModel(model)
+        buf = io.BytesIO()
+        img = pil_img.convert("RGB")
+        if max(img.width, img.height) < 600:
+            s = max(2, 600 // max(img.width, img.height))
+            img = img.resize((img.width * s, img.height * s), Image.Resampling.LANCZOS)
+        img.save(buf, format="PNG")
+        image_part = {"mime_type": "image/png", "data": buf.getvalue()}
+        resp = m.generate_content([
+            image_part,
+            "這是一個武俠遊戲的問答截圖（繁體中文）。請只輸出題目文字，不要任何選項或說明。",
+        ])
+        return resp.text.strip()
+    except Exception as e:
+        if on_detail: on_detail(f"Gemini(question) 錯誤：{type(e).__name__}: {str(e)[:100]}")
         return ""
 
 # ── 題庫 ───────────────────────────────────────────────────────────────────────
@@ -426,13 +477,20 @@ class GameDetector:
             on_status(f"題庫命中")
             return dict(entry, source="題庫", phash=ph)
 
-        api_key = self.config.get("api_key", "").strip()
+        gemini_key = self.config.get("gemini_api_key", "").strip()
+        api_key    = self.config.get("api_key", "").strip()
         q_text, options = "", []
-        if api_key and self._can_call_api(ph):
-            on_status("Claude API 辨識中…")
-            q_text, options = claude_read_popup(
-                self._crop(img, w, h, "popup_full_region"), api_key,
-                on_detail=self._on_detail)
+        if (gemini_key or api_key) and self._can_call_api(ph):
+            full = self._crop(img, w, h, "popup_full_region")
+            if gemini_key and not q_text:
+                on_status("Gemini API 辨識中…")
+                q_text, options = gemini_read_popup(
+                    full, gemini_key,
+                    model=self.config.get("gemini_model", "gemini-2.0-flash"),
+                    on_detail=self._on_detail)
+            if api_key and not q_text:
+                on_status("Claude API 辨識中…")
+                q_text, options = claude_read_popup(full, api_key, on_detail=self._on_detail)
             self._record_api_call(ph)
         if not q_text:
             on_status("OCR 辨識中…")
@@ -452,13 +510,20 @@ class GameDetector:
                 "options": options, "source": "未知", "phash": ph}
 
     def _process_sidestand(self, img, w, h, q_img, ph, on_status):
-        api_key = self.config.get("api_key", "").strip()
-        q_text  = ""
-        if api_key and self._can_call_api(ph):
-            on_status("Claude API 辨識中…")
-            q_text = claude_read_question(
-                self._crop(img, w, h, "popup_full_region"), api_key,
-                on_detail=self._on_detail)
+        gemini_key = self.config.get("gemini_api_key", "").strip()
+        api_key    = self.config.get("api_key", "").strip()
+        q_text = ""
+        if (gemini_key or api_key) and self._can_call_api(ph):
+            full = self._crop(img, w, h, "popup_full_region")
+            if gemini_key and not q_text:
+                on_status("Gemini API 辨識中…")
+                q_text = gemini_read_question(
+                    full, gemini_key,
+                    model=self.config.get("gemini_model", "gemini-2.0-flash"),
+                    on_detail=self._on_detail)
+            if api_key and not q_text:
+                on_status("Claude API 辨識中…")
+                q_text = claude_read_question(full, api_key, on_detail=self._on_detail)
             self._record_api_call(ph)
         if not q_text:
             on_status("OCR 辨識中…")
@@ -832,7 +897,33 @@ class DaxiApp:
                 tk.Label(r, text=desc, bg=BG2, fg=TEXT_DIM,
                          font=("Microsoft JhengHei UI",8)).pack(side=tk.LEFT)
 
-        tk.Label(f, text="Claude API Key", bg=BG2, fg=ACCENT,
+        tk.Label(f, text="Google Gemini API Key（優先使用）", bg=BG2, fg=ACCENT,
+                 font=("Microsoft JhengHei UI",10,"bold")).pack(anchor="w")
+        gm_row = tk.Frame(f, bg=BG2); gm_row.pack(fill=tk.X, pady=2)
+        tk.Label(gm_row, text="GEMINI_API_KEY", bg=BG2, fg=TEXT_NORM,
+                 font=("Microsoft JhengHei UI",9), width=22, anchor="w").pack(side=tk.LEFT)
+        gm_var = tk.StringVar(value=self.config.get("gemini_api_key",""))
+        self._cfg_vars["gemini_api_key"] = gm_var
+        gm_entry = tk.Entry(gm_row, textvariable=gm_var, width=28, show="*",
+                            bg="#22223A", fg=TEXT_NORM, insertbackground=TEXT_NORM, relief=tk.FLAT)
+        gm_entry.pack(side=tk.LEFT, padx=4)
+        def _toggle_gm(btn=None, entry=gm_entry):
+            entry.configure(show="" if entry.cget("show")=="*" else "*")
+            if btn: btn.configure(text="隱藏" if entry.cget("show")==""  else "顯示")
+        gm_show = tk.Button(gm_row, text="顯示", bg=BG2, fg=TEXT_DIM, relief=tk.FLAT, padx=4,
+                            font=("Microsoft JhengHei UI",8), command=lambda: _toggle_gm(gm_show))
+        gm_show.pack(side=tk.LEFT)
+        model_row = tk.Frame(f, bg=BG2); model_row.pack(fill=tk.X, pady=1)
+        tk.Label(model_row, text="  Gemini 模型", bg=BG2, fg=TEXT_NORM,
+                 font=("Microsoft JhengHei UI",9), width=22, anchor="w").pack(side=tk.LEFT)
+        gm_model_var = tk.StringVar(value=self.config.get("gemini_model","gemini-2.0-flash"))
+        self._cfg_vars["gemini_model"] = gm_model_var
+        tk.Entry(model_row, textvariable=gm_model_var, width=20,
+                 bg="#22223A", fg=TEXT_NORM, insertbackground=TEXT_NORM,
+                 relief=tk.FLAT).pack(side=tk.LEFT, padx=4)
+
+        tk.Label(f, text="", bg=BG2).pack()
+        tk.Label(f, text="Claude API Key（備用）", bg=BG2, fg="#888855",
                  font=("Microsoft JhengHei UI",10,"bold")).pack(anchor="w")
         api_row = tk.Frame(f, bg=BG2); api_row.pack(fill=tk.X, pady=2)
         tk.Label(api_row, text="ANTHROPIC_API_KEY", bg=BG2, fg=TEXT_NORM,
@@ -848,7 +939,7 @@ class DaxiApp:
         show_btn = tk.Button(api_row, text="顯示", bg=BG2, fg=TEXT_DIM, relief=tk.FLAT, padx=4,
                              font=("Microsoft JhengHei UI",8), command=lambda: _toggle_show(show_btn))
         show_btn.pack(side=tk.LEFT)
-        tk.Label(f, text="留空則使用 Windows OCR", bg=BG2, fg=TEXT_DIM,
+        tk.Label(f, text="兩個都留空則使用 Windows OCR", bg=BG2, fg=TEXT_DIM,
                  font=("Microsoft JhengHei UI",8)).pack(anchor="w", padx=4)
 
         tk.Label(f, text="", bg=BG2).pack()
@@ -1222,7 +1313,7 @@ class DaxiApp:
             self._refresh_dbs()
 
     def _apply_cfg(self):
-        _str_keys = {"api_key"}
+        _str_keys = {"api_key", "gemini_api_key", "gemini_model"}
         for key, var in self._cfg_vars.items():
             raw = var.get()
             if key in _str_keys:
@@ -1328,31 +1419,43 @@ class DaxiApp:
                     def _detail(msg):
                         win.after(0, lambda m=msg: _append(f"  ⚠ {m}\n", "warn"))
 
-                    api_key = self.config.get("api_key","").strip()
+                    gemini_key = self.config.get("gemini_api_key","").strip()
+                    api_key    = self.config.get("api_key","").strip()
+                    gm_model   = self.config.get("gemini_model","gemini-2.0-flash")
                     if mode == "quiz4":
-                        if api_key:
+                        q_text, options, src = "", [], "Windows OCR"
+                        if gemini_key:
+                            _append("\nGemini API 辨識中…\n","dim")
+                            status_lbl.configure(text="Gemini 辨識中…")
+                            q_text, options = gemini_read_popup(full_img, gemini_key, gm_model, on_detail=_detail)
+                            src = f"Gemini ({gm_model})"
+                        if not q_text and api_key:
                             _append("\nClaude API 辨識中…\n","dim")
-                            status_lbl.configure(text="API 辨識中…")
+                            status_lbl.configure(text="Claude 辨識中…")
                             q_text, options = claude_read_popup(full_img, api_key, on_detail=_detail)
                             src = "Claude API"
-                        else:
+                        if not q_text:
                             q_text  = ocr_image(self.detector._crop(img,w,h,"question_region"), on_detail=_detail)
                             opt_img = self.detector._crop(img,w,h,"options_region")
                             options = self.detector._parse_options(ocr_image(opt_img))
-                            src = "Windows OCR"
                         _append(f"\n辨識方式：{src}\n","dim")
                         _append("題目：","head"); _append(f"{q_text or '（無法辨識）'}\n")
                         _append("選項：\n","head")
                         for i,opt in enumerate(options[:4]): _append(f"  {i+1}. {opt}\n")
                     else:
-                        if api_key:
+                        q_text, src = "", "Windows OCR"
+                        if gemini_key:
+                            _append("\nGemini API 辨識中…\n","dim")
+                            status_lbl.configure(text="Gemini 辨識中…")
+                            q_text = gemini_read_question(full_img, gemini_key, gm_model, on_detail=_detail)
+                            src = f"Gemini ({gm_model})"
+                        if not q_text and api_key:
                             _append("\nClaude API 辨識中…\n","dim")
-                            status_lbl.configure(text="API 辨識中…")
+                            status_lbl.configure(text="Claude 辨識中…")
                             q_text = claude_read_question(full_img, api_key, on_detail=_detail)
                             src = "Claude API"
-                        else:
+                        if not q_text:
                             q_text = ocr_image(self.detector._crop(img,w,h,"question_region"), on_detail=_detail)
-                            src = "Windows OCR"
                         _append(f"\n辨識方式：{src}\n","dim")
                         _append("題目：","head"); _append(f"{q_text or '（無法辨識）'}\n")
                         if q_text:
