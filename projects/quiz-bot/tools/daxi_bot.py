@@ -1530,22 +1530,33 @@ class DaxiApp:
                     api_key    = self.config.get("api_key","").strip()
                     gm_model   = self.config.get("gemini_model","gemini-2.0-flash")
 
+                    def _popup_crop(reg_key):
+                        pf  = self.config.get("popup_full_region", {"left":0,"top":0,"right":1,"bottom":1})
+                        reg = self.config.get(reg_key, {})
+                        fiw, fih = full_img.size
+                        pfw = max(pf.get("right",1) - pf.get("left",0), 0.001)
+                        pfh = max(pf.get("bottom",1) - pf.get("top",0), 0.001)
+                        x1 = int((reg.get("left",0)  - pf.get("left",0)) / pfw * fiw)
+                        y1 = int((reg.get("top",0)   - pf.get("top",0))  / pfh * fih)
+                        x2 = int((reg.get("right",1) - pf.get("left",0)) / pfw * fiw)
+                        y2 = int((reg.get("bottom",1)- pf.get("top",0))  / pfh * fih)
+                        return full_img.crop((max(0,x1), max(0,y1), min(fiw,x2), min(fih,y2)))
+
                     if mode == "quiz4":
                         q_text, options, src = "", [], "Windows OCR"
                         if gemini_key:
                             _append("\nGemini API 辨識中…\n","dim")
                             status_lbl.configure(text="Gemini 辨識中…")
                             q_text, options = gemini_read_popup(full_img, gemini_key, gm_model, on_detail=_detail)
-                            src = f"Gemini ({gm_model})"
+                            if q_text: src = f"Gemini ({gm_model})"
                         if not q_text and api_key:
                             _append("\nClaude API 辨識中…\n","dim")
                             status_lbl.configure(text="Claude 辨識中…")
                             q_text, options = claude_read_popup(full_img, api_key, on_detail=_detail)
-                            src = "Claude API"
+                            if q_text: src = "Claude API"
                         if not q_text:
-                            q_text  = ocr_image(self.detector._crop(img,w,h,"question_region"), on_detail=_detail)
-                            opt_img = self.detector._crop(img,w,h,"options_region")
-                            options = self.detector._parse_options(ocr_image(opt_img))
+                            q_text  = ocr_image(_popup_crop("question_region"), on_detail=_detail)
+                            options = self.detector._parse_options(ocr_image(_popup_crop("options_region")))
                         _append(f"\n辨識方式：{src}\n","dim")
                         _append("題目：","head"); _append(f"{q_text or '（無法辨識）'}\n")
                         _append("選項：\n","head")
@@ -1556,14 +1567,14 @@ class DaxiApp:
                             _append("\nGemini API 辨識中…\n","dim")
                             status_lbl.configure(text="Gemini 辨識中…")
                             q_text = gemini_read_question(full_img, gemini_key, gm_model, on_detail=_detail)
-                            src = f"Gemini ({gm_model})"
+                            if q_text: src = f"Gemini ({gm_model})"
                         if not q_text and api_key:
                             _append("\nClaude API 辨識中…\n","dim")
                             status_lbl.configure(text="Claude 辨識中…")
                             q_text = claude_read_question(full_img, api_key, on_detail=_detail)
-                            src = "Claude API"
+                            if q_text: src = "Claude API"
                         if not q_text:
-                            q_text = ocr_image(self.detector._crop(img,w,h,"question_region"), on_detail=_detail)
+                            q_text = ocr_image(_popup_crop("question_region"), on_detail=_detail)
                         _append(f"\n辨識方式：{src}\n","dim")
                         _append("題目：","head"); _append(f"{q_text or '（無法辨識）'}\n")
                         if q_text:
