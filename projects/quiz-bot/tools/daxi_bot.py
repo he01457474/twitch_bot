@@ -186,14 +186,19 @@ class Quiz4Database:
         if os.path.exists(self.path):
             try:
                 with open(self.path, "r", encoding="utf-8") as f:
-                    self.entries = json.load(f)
+                    data = json.load(f)
+                # 相容 {"entries": [...]} 和 [...] 兩種格式
+                if isinstance(data, list):
+                    self.entries = data
+                else:
+                    self.entries = data.get("entries", [])
             except Exception:
                 self.entries = []
 
     def _save(self):
         tmp = self.path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(self.entries, f, indent=2, ensure_ascii=False)
+            json.dump({"entries": self.entries}, f, indent=2, ensure_ascii=False)
             f.write("\n")
         os.replace(tmp, self.path)
 
