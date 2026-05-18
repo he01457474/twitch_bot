@@ -1339,17 +1339,87 @@ class DaxiApp:
         found = self.detector.find_window()
         if not found: messagebox.showwarning("提示","找不到遊戲視窗"); return
         hwnd, _ = found
-        try:
-            img, w, h = capture_window(hwnd)
-            map_img = self.detector._crop(img, w, h, "map_name_region")
-            text = ocr_image(map_img).strip()
-            keywords = self.config.get("quiz_map_keywords", [])
-            matched = any(kw in text for kw in keywords) if keywords else True
-            status = "✓ 符合關鍵字（辨識會啟動）" if matched else "✗ 不符合關鍵字（辨識被略過）"
-            messagebox.showinfo("地圖名稱測試",
-                f"OCR 結果：「{text or '（空）'}」\n關鍵字：{keywords or '（未設定）'}\n{status}")
-        except Exception as e:
-            messagebox.showerror("錯誤", str(e))
+
+        win = tk.Toplevel(self.root)
+        win.title("地圖名稱偵測測試"); win.configure(bg=BG)
+        win.resizable(False, False); win.attributes("-topmost", True)
+        tk.Label(win, text="地圖名稱偵測測試", bg=BG, fg=ACCENT,
+                 font=("Microsoft JhengHei UI",12,"bold")).pack(pady=(8,2))
+        status_lbl = tk.Label(win, text="截圖中…", bg=BG, fg=TEXT_DIM,
+                              font=("Microsoft JhengHei UI",9))
+        status_lbl.pack()
+
+        # 上：地圖裁切預覽
+        tk.Label(win, text="地圖區域（map_name_region）裁切結果：",
+                 bg=BG, fg=TEXT_DIM, font=("Microsoft JhengHei UI",8)).pack(anchor="w", padx=12)
+        map_lbl = tk.Label(win, bg="#111122", relief=tk.SUNKEN,
+                           text="（預覽）", fg=TEXT_DIM, font=("Microsoft JhengHei UI",8))
+        map_lbl.pack(padx=12, pady=(2,4), ipadx=4, ipady=4)
+
+        # 下：全螢幕截圖＋紅框標示
+        tk.Label(win, text="紅框 = 目前設定的地圖區域（全視窗比例）：",
+                 bg=BG, fg=TEXT_DIM, font=("Microsoft JhengHei UI",8)).pack(anchor="w", padx=12)
+        full_lbl = tk.Label(win, bg="#111122", relief=tk.SUNKEN,
+                            text="（預覽）", fg=TEXT_DIM, font=("Microsoft JhengHei UI",8))
+        full_lbl.pack(padx=12, pady=(2,6), ipadx=4, ipady=4)
+
+        result_lbl = tk.Label(win, text="", bg=BG, fg=TEXT_NORM,
+                              font=("Microsoft JhengHei UI",10), wraplength=380, justify=tk.LEFT)
+        result_lbl.pack(padx=12, pady=(0,10))
+
+        def run():
+            try:
+                from PIL import ImageDraw
+                img, w, h = capture_window(hwnd)
+                region = self.config.get("map_name_region", {})
+                x1 = int(region.get("left",  0) * w)
+                y1 = int(region.get("top",   0) * h)
+                x2 = int(region.get("right", 1) * w)
+                y2 = int(region.get("bottom",1) * h)
+
+                # 裁切放大預覽
+                map_crop = img.crop((x1, y1, x2, y2))
+                mw, mh   = map_crop.size
+                scale    = min(360 / max(mw,1), 8.0)   # 最多放大 8x
+                map_prev = map_crop.resize(
+                    (max(1,int(mw*scale)), max(1,int(mh*scale))),
+                    Image.Resampling.NEAREST)
+                tk_map = ImageTk.PhotoImage(map_prev)
+
+                # 全視窗縮圖＋紅框
+                full_scale = min(380 / max(w,1), 1.0)
+                full_prev  = img.resize(
+                    (int(w*full_scale), int(h*full_scale)),
+                    Image.Resampling.LANCZOS).convert("RGB")
+                draw = ImageDraw.Draw(full_prev)
+                draw.rectangle(
+                    [int(x1*full_scale)-1, int(y1*full_scale)-1,
+                     int(x2*full_scale)+1, int(y2*full_scale)+1],
+                    outline="red", width=2)
+                tk_full = ImageTk.PhotoImage(full_prev)
+
+                # OCR
+                text = ocr_image(map_crop).strip()
+                keywords = self.config.get("quiz_map_keywords", [])
+                if keywords:
+                    matched = any(kw in text for kw in keywords)
+                    kw_status = ("✓ 符合關鍵字 → 辨識啟動" if matched
+                                 else "✗ 不符合關鍵字 → 辨識略過")
+                else:
+                    kw_status = "（關鍵字未設定，不過濾）"
+
+                def update():
+                    map_lbl.configure(image=tk_map, text=""); map_lbl.image = tk_map
+                    full_lbl.configure(image=tk_full, text=""); full_lbl.image = tk_full
+                    result_lbl.configure(
+                        text=f"OCR 結果：「{text or '（空，可能區域有誤）'}」\n"
+                             f"關鍵字：{keywords or '未設定'}\n{kw_status}")
+                    status_lbl.configure(text="完成")
+                win.after(0, update)
+            except Exception as e:
+                win.after(0, lambda: status_lbl.configure(text=f"錯誤：{e}"))
+
+        threading.Thread(target=run, daemon=True).start()
 
     def _test_brightness(self):
         found = self.detector.find_window()
