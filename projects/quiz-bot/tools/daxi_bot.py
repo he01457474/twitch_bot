@@ -707,26 +707,27 @@ class DaxiApp:
 
         ttk.Separator(f, orient="horizontal").pack(fill=tk.X, pady=(4, 6))
 
-        # ── 四選一顯示區 ──
+        # ── 四選一顯示區（左右分欄） ──
         self._frame_quiz4 = tk.Frame(f, bg=BG)
 
+        info_row4 = tk.Frame(self._frame_quiz4, bg=BG)
+        info_row4.pack(fill=tk.X, pady=(0, 2))
+
+        # 左欄：大號答案數字 + 方位圖
+        left4 = tk.Frame(info_row4, bg=BG)
+        left4.pack(side=tk.LEFT, padx=(0, 10), anchor="n")
+
         self.ans_num_var = tk.StringVar(value="─")
-        self._lbl(self._frame_quiz4, textvariable=self.ans_num_var,
-                  font=("Microsoft JhengHei UI", 96, "bold"),
-                  fg=ACCENT, bg=BG, pady=0).pack(fill=tk.X)
+        self._lbl(left4, textvariable=self.ans_num_var,
+                  font=("Microsoft JhengHei UI", 72, "bold"),
+                  fg=ACCENT, bg=BG, pady=0).pack()
 
-        self.ans_text_var = tk.StringVar(value="")
-        self._lbl(self._frame_quiz4, textvariable=self.ans_text_var,
-                  font=("Microsoft JhengHei UI", 13, "bold"),
-                  fg="#FFAA00", bg=BG, pady=2).pack(fill=tk.X)
-
-        # 方位圖
-        self._map_canvas = tk.Canvas(self._frame_quiz4, bg=BG, width=160, height=72, highlightthickness=0)
-        self._map_canvas.pack(pady=(0, 2))
-        CW, CH, GAP = 72, 30, 4
+        self._map_canvas = tk.Canvas(left4, bg=BG, width=152, height=66, highlightthickness=0)
+        self._map_canvas.pack()
+        CW, CH, GAP = 68, 28, 4
         _zones = [(0,0,1,"1\n左上"),(1,0,2,"2\n右上"),(0,1,4,"4\n左下"),(1,1,3,"3\n右下")]
         self._map_rects = {}; self._map_texts = {}
-        x0, y0 = 8, 4
+        x0, y0 = 4, 2
         for col, row, zn, lbl in _zones:
             x1 = x0 + col*(CW+GAP); y1 = y0 + row*(CH+GAP)
             x2, y2 = x1+CW, y1+CH
@@ -735,13 +736,28 @@ class DaxiApp:
                                                fill="#666688", font=("Microsoft JhengHei UI",8), justify="center")
             self._map_rects[zn]=rid; self._map_texts[zn]=tid
 
+        # 右欄：答案文字 + 題目 + 來源
+        right4 = tk.Frame(info_row4, bg=BG)
+        right4.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, anchor="n")
+
+        self.ans_text_var = tk.StringVar(value="")
+        self._lbl(right4, textvariable=self.ans_text_var,
+                  font=("Microsoft JhengHei UI", 12, "bold"),
+                  fg="#FFAA00", bg=BG, anchor="w",
+                  wraplength=230).pack(fill=tk.X, pady=(10, 4))
+
         self.q_var4 = tk.StringVar(value="等待題目出現…")
-        self._lbl(self._frame_quiz4, textvariable=self.q_var4,
+        self._lbl(right4, textvariable=self.q_var4,
                   font=("Microsoft JhengHei UI", 10), fg=TEXT_DIM, bg=BG,
-                  wraplength=390, justify=tk.LEFT, anchor="w").pack(fill=tk.X, pady=(4,2))
+                  wraplength=230, justify=tk.LEFT, anchor="w").pack(fill=tk.X)
+
+        self.source_var4 = tk.StringVar(value="")
+        self._lbl(right4, textvariable=self.source_var4,
+                  font=("Microsoft JhengHei UI", 8), fg="#555577", bg=BG, anchor="w").pack(fill=tk.X, pady=(6,0))
 
         ttk.Separator(self._frame_quiz4, orient="horizontal").pack(fill=tk.X, pady=4)
 
+        # 四個可點擊選項
         self.opt_vars = []
         for i in range(4):
             v = tk.StringVar(value=f"  {i+1}. ")
@@ -753,31 +769,41 @@ class DaxiApp:
             lbl.pack(fill=tk.X)
             lbl.bind("<Button-1>", lambda e, idx=i+1: self._click_option(idx))
 
-        self.source_var4 = tk.StringVar(value="")
-        self._lbl(self._frame_quiz4, textvariable=self.source_var4,
-                  font=("Microsoft JhengHei UI", 8), fg="#555577", bg=BG).pack(pady=(4,0))
-
-        # ── 選邊站顯示區 ──
+        # ── 選邊站顯示區（左右分欄） ──
         self._frame_side = tk.Frame(f, bg=BG)
 
+        info_rows = tk.Frame(self._frame_side, bg=BG)
+        info_rows.pack(fill=tk.X, pady=(0, 2))
+
+        # 左欄：大號 O/X
+        lefts = tk.Frame(info_rows, bg=BG, width=110)
+        lefts.pack(side=tk.LEFT, padx=(0, 10), anchor="n")
+        lefts.pack_propagate(False)
+
         self.ans_ox_var = tk.StringVar(value="─")
-        self.ans_ox_lbl = self._lbl(self._frame_side, textvariable=self.ans_ox_var,
-                                    font=("Microsoft JhengHei UI", 120, "bold"),
+        self.ans_ox_lbl = self._lbl(lefts, textvariable=self.ans_ox_var,
+                                    font=("Microsoft JhengHei UI", 80, "bold"),
                                     fg=COL_UNK, bg=BG, pady=0)
-        self.ans_ox_lbl.pack(fill=tk.X)
+        self.ans_ox_lbl.pack(pady=(4,0))
+
+        # 右欄：題目 + 來源
+        rights = tk.Frame(info_rows, bg=BG)
+        rights.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, anchor="n")
 
         self.q_vars = tk.StringVar(value="等待題目出現…")
-        self._lbl(self._frame_side, textvariable=self.q_vars,
+        self._lbl(rights, textvariable=self.q_vars,
                   font=("Microsoft JhengHei UI", 11), fg=TEXT_NORM, bg=BG,
-                  wraplength=380, justify=tk.LEFT, anchor="w").pack(fill=tk.X, pady=(4,2))
+                  wraplength=250, justify=tk.LEFT, anchor="w").pack(fill=tk.X, pady=(10, 4))
 
         self.source_vars = tk.StringVar(value="")
-        self._lbl(self._frame_side, textvariable=self.source_vars,
-                  font=("Microsoft JhengHei UI", 8), fg=TEXT_DIM, bg=BG).pack(pady=(0,2))
+        self._lbl(rights, textvariable=self.source_vars,
+                  font=("Microsoft JhengHei UI", 8), fg=TEXT_DIM, bg=BG, anchor="w").pack(fill=tk.X)
+
+        ttk.Separator(self._frame_side, orient="horizontal").pack(fill=tk.X, pady=4)
 
         # 快速 O/X 點擊列
         ox_row = tk.Frame(self._frame_side, bg=BG)
-        ox_row.pack(fill=tk.X, pady=(4, 2))
+        ox_row.pack(fill=tk.X, pady=(0, 2))
         self._ox_o_btn = tk.Label(ox_row, text="O  正確", font=("Microsoft JhengHei UI",14,"bold"),
                                   fg=COL_O, bg=BG2, padx=20, pady=6, cursor="hand2", relief=tk.FLAT)
         self._ox_o_btn.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0,4))
@@ -798,7 +824,7 @@ class DaxiApp:
                  font=("Microsoft JhengHei UI", 7)).pack(anchor="w")
         self.notif_log = tk.Text(
             notif_frame, bg="#0A0A14", fg=TEXT_DIM,
-            height=7, width=1,
+            height=5, width=1,
             font=("Microsoft JhengHei UI", 8),
             relief=tk.FLAT, state=tk.DISABLED, wrap=tk.WORD,
             cursor="arrow",
@@ -808,7 +834,6 @@ class DaxiApp:
         self.notif_log.configure(yscrollcommand=notif_sb.set)
         self.notif_log.pack(side=tk.LEFT, fill=tk.X, expand=True)
         notif_sb.pack(side=tk.RIGHT, fill=tk.Y)
-        # 顏色標籤
         self.notif_log.tag_configure("warn",  foreground="#E67E22")
         self.notif_log.tag_configure("ok",    foreground="#2ECC71")
         self.notif_log.tag_configure("info",  foreground="#3498DB")
@@ -830,15 +855,6 @@ class DaxiApp:
         )
         self.start_btn.pack(side=tk.LEFT, padx=(0,6))
 
-        self.save_btn = tk.Button(
-            btn_row, text="存入題庫",
-            font=("Microsoft JhengHei UI", 11),
-            bg="#3498DB", fg="white", activebackground="#2980B9",
-            relief=tk.FLAT, padx=14, pady=4,
-            command=self._save_to_db, state=tk.DISABLED,
-        )
-        self.save_btn.pack(side=tk.LEFT)
-
         self.fix_btn = tk.Button(
             btn_row, text="修正答案",
             font=("Microsoft JhengHei UI", 11),
@@ -846,7 +862,7 @@ class DaxiApp:
             relief=tk.FLAT, padx=10, pady=4,
             command=self._fix_answer, state=tk.DISABLED,
         )
-        self.fix_btn.pack(side=tk.LEFT, padx=(6,0))
+        self.fix_btn.pack(side=tk.LEFT)
 
         self.pin_btn = tk.Button(
             btn_row, text="📌",
@@ -867,7 +883,6 @@ class DaxiApp:
         self._mode.set(mode)
         self.detector.set_mode(mode)
         self._current = None
-        self.save_btn.configure(state=tk.DISABLED)
         self.fix_btn.configure(state=tk.DISABLED)
 
         if mode == "quiz4":
@@ -1135,7 +1150,6 @@ class DaxiApp:
     def _show_result(self, result):
         mode = self._mode.get()
         has_q = bool(result.get("question"))
-        self.save_btn.configure(state=tk.NORMAL if has_q else tk.DISABLED)
 
         if mode == "quiz4":
             idx      = result.get("answer_idx")
