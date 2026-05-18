@@ -190,23 +190,30 @@ def claude_read_question(pil_img, api_key, on_detail=None):
         if on_detail: on_detail(f"API(question) 錯誤：{type(e).__name__}: {str(e)[:100]}")
         return ""
 
+def _gemini_image_bytes(pil_img):
+    buf = io.BytesIO()
+    img = pil_img.convert("RGB")
+    if max(img.width, img.height) < 600:
+        s = max(2, 600 // max(img.width, img.height))
+        img = img.resize((img.width * s, img.height * s), Image.Resampling.LANCZOS)
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
 def gemini_read_popup(pil_img, api_key, model="gemini-2.0-flash", on_detail=None):
     """回傳 (question_str, options_list) — 四選一用。"""
     try:
-        import google.generativeai as genai, json as _j
-        genai.configure(api_key=api_key)
-        m = genai.GenerativeModel(model)
-        buf = io.BytesIO()
-        img = pil_img.convert("RGB")
-        if max(img.width, img.height) < 600:
-            s = max(2, 600 // max(img.width, img.height))
-            img = img.resize((img.width * s, img.height * s), Image.Resampling.LANCZOS)
-        img.save(buf, format="PNG")
-        image_part = {"mime_type": "image/png", "data": buf.getvalue()}
-        resp = m.generate_content([
-            image_part,
-            '這是一個武俠遊戲的問答截圖（繁體中文）。請讀出題目和選項，以JSON格式回傳（只輸出JSON）：{"question":"完整題目文字","options":["選項1","選項2","選項3","選項4"]}',
-        ])
+        from google import genai
+        from google.genai import types
+        import json as _j
+        client = genai.Client(api_key=api_key)
+        img_bytes = _gemini_image_bytes(pil_img)
+        resp = client.models.generate_content(
+            model=model,
+            contents=[
+                types.Part.from_bytes(data=img_bytes, mime_type="image/png"),
+                types.Part.from_text(text='這是一個武俠遊戲的問答截圖（繁體中文）。請讀出題目和選項，以JSON格式回傳（只輸出JSON）：{"question":"完整題目文字","options":["選項1","選項2","選項3","選項4"]}'),
+            ],
+        )
         raw  = re.sub(r'^```[a-z]*\n?', '', resp.text.strip()).rstrip('`').strip()
         data = _j.loads(raw)
         q    = data.get("question", "").strip()
@@ -214,29 +221,26 @@ def gemini_read_popup(pil_img, api_key, model="gemini-2.0-flash", on_detail=None
         while len(opts) < 4: opts.append("")
         return q, opts
     except Exception as e:
-        if on_detail: on_detail(f"Gemini(popup) 錯誤：{type(e).__name__}: {str(e)[:100]}")
+        if on_detail: on_detail(f"Gemini(popup) 錯誤：{type(e).__name__}: {str(e)[:120]}")
         return "", []
 
 def gemini_read_question(pil_img, api_key, model="gemini-2.0-flash", on_detail=None):
     """回傳 question_str — 選邊站用。"""
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
-        m = genai.GenerativeModel(model)
-        buf = io.BytesIO()
-        img = pil_img.convert("RGB")
-        if max(img.width, img.height) < 600:
-            s = max(2, 600 // max(img.width, img.height))
-            img = img.resize((img.width * s, img.height * s), Image.Resampling.LANCZOS)
-        img.save(buf, format="PNG")
-        image_part = {"mime_type": "image/png", "data": buf.getvalue()}
-        resp = m.generate_content([
-            image_part,
-            "這是一個武俠遊戲的問答截圖（繁體中文）。請只輸出題目文字，不要任何選項或說明。",
-        ])
+        from google import genai
+        from google.genai import types
+        client = genai.Client(api_key=api_key)
+        img_bytes = _gemini_image_bytes(pil_img)
+        resp = client.models.generate_content(
+            model=model,
+            contents=[
+                types.Part.from_bytes(data=img_bytes, mime_type="image/png"),
+                types.Part.from_text(text="這是一個武俠遊戲的問答截圖（繁體中文）。請只輸出題目文字，不要任何選項或說明。"),
+            ],
+        )
         return resp.text.strip()
     except Exception as e:
-        if on_detail: on_detail(f"Gemini(question) 錯誤：{type(e).__name__}: {str(e)[:100]}")
+        if on_detail: on_detail(f"Gemini(question) 錯誤：{type(e).__name__}: {str(e)[:120]}")
         return ""
 
 # ── 題庫 ───────────────────────────────────────────────────────────────────────
