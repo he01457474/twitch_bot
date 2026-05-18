@@ -43,7 +43,7 @@ DEFAULT_CONFIG = {
     "question_region":  {"left": 0.17, "top": 0.12, "right": 0.74, "bottom": 0.27},
     "options_region":   {"left": 0.17, "top": 0.27, "right": 0.74, "bottom": 0.34},
     "popup_full_region":{"left": 0.15, "top": 0.09, "right": 0.76, "bottom": 0.36},
-    "map_name_region":  {"left": 0.57, "top": 0.00, "right": 0.90, "bottom": 0.07},
+    "map_name_region":  {"left": 0.67, "top": 0.00, "right": 0.82, "bottom": 0.05},
     "quiz_map_keywords": [],   # 留空 = 不篩選；填入關鍵字才啟用地圖過濾
     "map_check_interval": 3,   # 地圖名稱重新 OCR 的間隔秒數
     "api_key": "",
@@ -684,7 +684,7 @@ class DaxiApp:
                  font=("Microsoft JhengHei UI", 7)).pack(anchor="w")
         self.notif_log = tk.Text(
             notif_frame, bg="#0A0A14", fg=TEXT_DIM,
-            height=4, width=1,
+            height=7, width=1,
             font=("Microsoft JhengHei UI", 8),
             relief=tk.FLAT, state=tk.DISABLED, wrap=tk.WORD,
             cursor="arrow",
