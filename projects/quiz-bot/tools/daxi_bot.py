@@ -11,6 +11,7 @@ import ctypes
 import re
 import io
 import subprocess
+import datetime
 from difflib import SequenceMatcher
 import win32gui
 import win32ui
@@ -597,6 +598,31 @@ class DaxiApp:
         # 初始顯示四選一
         self._frame_quiz4.pack(fill=tk.X)
 
+        # ── 通知欄 ──
+        ttk.Separator(f, orient="horizontal").pack(fill=tk.X, pady=(6, 2))
+        notif_frame = tk.Frame(f, bg=BG)
+        notif_frame.pack(fill=tk.X, pady=(0, 2))
+        tk.Label(notif_frame, text="通知", bg=BG, fg=TEXT_DIM,
+                 font=("Microsoft JhengHei UI", 7)).pack(anchor="w")
+        self.notif_log = tk.Text(
+            notif_frame, bg="#0A0A14", fg=TEXT_DIM,
+            height=4, width=1,
+            font=("Microsoft JhengHei UI", 8),
+            relief=tk.FLAT, state=tk.DISABLED, wrap=tk.WORD,
+            cursor="arrow",
+        )
+        notif_sb = ttk.Scrollbar(notif_frame, orient="vertical",
+                                  command=self.notif_log.yview)
+        self.notif_log.configure(yscrollcommand=notif_sb.set)
+        self.notif_log.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        notif_sb.pack(side=tk.RIGHT, fill=tk.Y)
+        # 顏色標籤
+        self.notif_log.tag_configure("warn",  foreground="#E67E22")
+        self.notif_log.tag_configure("ok",    foreground="#2ECC71")
+        self.notif_log.tag_configure("info",  foreground="#3498DB")
+        self.notif_log.tag_configure("dim",   foreground="#555577")
+        self.notif_log.tag_configure("time",  foreground="#444466")
+
         # ── 共用按鈕列 ──
         ttk.Separator(f, orient="horizontal").pack(fill=tk.X, pady=6)
 
@@ -820,10 +846,19 @@ class DaxiApp:
                     self.root.after(0, self._notify_auto_added, "sidestand")
                     self.root.after(0, self._refresh_dbs)
 
+    def _add_notif(self, msg, tag="info"):
+        ts = datetime.datetime.now().strftime("%H:%M:%S")
+        self.notif_log.configure(state=tk.NORMAL)
+        self.notif_log.insert("end", f"[{ts}] ", "time")
+        self.notif_log.insert("end", msg + "\n", tag)
+        self.notif_log.see("end")
+        self.notif_log.configure(state=tk.DISABLED)
+
     def _notify_auto_added(self, mode):
         tab = "四選一題庫" if mode == "quiz4" else "選邊站題庫"
         self.status_lbl.configure(fg="#E67E22")
         self.status_var.set(f"⚠ 未知題目已自動加入「{tab}」（尚無答案），請雙擊補充")
+        self._add_notif(f"新題目加入「{tab}」（待填答案）", "warn")
         self.root.after(8000, lambda: self.status_lbl.configure(fg="#666688"))
 
     def _popup_window(self):
@@ -880,6 +915,11 @@ class DaxiApp:
 
             self.fix_btn.configure(state=tk.NORMAL if has_q else tk.DISABLED)
 
+            if idx:
+                self._add_notif(f"四選一 → 答案 {idx}. {ans_text[:18]}", "ok")
+            elif has_q:
+                self._add_notif(f"四選一 → 未知題目：{question[:20]}…", "warn")
+
         else:
             ans      = result.get("answer")
             question = result.get("question","")
@@ -900,6 +940,12 @@ class DaxiApp:
                 self.source_vars.set("未找到，可手動存入題庫")
 
             self.fix_btn.configure(state=tk.DISABLED)
+
+            if ans in ("O", "X"):
+                sim_txt = f"（{sim:.0%}）" if sim is not None else ""
+                self._add_notif(f"選邊站 → 答案 {ans}{sim_txt}", "ok")
+            elif has_q:
+                self._add_notif(f"選邊站 → 未找到：{question[:20]}…", "warn")
 
     # ── 題庫操作 ──
 
