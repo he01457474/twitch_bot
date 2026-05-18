@@ -143,18 +143,28 @@ def ocr_parse_quiz(pil_img, on_detail=None):
     text = ocr_image(pil_img, on_detail=on_detail)
     if not text:
         return "", []
-    # 去除計時器
-    text = re.sub(r'剩[餘余]時間\s*\d+\s*秒?', '', text)
-    text = re.sub(r'\d+\s*秒', '', text)
-    # 找第一個選項標記：(1) / 1) / Ⅰ) / ⑴ 等
-    m = re.search(r'[\(（【]?\s*[1１Ⅰ⑴]\s*[\)）】]', text)
+    # 去除 CJK 字元間的多餘空格（Windows OCR 每字加空格）
+    cjk = r'一-鿿㐀-䶿'
+    text = re.sub(rf'(?<=[{cjk}])[ \t]+(?=[{cjk}])', '', text)
+    text = re.sub(rf'(?<=[{cjk}])[ \t]+(?=[，。！？；：、,.])', '', text)
+    text = re.sub(rf'(?<=[，。！？；：、,.])[ \t]+(?=[{cjk}])', '', text)
+    # 去除計時器（「剩餘時間」及後續全刪）
+    text = re.sub(r'剩[餘余]時間.*', '', text)
+    text = re.sub(r'[ \t]*\d+[ \t]*秒?\s*$', '', text.strip())
+    # 選項標記：數字 / 羅馬數字 / OCR 誤讀（如 Ⅱ 誤讀自 (1)）+ 右括號
+    # 兼容格式：(1) / 1) / Ⅱ) / ; 3) / I) 等
+    _OPT = re.compile(
+        r'[\(（;；]?\s*'
+        r'(?:[1-4１-４]|[Ⅰ-Ⅳ]|[①-④]|[IiLl]{1,3})'
+        r'\s*[)）]'
+    )
+    m = _OPT.search(text)
     if not m:
         return text.strip(), []
     question = text[:m.start()].strip()
     opts_text = text[m.start():]
-    # 把 (1)(2)(3)(4) 當分隔符切開
-    parts = re.split(r'[\(（【]?\s*[1-4１-４Ⅰ-Ⅳ⑴-⑷]\s*[\)）】]', opts_text)
-    options = [p.strip() for p in parts if p.strip()][:4]
+    parts = _OPT.split(opts_text)
+    options = [re.sub(r'[\s;；,，]+$', '', p).strip() for p in parts if p.strip()][:4]
     return question, options
 
 def claude_read_popup(pil_img, api_key, on_detail=None):
