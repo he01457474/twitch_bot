@@ -167,8 +167,11 @@ def ocr_parse_quiz(full_img, question_img=None, on_detail=None):
     if question_img is not None:
         raw = ocr_image(question_img, on_detail=on_detail)
         if raw:
-            q_text = _norm(raw.strip())
-            q_text = re.sub(r'剩[餘余]時間.*', '', q_text).strip()
+            cand = _norm(raw.strip())
+            cand = re.sub(r'剩[餘余]時間.*', '', cand).strip()
+            # 若含 2 個以上選項標記，代表框選範圍涵蓋到選項區，放棄此結果
+            if len(_OPT.findall(cand)) < 2:
+                q_text = cand
 
     # 找所有選項標記位置，依序提取標記之間的文字（不受 OCR 讀取順序影響）
     markers = list(_OPT.finditer(text))
