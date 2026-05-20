@@ -542,6 +542,9 @@ class GameDetector:
             q_text, options = ocr_parse_quiz(full, on_detail=self._on_detail)
         if not q_text:
             on_status("辨識失敗"); return None
+        # 公告 / 結果畫面沒有選項，要求至少 2 個才視為有效題目
+        if len([o for o in options if o.strip()]) < 2:
+            on_status("非題目畫面（選項不足），跳過"); return None
 
         entry = self.db4.lookup(question=q_text)
         if entry:
@@ -574,6 +577,10 @@ class GameDetector:
             q_text, _ = ocr_parse_quiz(full, on_detail=self._on_detail)
         if not q_text:
             on_status("辨識失敗"); return None
+        # 公告文字通常無問號，要求含有疑問標點或常見問句詞才視為有效題目
+        if '？' not in q_text and '?' not in q_text:
+            if not any(w in q_text for w in ('嗎', '是否', '有沒有', '哪', '何')):
+                on_status("非題目畫面（無疑問語氣），跳過"); return None
 
         threshold = self.config.get("match_threshold", 0.72)
         entry = self.dbs.lookup(q_text, threshold)
