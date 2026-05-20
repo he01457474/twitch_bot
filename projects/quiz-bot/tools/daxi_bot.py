@@ -1029,35 +1029,34 @@ class DaxiApp:
         row(f, "亮度門檻",        "popup_brightness_threshold", "低於此值=彈窗 (0–255)")
         row(f, "選邊站比對相似度", "match_threshold",            "0.0–1.0（預設 0.72）")
 
-        tk.Label(f, text="", bg=BG2).pack()
-        tk.Label(f, text="題目區域（相對座標）", bg=BG2, fg=ACCENT,
-                 font=("Microsoft JhengHei UI",10,"bold")).pack(anchor="w")
-        for sub in ["left","top","right","bottom"]:
-            r2 = tk.Frame(f, bg=BG2); r2.pack(fill=tk.X, pady=1)
-            tk.Label(r2, text=f"  question_region.{sub}", bg=BG2, fg=TEXT_NORM,
-                     font=("Microsoft JhengHei UI",9), width=22, anchor="w").pack(side=tk.LEFT)
-            val = self.config.get("question_region",{}).get(sub, 0)
-            var = tk.StringVar(value=str(val))
-            self._cfg_vars[f"question_region.{sub}"] = var
-            tk.Entry(r2, textvariable=var, width=8,
-                     bg="#22223A", fg=TEXT_NORM, insertbackground=TEXT_NORM,
-                     relief=tk.FLAT).pack(side=tk.LEFT, padx=4)
+        def region_block(parent, title, rkey, hint=""):
+            tk.Label(parent, text="", bg=BG2).pack()
+            hdr = tk.Frame(parent, bg=BG2); hdr.pack(fill=tk.X)
+            tk.Label(hdr, text=title, bg=BG2, fg=ACCENT,
+                     font=("Microsoft JhengHei UI",10,"bold")).pack(side=tk.LEFT)
+            tk.Button(hdr, text="框選", bg="#2C3E50", fg=TEXT_DIM, relief=tk.FLAT,
+                      padx=6, pady=0, font=("Microsoft JhengHei UI",8),
+                      activebackground="#3D5068",
+                      command=lambda k=rkey: self._open_region_selector(k)
+                      ).pack(side=tk.LEFT, padx=(8,0))
+            if hint:
+                tk.Label(parent, text=hint, bg=BG2, fg=TEXT_DIM,
+                         font=("Microsoft JhengHei UI",8)).pack(anchor="w", padx=4)
+            for sub in ["left","top","right","bottom"]:
+                rr = tk.Frame(parent, bg=BG2); rr.pack(fill=tk.X, pady=1)
+                tk.Label(rr, text=f"  {rkey}.{sub}", bg=BG2, fg=TEXT_NORM,
+                         font=("Microsoft JhengHei UI",9), width=22, anchor="w").pack(side=tk.LEFT)
+                val = self.config.get(rkey,{}).get(sub, 0)
+                var = tk.StringVar(value=str(val))
+                self._cfg_vars[f"{rkey}.{sub}"] = var
+                tk.Entry(rr, textvariable=var, width=8,
+                         bg="#22223A", fg=TEXT_NORM, insertbackground=TEXT_NORM,
+                         relief=tk.FLAT).pack(side=tk.LEFT, padx=4)
 
-        tk.Label(f, text="", bg=BG2).pack()
-        tk.Label(f, text="地圖名稱過濾（右上角）", bg=BG2, fg=ACCENT,
-                 font=("Microsoft JhengHei UI",10,"bold")).pack(anchor="w")
-        tk.Label(f, text="設定後只在指定場景啟動辨識；留空關鍵字欄位 = 不過濾",
-                 bg=BG2, fg=TEXT_DIM, font=("Microsoft JhengHei UI",8)).pack(anchor="w", padx=4)
-        for sub in ["left","top","right","bottom"]:
-            r3 = tk.Frame(f, bg=BG2); r3.pack(fill=tk.X, pady=1)
-            tk.Label(r3, text=f"  map_name_region.{sub}", bg=BG2, fg=TEXT_NORM,
-                     font=("Microsoft JhengHei UI",9), width=22, anchor="w").pack(side=tk.LEFT)
-            val = self.config.get("map_name_region",{}).get(sub, 0)
-            var = tk.StringVar(value=str(val))
-            self._cfg_vars[f"map_name_region.{sub}"] = var
-            tk.Entry(r3, textvariable=var, width=8,
-                     bg="#22223A", fg=TEXT_NORM, insertbackground=TEXT_NORM,
-                     relief=tk.FLAT).pack(side=tk.LEFT, padx=4)
+        region_block(f, "彈窗完整範圍（OCR 用）", "popup_full_region")
+        region_block(f, "題目文字區域", "question_region")
+        region_block(f, "地圖名稱過濾（右上角）", "map_name_region",
+                     hint="設定後只在指定場景啟動辨識；留空關鍵字欄位 = 不過濾")
         kw_row = tk.Frame(f, bg=BG2); kw_row.pack(fill=tk.X, pady=2)
         tk.Label(kw_row, text="  活動關鍵字（逗號分隔）", bg=BG2, fg=TEXT_NORM,
                  font=("Microsoft JhengHei UI",9), width=22, anchor="w").pack(side=tk.LEFT)
@@ -1476,6 +1475,80 @@ class DaxiApp:
         self.detector.config = self.config
         self._save_config()
         messagebox.showinfo("設定","設定已儲存")
+
+    def _open_region_selector(self, region_key):
+        """截遊戲畫面，讓使用者拖曳框選區域，自動寫回設定欄位。"""
+        found = self._find_or_pick()
+        if not found: return
+        hwnd, _ = found
+        try:
+            img, iw, ih = capture_window(hwnd)
+        except Exception as e:
+            messagebox.showerror("錯誤", f"截圖失敗：{e}"); return
+
+        max_w, max_h = 920, 580
+        scale = min(max_w / max(iw, 1), max_h / max(ih, 1), 1.0)
+        dw, dh = max(1, int(iw * scale)), max(1, int(ih * scale))
+        display_img = img.resize((dw, dh), Image.Resampling.LANCZOS)
+
+        win = tk.Toplevel(self.root)
+        win.title(f"框選區域：{region_key}"); win.configure(bg=BG)
+        win.attributes("-topmost", True); win.resizable(True, True)
+        tk.Label(win, text="拖曳滑鼠框選目標區域，放開後座標自動填入（記得儲存設定）",
+                 bg=BG, fg=TEXT_DIM, font=("Microsoft JhengHei UI", 9)).pack(pady=(6, 2))
+
+        canvas = tk.Canvas(win, width=dw, height=dh, bg="#000000",
+                           highlightthickness=1, highlightbackground="#444466",
+                           cursor="crosshair")
+        canvas.pack(padx=8, pady=2)
+        tk_img = ImageTk.PhotoImage(display_img)
+        canvas.create_image(0, 0, anchor="nw", image=tk_img)
+        canvas._tk_img = tk_img
+
+        # 用藍色虛線畫出目前設定的區域（供參考）
+        cur = self.config.get(region_key, {})
+        if cur:
+            canvas.create_rectangle(
+                int(cur.get("left",0)*dw), int(cur.get("top",0)*dh),
+                int(cur.get("right",1)*dw), int(cur.get("bottom",1)*dh),
+                outline="#3498DB", width=2, dash=(5,4), tags="cur")
+
+        rect_id = [None]
+        start   = [0, 0]
+        result_lbl = tk.Label(win, text="", bg=BG, fg="#2ECC71",
+                              font=("Microsoft JhengHei UI", 9))
+        result_lbl.pack(pady=(2, 2))
+
+        def on_press(e):
+            start[0], start[1] = e.x, e.y
+            if rect_id[0]: canvas.delete(rect_id[0])
+            rect_id[0] = canvas.create_rectangle(
+                e.x, e.y, e.x, e.y, outline=ACCENT, width=2, tags="sel")
+
+        def on_drag(e):
+            if rect_id[0]:
+                canvas.coords(rect_id[0], start[0], start[1], e.x, e.y)
+
+        def on_release(e):
+            x1 = min(start[0], e.x); y1 = min(start[1], e.y)
+            x2 = max(start[0], e.x); y2 = max(start[1], e.y)
+            if x2 - x1 < 5 or y2 - y1 < 5: return
+            rl = round(x1 / dw, 4); rt = round(y1 / dh, 4)
+            rr = round(x2 / dw, 4); rb = round(y2 / dh, 4)
+            for sub, val in [("left",rl),("top",rt),("right",rr),("bottom",rb)]:
+                k = f"{region_key}.{sub}"
+                if k in self._cfg_vars:
+                    self._cfg_vars[k].set(str(val))
+            result_lbl.configure(
+                text=f"left={rl}  top={rt}  right={rr}  bottom={rb}  ✓ 已填入")
+
+        canvas.bind("<ButtonPress-1>",   on_press)
+        canvas.bind("<B1-Motion>",       on_drag)
+        canvas.bind("<ButtonRelease-1>", on_release)
+
+        tk.Button(win, text="關閉", bg=BG2, fg=TEXT_DIM, relief=tk.FLAT,
+                  padx=16, pady=3, font=("Microsoft JhengHei UI", 9),
+                  command=win.destroy).pack(pady=(2, 10))
 
     def _test_map_name(self):
         found = self._find_or_pick()
