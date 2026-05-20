@@ -404,7 +404,7 @@ class GameDetector:
             if any(k in t for k in GAME_TITLE_KEYWORDS):
                 result.append((hwnd, t))
         win32gui.EnumWindows(cb, None)
-        return result[0] if result else None
+        return result
 
     def _crop(self, img, w, h, key):
         r  = self.config.get(key, {})
@@ -434,6 +434,9 @@ class GameDetector:
         text = ocr_image(map_img).strip()
         if not text:
             return self._map_ok  # OCR 失敗 → 保持上一次判斷
+        # Windows OCR 每個 CJK 字元後會加空格，去除再比對
+        cjk = r'一-鿿㐀-䶿'
+        text = re.sub(rf'(?<=[{cjk}])[ \t]+(?=[{cjk}])', '', text)
         matched = any(kw in text for kw in keywords)
         if text != self._last_map_text:
             self._last_map_text = text
@@ -574,12 +577,14 @@ class GameDetector:
         on_status("題庫未找到此題")
         return {"question": q_text, "answer": None, "phash": ph, "recognized": q_text}
 
-    def run(self, on_result, on_status, on_error, on_popup_gone=None):
+    def run(self, on_result, on_status, on_error, on_popup_gone=None, hwnd=None, title=""):
         self._stop.clear()
-        found = self.find_window()
-        if not found:
-            on_error("找不到遊戲視窗，請確認遊戲已開啟"); return
-        self.hwnd, title = found
+        if hwnd is None:
+            windows = self.find_window()
+            if not windows:
+                on_error("找不到遊戲視窗，請確認遊戲已開啟"); return
+            hwnd, title = windows[0]
+        self.hwnd = hwnd
         on_status(f"已連接：{title}")
         while not self._stop.is_set():
             try:
@@ -1071,12 +1076,57 @@ class DaxiApp:
         self.root.attributes("-topmost", self._pinned)
         if self._pinned: self.root.deiconify()
 
+    def _pick_window(self, windows):
+        """多個遊戲視窗時彈出選擇對話框，回傳 (hwnd, title) 或 None。"""
+        if len(windows) == 1:
+            return windows[0]
+        win = tk.Toplevel(self.root)
+        win.title("選擇遊戲視窗"); win.configure(bg=BG)
+        win.attributes("-topmost", True); win.resizable(False, False)
+        tk.Label(win, text="找到多個遊戲視窗，請選擇：", bg=BG, fg=TEXT_NORM,
+                 font=("Microsoft JhengHei UI", 10)).pack(pady=(12,4), padx=16)
+        chosen = [None]
+        lb = tk.Listbox(win, bg="#1A1A2E", fg=TEXT_NORM,
+                        selectbackground=ACCENT, selectforeground="white",
+                        font=("Microsoft JhengHei UI", 10),
+                        height=min(len(windows), 8), width=46,
+                        relief=tk.FLAT, activestyle="none", borderwidth=0)
+        lb.pack(padx=16, pady=4)
+        for _, t in windows:
+            lb.insert(tk.END, f"  {t}")
+        lb.selection_set(0)
+        def ok():
+            sel = lb.curselection()
+            if sel: chosen[0] = windows[sel[0]]
+            win.destroy()
+        tk.Button(win, text="確定", bg=ACCENT, fg="white", relief=tk.FLAT,
+                  padx=20, pady=4, font=("Microsoft JhengHei UI", 10),
+                  activebackground="#C0392B", command=ok).pack(pady=(4,14))
+        win.grab_set()
+        win.wait_window()
+        return chosen[0]
+
+    def _find_or_pick(self):
+        """找遊戲視窗，多個時讓使用者選，回傳 (hwnd, title) 或 None。"""
+        windows = self.detector.find_window()
+        if not windows:
+            messagebox.showwarning("提示", "找不到遊戲視窗，請確認遊戲已開啟")
+            return None
+        return self._pick_window(windows)
+
     def _toggle_monitor(self):
         if self._thread and self._thread.is_alive():
             self.detector.stop()
             self.start_btn.configure(text="開始監測", bg="#2ECC71")
             self._set_status("已停止")
         else:
+            windows = GameDetector(self.config, self.db4, self.dbs).find_window()
+            if not windows:
+                messagebox.showerror("錯誤", "找不到遊戲視窗，請確認遊戲已開啟")
+                return
+            chosen = self._pick_window(windows)
+            if not chosen: return
+            hwnd, title = chosen
             self.detector = GameDetector(
                 self.config, self.db4, self.dbs,
                 on_detail=lambda m: self.root.after(0, self._add_notif, m, "warn"),
@@ -1086,7 +1136,7 @@ class DaxiApp:
             self._thread = threading.Thread(
                 target=self.detector.run,
                 args=(self._on_result, self._set_status, self._on_error),
-                kwargs={"on_popup_gone": self._on_popup_gone},
+                kwargs={"on_popup_gone": self._on_popup_gone, "hwnd": hwnd, "title": title},
                 daemon=True,
             )
             self._thread.start()
@@ -1411,8 +1461,8 @@ class DaxiApp:
         messagebox.showinfo("設定","設定已儲存")
 
     def _test_map_name(self):
-        found = self.detector.find_window()
-        if not found: messagebox.showwarning("提示","找不到遊戲視窗"); return
+        found = self._find_or_pick()
+        if not found: return
         hwnd, _ = found
 
         win = tk.Toplevel(self.root)
@@ -1473,8 +1523,10 @@ class DaxiApp:
                     outline="red", width=2)
                 tk_full = ImageTk.PhotoImage(full_prev)
 
-                # OCR
+                # OCR（去除 CJK 字間空格後再比對）
                 text = ocr_image(map_crop).strip()
+                _cjk = r'一-鿿㐀-䶿'
+                text = re.sub(rf'(?<=[{_cjk}])[ \t]+(?=[{_cjk}])', '', text)
                 keywords = self.config.get("quiz_map_keywords", [])
                 if keywords:
                     matched = any(kw in text for kw in keywords)
@@ -1497,8 +1549,8 @@ class DaxiApp:
         threading.Thread(target=run, daemon=True).start()
 
     def _test_brightness(self):
-        found = self.detector.find_window()
-        if not found: messagebox.showwarning("提示","找不到遊戲視窗"); return
+        found = self._find_or_pick()
+        if not found: return
         hwnd, _ = found
         try:
             img, w, h = capture_window(hwnd)
@@ -1510,8 +1562,8 @@ class DaxiApp:
             messagebox.showerror("錯誤", str(e))
 
     def _test_recognition(self):
-        found = self.detector.find_window()
-        if not found: messagebox.showwarning("提示","找不到遊戲視窗，請先開啟遊戲"); return
+        found = self._find_or_pick()
+        if not found: return
         hwnd, title = found
 
         def get_img():
