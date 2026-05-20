@@ -686,7 +686,7 @@ class DaxiApp:
         nb = ttk.Notebook(self.root)
         nb.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
 
-        f_main = tk.Frame(nb, bg=BG,  padx=8, pady=6)
+        f_main = tk.Frame(nb, bg=BG,  padx=8, pady=4)
         f_db4  = tk.Frame(nb, bg=BG2)
         f_dbs  = tk.Frame(nb, bg=BG2)
         f_cfg  = tk.Frame(nb, bg=BG2, padx=10, pady=8)
@@ -724,26 +724,26 @@ class DaxiApp:
         )
         self._btn_side.pack(side=tk.LEFT)
 
-        ttk.Separator(f, orient="horizontal").pack(fill=tk.X, pady=(4, 6))
+        ttk.Separator(f, orient="horizontal").pack(fill=tk.X, pady=(2, 4))
 
         # ── 四選一顯示區（左右分欄） ──
         self._frame_quiz4 = tk.Frame(f, bg=BG)
 
         info_row4 = tk.Frame(self._frame_quiz4, bg=BG)
-        info_row4.pack(fill=tk.X, pady=(0, 2))
+        info_row4.pack(fill=tk.X)
 
         # 左欄：大號答案數字 + 方位圖
         left4 = tk.Frame(info_row4, bg=BG)
-        left4.pack(side=tk.LEFT, padx=(0, 10), anchor="n")
+        left4.pack(side=tk.LEFT, padx=(0, 8), anchor="n")
 
         self.ans_num_var = tk.StringVar(value="─")
         self._lbl(left4, textvariable=self.ans_num_var,
-                  font=("Microsoft JhengHei UI", 72, "bold"),
+                  font=("Microsoft JhengHei UI", 52, "bold"),
                   fg=ACCENT, bg=BG, pady=0).pack()
 
-        self._map_canvas = tk.Canvas(left4, bg=BG, width=152, height=66, highlightthickness=0)
+        self._map_canvas = tk.Canvas(left4, bg=BG, width=132, height=56, highlightthickness=0)
         self._map_canvas.pack()
-        CW, CH, GAP = 68, 28, 4
+        CW, CH, GAP = 58, 24, 4
         _zones = [(0,0,1,"1\n左上"),(1,0,2,"2\n右上"),(0,1,4,"4\n左下"),(1,1,3,"3\n右下")]
         self._map_rects = {}; self._map_texts = {}
         x0, y0 = 4, 2
@@ -763,7 +763,7 @@ class DaxiApp:
         self._lbl(right4, textvariable=self.ans_text_var,
                   font=("Microsoft JhengHei UI", 12, "bold"),
                   fg="#FFAA00", bg=BG, anchor="w",
-                  wraplength=230).pack(fill=tk.X, pady=(10, 4))
+                  wraplength=230).pack(fill=tk.X, pady=(4, 2))
 
         self.q_var4 = tk.StringVar(value="等待題目出現…")
         self._lbl(right4, textvariable=self.q_var4,
@@ -772,9 +772,9 @@ class DaxiApp:
 
         self.source_var4 = tk.StringVar(value="")
         self._lbl(right4, textvariable=self.source_var4,
-                  font=("Microsoft JhengHei UI", 8), fg="#555577", bg=BG, anchor="w").pack(fill=tk.X, pady=(6,0))
+                  font=("Microsoft JhengHei UI", 8), fg="#555577", bg=BG, anchor="w").pack(fill=tk.X, pady=(4,0))
 
-        ttk.Separator(self._frame_quiz4, orient="horizontal").pack(fill=tk.X, pady=4)
+        ttk.Separator(self._frame_quiz4, orient="horizontal").pack(fill=tk.X, pady=3)
 
         # 四個可點擊選項
         self.opt_vars = []
@@ -793,16 +793,16 @@ class DaxiApp:
         self._frame_side = tk.Frame(f, bg=BG)
 
         info_rows = tk.Frame(self._frame_side, bg=BG)
-        info_rows.pack(fill=tk.X, pady=(0, 2))
+        info_rows.pack(fill=tk.X)
 
         # 左欄：大號 O/X
-        lefts = tk.Frame(info_rows, bg=BG, width=110)
-        lefts.pack(side=tk.LEFT, padx=(0, 10), anchor="n")
+        lefts = tk.Frame(info_rows, bg=BG, width=90)
+        lefts.pack(side=tk.LEFT, padx=(0, 8), anchor="n")
         lefts.pack_propagate(False)
 
         self.ans_ox_var = tk.StringVar(value="─")
         self.ans_ox_lbl = self._lbl(lefts, textvariable=self.ans_ox_var,
-                                    font=("Microsoft JhengHei UI", 80, "bold"),
+                                    font=("Microsoft JhengHei UI", 58, "bold"),
                                     fg=COL_UNK, bg=BG, pady=0)
         self.ans_ox_lbl.pack(pady=(4,0))
 
@@ -813,17 +813,17 @@ class DaxiApp:
         self.q_vars = tk.StringVar(value="等待題目出現…")
         self._lbl(rights, textvariable=self.q_vars,
                   font=("Microsoft JhengHei UI", 11), fg=TEXT_NORM, bg=BG,
-                  wraplength=250, justify=tk.LEFT, anchor="w").pack(fill=tk.X, pady=(10, 4))
+                  wraplength=250, justify=tk.LEFT, anchor="w").pack(fill=tk.X, pady=(4, 2))
 
         self.source_vars = tk.StringVar(value="")
         self._lbl(rights, textvariable=self.source_vars,
                   font=("Microsoft JhengHei UI", 8), fg=TEXT_DIM, bg=BG, anchor="w").pack(fill=tk.X)
 
-        ttk.Separator(self._frame_side, orient="horizontal").pack(fill=tk.X, pady=4)
+        ttk.Separator(self._frame_side, orient="horizontal").pack(fill=tk.X, pady=3)
 
         # 快速 O/X 點擊列
         ox_row = tk.Frame(self._frame_side, bg=BG)
-        ox_row.pack(fill=tk.X, pady=(0, 2))
+        ox_row.pack(fill=tk.X)
         self._ox_o_btn = tk.Label(ox_row, text="O  正確", font=("Microsoft JhengHei UI",14,"bold"),
                                   fg=COL_O, bg=BG2, padx=20, pady=6, cursor="hand2", relief=tk.FLAT)
         self._ox_o_btn.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0,4))
@@ -839,14 +839,12 @@ class DaxiApp:
         self._frame_quiz4.pack(fill=tk.X)
 
         # ── 通知欄 ──
-        ttk.Separator(f, orient="horizontal").pack(fill=tk.X, pady=(6, 2))
+        ttk.Separator(f, orient="horizontal").pack(fill=tk.X, pady=(4, 2))
         notif_frame = tk.Frame(f, bg=BG)
         notif_frame.pack(fill=tk.X, pady=(0, 2))
-        tk.Label(notif_frame, text="通知", bg=BG, fg=TEXT_DIM,
-                 font=("Microsoft JhengHei UI", 7)).pack(anchor="w")
         self.notif_log = tk.Text(
             notif_frame, bg="#0A0A14", fg=TEXT_DIM,
-            height=5, width=1,
+            height=4, width=1,
             font=("Microsoft JhengHei UI", 8),
             relief=tk.FLAT, state=tk.DISABLED, wrap=tk.WORD,
             cursor="arrow",
@@ -863,7 +861,7 @@ class DaxiApp:
         self.notif_log.tag_configure("time",  foreground="#444466")
 
         # ── 共用按鈕列 ──
-        ttk.Separator(f, orient="horizontal").pack(fill=tk.X, pady=6)
+        ttk.Separator(f, orient="horizontal").pack(fill=tk.X, pady=4)
 
         btn_row = tk.Frame(f, bg=BG)
         btn_row.pack(fill=tk.X)
