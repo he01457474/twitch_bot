@@ -174,16 +174,44 @@ def ocr_parse_quiz(full_img, question_img=None, on_detail=None):
                 q_text = cand
 
     # 找所有選項標記位置，依序提取標記之間的文字（不受 OCR 讀取順序影響）
+    def _marker_to_num(m):
+        """從標記匹配文字推算選項編號（1-4），處理 2 欄 OCR 讀取順序錯亂問題。"""
+        raw = re.sub(r'[\s\(（;；\)）]', '', m.group())
+        if raw in ('1', '１'): return 1
+        if raw in ('2', '２'): return 2
+        if raw in ('3', '３'): return 3
+        if raw in ('4', '４'): return 4
+        cs = {'①': 1, '②': 2, '③': 3, '④': 4}
+        if raw in cs: return cs[raw]
+        # 羅馬數字 / 同形字母（I/i/l/L 全當 I）：IV=4，個數決定 1-3
+        ru = raw.upper().replace('L', 'I')
+        if ru == 'IV': return 4
+        n = ru.count('I')
+        if 1 <= n <= 3: return n
+        return None
+
     markers = list(_OPT.finditer(text))
     if len(markers) >= 2:
-        options = []
+        slots = {}
         for i, m in enumerate(markers[:4]):
+            num = _marker_to_num(m)
             start = m.end()
-            end = markers[i+1].start() if i+1 < len(markers) and i+1 < 4 else len(text)
+            end = (markers[i+1].start() if i+1 < len(markers) and i+1 < 4 else len(text))
             opt = re.sub(r'[\n\r]+', ' ', text[start:end])  # 2 欄換行合併
             opt = re.sub(r'[\s;；,，？！。]+$', '', opt).strip()
-            if opt:
-                options.append(opt)
+            if not opt:
+                continue
+            if num and num not in slots:
+                slots[num] = opt
+            else:
+                # 無法推斷編號或重複，按順序填入空位
+                for k in range(1, 5):
+                    if k not in slots:
+                        slots[k] = opt; break
+
+        options = [slots.get(k, '') for k in range(1, 5)]
+        while options and not options[-1]:
+            options.pop()
 
         if not q_text:
             before = text[:markers[0].start()].strip()
@@ -1534,14 +1562,31 @@ class DaxiApp:
         messagebox.showinfo("設定","設定已儲存")
 
     def _open_region_selector(self, region_key):
-        """截遊戲畫面，讓使用者拖曳框選區域，自動寫回設定欄位。"""
-        found = self._find_or_pick()
-        if not found: return
-        hwnd, _ = found
-        try:
-            img, iw, ih = capture_window(hwnd)
-        except Exception as e:
-            messagebox.showerror("錯誤", f"截圖失敗：{e}"); return
+        """截遊戲畫面（或讀截圖檔案），讓使用者拖曳框選區域，自動寫回設定欄位。"""
+        img = None
+        # 優先用遊戲視窗截圖；找不到時改為開啟截圖檔案
+        windows = self.detector.find_window()
+        if windows:
+            chosen = self._pick_window(windows)
+            if chosen:
+                hwnd, _ = chosen
+                try:
+                    img_raw, iw, ih = capture_window(hwnd)
+                    img = img_raw
+                except Exception as e:
+                    messagebox.showerror("錯誤", f"截圖失敗：{e}"); return
+        if img is None:
+            from tkinter import filedialog
+            path = filedialog.askopenfilename(
+                title="選擇遊戲截圖檔案",
+                filetypes=[("圖片", "*.png *.jpg *.jpeg *.bmp"), ("所有檔案", "*.*")],
+            )
+            if not path: return
+            try:
+                img = Image.open(path).convert("RGB")
+                iw, ih = img.size
+            except Exception as e:
+                messagebox.showerror("錯誤", f"無法開啟圖片：{e}"); return
 
         max_w, max_h = 920, 580
         scale = min(max_w / max(iw, 1), max_h / max(ih, 1), 1.0)
@@ -1608,16 +1653,36 @@ class DaxiApp:
                   command=win.destroy).pack(pady=(2, 10))
 
     def _test_map_name(self):
-        found = self._find_or_pick()
-        if not found: return
-        hwnd, _ = found
+        img = None
+        w = h = 0
+        windows = self.detector.find_window()
+        if windows:
+            found = self._pick_window(windows)
+            if found:
+                hwnd, _ = found
+                try:
+                    img, w, h = capture_window(hwnd)
+                except Exception as e:
+                    messagebox.showerror("錯誤", f"截圖失敗：{e}"); return
+        if img is None:
+            from tkinter import filedialog
+            path = filedialog.askopenfilename(
+                title="選擇遊戲截圖（地圖名稱測試）",
+                filetypes=[("圖片", "*.png *.jpg *.jpeg *.bmp"), ("所有檔案", "*.*")],
+            )
+            if not path: return
+            try:
+                img = Image.open(path).convert("RGB")
+                w, h = img.size
+            except Exception as e:
+                messagebox.showerror("錯誤", f"無法開啟圖片：{e}"); return
 
         win = tk.Toplevel(self.root)
         win.title("地圖名稱偵測測試"); win.configure(bg=BG)
         win.resizable(False, False); win.attributes("-topmost", True)
         tk.Label(win, text="地圖名稱偵測測試", bg=BG, fg=ACCENT,
                  font=("Microsoft JhengHei UI",12,"bold")).pack(pady=(8,2))
-        status_lbl = tk.Label(win, text="截圖中…", bg=BG, fg=TEXT_DIM,
+        status_lbl = tk.Label(win, text="辨識中…", bg=BG, fg=TEXT_DIM,
                               font=("Microsoft JhengHei UI",9))
         status_lbl.pack()
 
@@ -1642,7 +1707,6 @@ class DaxiApp:
         def run():
             try:
                 from PIL import ImageDraw
-                img, w, h = capture_window(hwnd)
                 region = self.config.get("map_name_region", {})
                 x1 = int(region.get("left",  0) * w)
                 y1 = int(region.get("top",   0) * h)
@@ -1661,7 +1725,7 @@ class DaxiApp:
                 # 全視窗縮圖＋紅框
                 full_scale = min(380 / max(w,1), 1.0)
                 full_prev  = img.resize(
-                    (int(w*full_scale), int(h*full_scale)),
+                    (max(1,int(w*full_scale)), max(1,int(h*full_scale))),
                     Image.Resampling.LANCZOS).convert("RGB")
                 draw = ImageDraw.Draw(full_prev)
                 draw.rectangle(
