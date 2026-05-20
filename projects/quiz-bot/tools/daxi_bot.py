@@ -381,20 +381,22 @@ class GameDetector:
         self._last_api_ph   = None
         self._last_api_time = 0.0
         self.hwnd            = None
-        self._on_detail      = on_detail or (lambda m: None)
-        self._map_ok         = True   # 預設 True，關鍵字空清單時不擋
-        self._map_check_time = 0.0
-        self._last_map_text  = ""
+        self._on_detail       = on_detail or (lambda m: None)
+        self._map_ok          = True   # 預設 True，關鍵字空清單時不擋
+        self._map_check_time  = 0.0
+        self._last_map_text   = ""
+        self._map_confirmed_at = 0.0   # 最後一次確認活動場景的時間戳
 
     def set_mode(self, mode):
-        self.mode            = mode
-        self._popup_on       = False
-        self._last_ph        = None
-        self._last_api_ph    = None
-        self._last_api_time  = 0.0
-        self._map_ok         = True
-        self._map_check_time = 0.0
-        self._last_map_text  = ""
+        self.mode             = mode
+        self._popup_on        = False
+        self._last_ph         = None
+        self._last_api_ph     = None
+        self._last_api_time   = 0.0
+        self._map_ok          = True
+        self._map_check_time  = 0.0
+        self._last_map_text   = ""
+        self._map_confirmed_at = 0.0
 
     def find_window(self):
         result = []
@@ -438,14 +440,19 @@ class GameDetector:
         cjk = r'一-鿿㐀-䶿'
         text = re.sub(rf'(?<=[{cjk}])[ \t]+(?=[{cjk}])', '', text)
         matched = any(kw in text for kw in keywords)
+        in_grace = (now - self._map_confirmed_at) < 20.0  # 確認後保護 20 秒
+        if matched:
+            self._map_confirmed_at = now
         if text != self._last_map_text:
             self._last_map_text = text
             if matched:
                 self._on_detail(f"地圖：{text[:30]}（活動場景，啟動辨識）")
+            elif in_grace:
+                self._on_detail(f"地圖：{text[:30]}（保護期，維持辨識）")
             else:
                 self._on_detail(f"地圖：{text[:30]}（非活動場景，略過）")
-        self._map_ok = matched
-        return matched
+        self._map_ok = matched or in_grace
+        return self._map_ok
 
     def _can_call_api(self, ph):
         """同一題目只呼叫一次 API：phash 相近 or 冷卻期內直接跳過。"""
@@ -1089,11 +1096,16 @@ class DaxiApp:
         lb = tk.Listbox(win, bg="#1A1A2E", fg=TEXT_NORM,
                         selectbackground=ACCENT, selectforeground="white",
                         font=("Microsoft JhengHei UI", 10),
-                        height=min(len(windows), 8), width=46,
+                        height=min(len(windows), 8), width=52,
                         relief=tk.FLAT, activestyle="none", borderwidth=0)
         lb.pack(padx=16, pady=4)
-        for _, t in windows:
-            lb.insert(tk.END, f"  {t}")
+        for hwnd_i, t in windows:
+            try:
+                r = win32gui.GetWindowRect(hwnd_i)
+                pos = f"  ({r[0]},{r[1]})"
+            except Exception:
+                pos = ""
+            lb.insert(tk.END, f"  {t}{pos}")
         lb.selection_set(0)
         def ok():
             sel = lb.curselection()
@@ -1114,6 +1126,11 @@ class DaxiApp:
             return None
         return self._pick_window(windows)
 
+    def _on_detail(self, m):
+        """偵測器的 detail 回呼：限速 / 配額錯誤用灰色，其餘用橙色。"""
+        tag = "dim" if any(k in m for k in ("429", "RESOURCE_EXHAUSTED", "quota")) else "warn"
+        self.root.after(0, self._add_notif, m, tag)
+
     def _toggle_monitor(self):
         if self._thread and self._thread.is_alive():
             self.detector.stop()
@@ -1129,7 +1146,7 @@ class DaxiApp:
             hwnd, title = chosen
             self.detector = GameDetector(
                 self.config, self.db4, self.dbs,
-                on_detail=lambda m: self.root.after(0, self._add_notif, m, "warn"),
+                on_detail=self._on_detail,
             )
             self.detector.set_mode(self._mode.get())
             self.start_btn.configure(text="停止監測", bg="#C0392B")
