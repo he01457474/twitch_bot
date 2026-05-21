@@ -9,6 +9,7 @@ import asyncio
 import logging
 import datetime
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 
 import discord
 from discord import app_commands
@@ -290,7 +291,7 @@ def scrape_stock_news(ticker: str, name: str, limit=2) -> list[str]:
         )
         items = r.json().get('data', {}).get('items', [])
         titles = [item['title'][:45] for item in items if item.get('title')][:limit]
-        return titles or [f'{name} 今日暫無最新消息']
+        return titles
     except Exception:
         # 備援：爬 HTML
         try:
@@ -305,9 +306,9 @@ def scrape_stock_news(ticker: str, name: str, limit=2) -> list[str]:
                 if 10 < len(t) < 80 and t not in titles:
                     titles.append(t[:45])
                 if len(titles) >= limit: break
-            return titles or [f'{name} 今日暫無最新消息']
+            return titles
         except Exception:
-            return [f'{name} 今日暫無最新消息']
+            return []
 
 def scrape_hot_themes() -> list[str]:
     try:
@@ -450,44 +451,86 @@ def build_report() -> tuple[discord.Embed, str]:
 
     holdings = get_holdings()
     held_tickers = [h['ticker'] for h in holdings]
+    non_etf = [h for h in holdings if not _is_etf(h['ticker'])][:4]
 
-    # 取得股價
-    prices = {h['ticker']: fetch_price(h['ticker']) for h in holdings}
+    # ── Phase 1：並行抓取所有網路資料 ──────────────────────────
+    with ThreadPoolExecutor(max_workers=16) as ex:
+        price_futs = {h['ticker']: ex.submit(fetch_price, h['ticker']) for h in holdings}
+        inst_futs  = {h['ticker']: ex.submit(fetch_institutional, h['ticker']) for h in holdings}
+        news_futs  = [(h, ex.submit(scrape_stock_news, h['ticker'], h['name'])) for h in non_etf]
+        themes_fut = ex.submit(scrape_hot_themes)
+        mkt_fut    = ex.submit(fetch_market_inst)
+
+    prices = {t: f.result() for t, f in price_futs.items()}
+    insts  = {t: f.result() for t, f in inst_futs.items()}
+    news_results = [(h, f.result()) for h, f in news_futs]
+    themes = themes_fut.result()[:4]
+    mkt    = mkt_fut.result()
 
     # 計算損益
     enriched, total_cost, total_value = [], 0.0, 0.0
     for h in holdings:
-        p = prices.get(h['ticker'])
-        tc = p['today_close']   if p else None
-        yc = p['yesterday_close'] if p else None
-        name = h['name']  # FinMind TaiwanStockPrice 無 stock_name，固定用 DB 名稱
-        avg = h['avg_cost']
-        sh  = h['shares']
+        p   = prices.get(h['ticker'])
+        tc  = p['today_close']    if p else None
+        yc  = p['yesterday_close'] if p else None
+        avg, sh = h['avg_cost'], h['shares']
 
-        dc = (tc - yc) if (tc and yc) else None
-        dp = dc / yc * 100 if (dc is not None and yc) else None
+        dc  = (tc - yc) if (tc and yc) else None
+        dp  = dc / yc * 100 if (dc is not None and yc) else None
         pnl = (tc - avg) * sh if tc else None
         pp  = (tc - avg) / avg * 100 if tc else None
 
         total_cost  += avg * sh
         total_value += (tc * sh) if tc else (avg * sh)
-        enriched.append({**h, 'name': name, 'today_close': tc, 'yesterday_close': yc,
+        enriched.append({**h, 'today_close': tc, 'yesterday_close': yc,
                          'day_change': dc, 'day_pct': dp, 'pnl': pnl, 'pnl_pct': pp})
 
-    # ── 持股欄 ──
+    # ── Phase 2：並行 AI 運算 ────────────────────────────────
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        ai_analysis_fut  = ex.submit(ai_holding_analysis, enriched)
+        ai_recommend_fut = ex.submit(ai_recommend_tickers, held_tickers)
+        theme_detail_futs = [ex.submit(ai_theme_detail, t) for t in themes]
+
+    ai_text         = ai_analysis_fut.result()
+    recommend_items = ai_recommend_fut.result()
+    theme_details   = [f.result() for f in theme_detail_futs]
+
+    # 推薦股真實股價（並行）
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        rec_futs = [(item, ex.submit(fetch_price, item['ticker'])) for item in recommend_items]
+
+    recommend_lines = []
+    for item, f in rec_futs:
+        p = f.result()
+        price_str = f"今日 {p['today_close']:.0f}元" if p and p.get('today_close') else '股價暫無資料'
+        recommend_lines.append(
+            f"**{item.get('name', item['ticker'])} {item['ticker']}**（{price_str}）\n"
+            f"理由：{item.get('reason', '')}\n"
+            f"操作：{item.get('action', '')}"
+        )
+    recommend_lines.append('⚠️ 以上為 AI 輔助參考，不構成投資建議。')
+    recommend_text = '\n\n'.join(recommend_lines)
+
+    # ── 持股欄 ────────────────────────────────────────────────
     hold_parts = ['**今日持股**\n──────────']
     for e in enriched:
         tc, yc, dc, dp = e['today_close'], e['yesterday_close'], e['day_change'], e['day_pct']
-        avg, pnl, pp, sh = e['avg_cost'], e['pnl'], e['pnl_pct'], e['shares']
+        avg, pnl, pp = e['avg_cost'], e['pnl'], e['pnl_pct']
         lines = [f'**{e["name"]} {e["ticker"]}**']
+        # 第一行：收盤價
         if tc and yc:
-            lines.append(f'昨收 {yc:.0f}→今收 {tc:.0f}元')
+            lines.append(f'昨收 {yc:.0f} → 今收 {tc:.0f}元 {arrow(dc) if dc else ""}')
         elif yc:
             lines.append(f'收盤 {yc:.0f}元（今日資料待更新）')
+        # 第二行：日漲跌
         if dc is not None and dp is not None:
-            lines.append(f'{arrow(dc)} {signed(dc)}元（{signed(dp, ".2f")}%）{color(dc)}')
-        if pnl is not None and pp is not None:
-            lines.append(f'均價 {avg:.0f}｜損益 {signed(pnl)}元 {color(pnl)}')
+            lines.append(f'日漲跌 {signed(dc)}元（{signed(dp, ".2f")}%）{color(dc)}')
+        # 第三行：成本對照
+        cur = tc or yc
+        if cur is not None:
+            lines.append(f'成本 {avg:.0f} → 現價 {cur:.0f}元｜損益 {signed(pnl) if pnl is not None else "—"}元（{signed(pp, ".1f") if pp is not None else "—"}%）{color(pnl) if pnl else "🟡"}')
+        else:
+            lines.append(f'成本 {avg:.0f}元（尚無市價）')
         hold_parts.append('\n'.join(lines))
 
     total_pnl = total_value - total_cost
@@ -499,19 +542,18 @@ def build_report() -> tuple[discord.Embed, str]:
     )
     hold_text = '\n\n'.join(hold_parts)
 
-    # ── 法人欄 ──
+    # ── 法人欄 ────────────────────────────────────────────────
     def fi(v):
-        b = v / 1e8
-        return f'{signed(b, ".2f")}億 {color(v)}'
+        return f'{signed(v / 1e8, ".2f")}億 {color(v)}'
 
     inst_parts = ['**三大法人**\n──────────']
     has_inst_data = False
     for e in enriched:
-        inst = fetch_institutional(e['ticker'])
+        inst = insts.get(e['ticker'])
         if not inst:
             continue
         if inst['foreign'] == 0 and inst['trust'] == 0 and inst['dealer'] == 0:
-            continue  # 全零代表今日尚無資料，略過
+            continue
         has_inst_data = True
         inst_parts.append(
             f'**{e["name"]} {e["ticker"]}**\n'
@@ -521,7 +563,6 @@ def build_report() -> tuple[discord.Embed, str]:
         )
     if not has_inst_data:
         inst_parts.append('今日法人資料待更新')
-    mkt = fetch_market_inst()
     if mkt:
         fnet = sum(v for k, v in mkt.items() if '外資' in k)
         tnet = sum(v for k, v in mkt.items() if '投信' in k)
@@ -532,39 +573,20 @@ def build_report() -> tuple[discord.Embed, str]:
         )
     inst_text = '\n\n'.join(inst_parts)
 
-    # ── 新聞（ETF 不顯示個股新聞）──
+    # ── 新聞欄（無新聞的股票略過）────────────────────────────
     news_pairs: list[tuple[str, str]] = []
-    for e in enriched:
-        if _is_etf(e['ticker']): continue
-        news = scrape_stock_news(e['ticker'], e['name'])
-        news_pairs.append((f'{e["name"]} {e["ticker"]}', '\n'.join(f'・{n}' for n in news)))
-        if len(news_pairs) >= 4: break
+    for h, news in news_results:
+        if news:
+            news_pairs.append((f'{h["name"]} {h["ticker"]}', '\n'.join(f'・{n}' for n in news)))
 
-    # ── 題材 ──
-    themes = scrape_hot_themes()[:4]
+    # ── 題材 ──────────────────────────────────────────────────
     theme_pairs: list[tuple[str, str]] = []
     heat = ['🔥', '🔥🔥', '🔥🔥🔥', '🔥🔥🔥🔥', '🔥🔥🔥🔥🔥']
     for i, t in enumerate(themes):
-        h = heat[min(4, 4 - i)]
-        theme_pairs.append((f'{h} {t[:30]}', '（詳見題材詳解）'))
+        h_icon = heat[min(4, 4 - i)]
+        theme_pairs.append((f'{h_icon} {t[:30]}', '（詳見題材詳解）'))
 
-    # ── AI 推薦（先取代號，再查真實股價）──
-    recommend_items = ai_recommend_tickers(held_tickers)
-    recommend_lines = []
-    for item in recommend_items:
-        p = fetch_price(item['ticker'])
-        price_str = f"今日 {p['today_close']:.0f}元" if p and p.get('today_close') else '股價暫無資料'
-        recommend_lines.append(
-            f"**{item.get('name', item['ticker'])} {item['ticker']}**（{price_str}）\n"
-            f"理由：{item.get('reason', '')}\n"
-            f"操作：{item.get('action', '')}"
-        )
-    recommend_lines.append('⚠️ 以上為 AI 輔助參考，不構成投資建議。')
-    recommend_text = '\n\n'.join(recommend_lines)
-
-    ai_text = ai_holding_analysis(enriched)
-
-    # ── 新手術語 ──
+    # ── 新手術語 ──────────────────────────────────────────────
     full = hold_text + inst_text + ' '.join(themes) + ai_text + recommend_text
     with db() as c:
         learned = {r[0] for r in c.execute('SELECT term FROM learned_terms').fetchall()}
@@ -574,15 +596,13 @@ def build_report() -> tuple[discord.Embed, str]:
             c.executemany('INSERT OR IGNORE INTO learned_terms (term) VALUES (?)', [(t,) for t, _ in new_terms])
     term_text = '\n'.join(f'**{t}**：{e}' for t, e in new_terms)
 
-    # ── 組 Embed ──
+    # ── 組 Embed ──────────────────────────────────────────────
     embed = discord.Embed(title=f'📊 每日市場報告｜{date_str}', color=0xE74C3C)
 
-    # 持股 + 法人並列
     embed.add_field(name='​', value=hold_text[:1024], inline=True)
     embed.add_field(name='​', value=inst_text[:1024], inline=True)
     embed.add_field(name='​', value='​', inline=False)
 
-    # 新聞（兩兩並列）
     if news_pairs:
         embed.add_field(name='📰 持股新聞', value='​', inline=False)
         for i, (n, v) in enumerate(news_pairs):
@@ -590,7 +610,6 @@ def build_report() -> tuple[discord.Embed, str]:
             if i % 2 == 1:
                 embed.add_field(name='​', value='​', inline=False)
 
-    # 題材（兩兩並列）
     if theme_pairs:
         embed.add_field(name='🔥 今日題材', value='​', inline=False)
         for i, (n, v) in enumerate(theme_pairs):
@@ -604,11 +623,10 @@ def build_report() -> tuple[discord.Embed, str]:
         embed.add_field(name='📖 今日新詞', value=term_text[:1024], inline=False)
     embed.set_footer(text='⚠️ 以上為 AI 輔助參考，不構成投資建議，請依自身判斷操作。')
 
-    # ── 題材詳解（第二則訊息，無題材時回空字串）──
+    # ── 題材詳解（第二則訊息）────────────────────────────────
     if themes:
         detail_parts = ['**📋 今日題材詳解**\n']
-        for t in themes[:4]:
-            detail = ai_theme_detail(t)
+        for t, detail in zip(themes[:4], theme_details):
             detail_parts.append(f'━━━━━━━━━━━━━━━━━━\n**{t[:40]}**\n{detail}\n')
         theme_detail = '\n'.join(detail_parts)
     else:
