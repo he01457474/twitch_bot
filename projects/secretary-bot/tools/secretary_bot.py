@@ -280,48 +280,90 @@ _HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit
 def scrape_stock_news(ticker: str, name: str, limit=2) -> list[str]:
     try:
         r = requests.get(
-            f'https://news.cnyes.com/news/cat/twstock?stock_id={ticker}',
+            f'https://api.cnyes.com/media/api/v1/newslist/category/TWS:{ticker}:STOCK'
+            f'?limit={limit * 2}&page=1',
             headers=_HEADERS, timeout=8
         )
-        soup = BeautifulSoup(r.text, 'html.parser')
-        titles = []
-        for el in soup.select('[class*="newsItem_title"], h3, .title'):
-            t = el.get_text(strip=True)
-            if len(t) > 8 and t not in titles:
-                titles.append(t[:45])
-            if len(titles) >= limit: break
+        items = r.json().get('data', {}).get('items', [])
+        titles = [item['title'][:45] for item in items if item.get('title')][:limit]
         return titles or [f'{name} 今日暫無最新消息']
     except Exception:
-        return [f'{name} 今日暫無最新消息']
+        # 備援：爬 HTML
+        try:
+            r = requests.get(
+                f'https://news.cnyes.com/news/cat/twstock?stock_id={ticker}',
+                headers=_HEADERS, timeout=8
+            )
+            soup = BeautifulSoup(r.text, 'html.parser')
+            titles = []
+            for el in soup.find_all(['h3', 'h2', 'a'], limit=20):
+                t = el.get_text(strip=True)
+                if 10 < len(t) < 80 and t not in titles:
+                    titles.append(t[:45])
+                if len(titles) >= limit: break
+            return titles or [f'{name} 今日暫無最新消息']
+        except Exception:
+            return [f'{name} 今日暫無最新消息']
 
 def scrape_hot_themes() -> list[str]:
     try:
-        r = requests.get('https://news.cnyes.com/news/cat/tw_industry', headers=_HEADERS, timeout=8)
-        soup = BeautifulSoup(r.text, 'html.parser')
-        seen, themes = set(), []
-        for el in soup.select('[class*="newsItem_title"], h3, .title'):
-            t = el.get_text(strip=True)
-            if len(t) > 5 and t not in seen:
-                themes.append(t[:50]); seen.add(t)
-            if len(themes) >= 6: break
-        return themes
+        r = requests.get(
+            'https://api.cnyes.com/media/api/v1/newslist/category/tw_industry?limit=8&page=1',
+            headers=_HEADERS, timeout=8
+        )
+        items = r.json().get('data', {}).get('items', [])
+        titles = [item['title'][:50] for item in items if item.get('title')]
+        return titles[:6]
     except Exception:
-        return []
+        # 備援：爬 HTML
+        try:
+            r = requests.get('https://news.cnyes.com/news/cat/tw_industry', headers=_HEADERS, timeout=8)
+            soup = BeautifulSoup(r.text, 'html.parser')
+            seen, themes = set(), []
+            for el in soup.find_all(['h3', 'h2'], limit=30):
+                t = el.get_text(strip=True)
+                if 5 < len(t) < 60 and t not in seen:
+                    themes.append(t[:50]); seen.add(t)
+                if len(themes) >= 6: break
+            return themes
+        except Exception:
+            return []
 
 # ── Gemini ────────────────────────────────────────────────────
-def ask_ai(prompt: str) -> str:
+def ask_ai(prompt: str, max_tokens=800) -> str:
     if not groq_client:
-        return '（AI API 未設定）'
+        return '\uff08AI API \u672a\u8a2d\u5b9a\uff09'
     try:
         resp = groq_client.chat.completions.create(
             model=GROQ_MODEL,
-            messages=[{'role': 'user', 'content': prompt}],
-            max_tokens=800,
+            messages=[
+                {'role': 'system', 'content': '\u4f60\u662f\u53f0\u80a1\u6295\u8cc7\u52a9\u7406\uff0c\u53ea\u7528\u7e41\u9ad4\u4e2d\u6587\u56de\u8986\uff0c\u4e0d\u5f97\u6df7\u5165\u6cf0\u6587\u3001\u97d3\u6587\u3001\u65e5\u6587\u5047\u540d\u6216\u5176\u4ed6\u975e\u4e2d\u6587\u8a9e\u8a00\u3002'},
+                {'role': 'user', 'content': prompt},
+            ],
+            max_tokens=max_tokens,
+            temperature=0.7,
         )
-        return resp.choices[0].message.content.strip()
+        text = resp.choices[0].message.content.strip()
+        # \u6e05\u9664\u975e CJK/ASCII \u96dc\u5b57
+        out = []
+        for ch in text:
+            cp = ord(ch)
+            if 0x20 <= cp <= 0x7E:
+                out.append(ch)
+            elif cp in (9, 10, 13):  # tab, newline, cr
+                out.append(ch)
+            elif 0x4E00 <= cp <= 0x9FFF:
+                out.append(ch)
+            elif 0x3000 <= cp <= 0x303F:
+                out.append(ch)
+            elif 0xFF01 <= cp <= 0xFF60:
+                out.append(ch)
+            elif 0x2010 <= cp <= 0x2BFF:
+                out.append(ch)
+        return ''.join(out).strip()
     except Exception as e:
         log.warning(f'Groq: {e}')
-        return '（AI 暫時無法使用）'
+        return '\uff08AI \u66ab\u6642\u7121\u6cd5\u4f7f\u7528\uff09'
 
 def ai_holding_analysis(enriched: list[dict]) -> str:
     if not enriched:
@@ -341,17 +383,36 @@ def ai_holding_analysis(enriched: list[dict]) -> str:
         f"語氣友善，適合新手，若使用術語請在括號內簡短說明。"
     )
 
-def ai_recommend(held_tickers: list[str]) -> str:
+def ai_recommend_tickers(held_tickers: list[str]) -> list[dict]:
+    """請 AI 推薦股票代號，回傳 [{ticker, name, reason, action}]，再由程式查真實股價"""
     exclude = '、'.join(held_tickers) if held_tickers else '無'
-    return ask_ai(
-        f"你是台股投資顧問，請用繁體中文推薦 2 檔目前市場低估但基本面良好的台股。\n\n"
-        f"排除已持有：{exclude}\n\n"
-        f"每檔格式：\n"
-        f"股票名稱 代號（今日約 XXX 元）\n"
-        f"理由：一句話說明\n"
+    raw = ask_ai(
+        f"你是台股投資顧問，請用繁體中文推薦 2 檔目前基本面良好、股價相對低估的台股。\n\n"
+        f"排除以下已持有股票（代號）：{exclude}\n\n"
+        f"每一檔請嚴格按照以下格式輸出，不要加任何額外說明：\n"
+        f"代號：XXXX\n"
+        f"名稱：股票中文名稱\n"
+        f"理由：一句話\n"
         f"操作：一句話建議\n\n"
-        f"最後加：⚠️ 以上為 AI 輔助參考，不構成投資建議。"
+        f"只輸出兩檔，每檔之間空一行，不要加股價。",
+        max_tokens=300,
     )
+    results = []
+    # 解析格式
+    for block in raw.strip().split('\n\n'):
+        item = {}
+        for line in block.strip().splitlines():
+            if line.startswith('代號：') or line.startswith('代號:'):
+                item['ticker'] = line.split('：', 1)[-1].split(':', 1)[-1].strip()
+            elif line.startswith('名稱：') or line.startswith('名稱:'):
+                item['name'] = line.split('：', 1)[-1].split(':', 1)[-1].strip()
+            elif line.startswith('理由：') or line.startswith('理由:'):
+                item['reason'] = line.split('：', 1)[-1].split(':', 1)[-1].strip()
+            elif line.startswith('操作：') or line.startswith('操作:'):
+                item['action'] = line.split('：', 1)[-1].split(':', 1)[-1].strip()
+        if 'ticker' in item and 'name' in item:
+            results.append(item)
+    return results
 
 def ai_theme_detail(theme: str) -> str:
     return ask_ai(
@@ -468,8 +529,20 @@ def build_report() -> tuple[discord.Embed, str]:
         h = heat[min(4, 4 - i)]
         theme_pairs.append((f'{h} {t[:30]}', '（詳見題材詳解）'))
 
-    # ── AI ──
-    recommend_text = ai_recommend(held_tickers)
+    # ── AI 推薦（先取代號，再查真實股價）──
+    recommend_items = ai_recommend_tickers(held_tickers)
+    recommend_lines = []
+    for item in recommend_items:
+        p = fetch_price(item['ticker'])
+        price_str = f"今日 {p['today_close']:.0f}元" if p and p.get('today_close') else '股價暫無資料'
+        recommend_lines.append(
+            f"**{item.get('name', item['ticker'])} {item['ticker']}**（{price_str}）\n"
+            f"理由：{item.get('reason', '')}\n"
+            f"操作：{item.get('action', '')}"
+        )
+    recommend_lines.append('⚠️ 以上為 AI 輔助參考，不構成投資建議。')
+    recommend_text = '\n\n'.join(recommend_lines)
+
     ai_text = ai_holding_analysis(enriched)
 
     # ── 新手術語 ──
@@ -512,12 +585,15 @@ def build_report() -> tuple[discord.Embed, str]:
         embed.add_field(name='📖 今日新詞', value=term_text[:1024], inline=False)
     embed.set_footer(text='⚠️ 以上為 AI 輔助參考，不構成投資建議，請依自身判斷操作。')
 
-    # ── 題材詳解（第二則訊息）──
-    detail_parts = ['**📋 今日題材詳解**\n']
-    for t in themes[:4]:
-        detail = ai_theme_detail(t)
-        detail_parts.append(f'━━━━━━━━━━━━━━━━━━\n**{t[:40]}**\n{detail}\n')
-    theme_detail = '\n'.join(detail_parts)
+    # ── 題材詳解（第二則訊息，無題材時回空字串）──
+    if themes:
+        detail_parts = ['**📋 今日題材詳解**\n']
+        for t in themes[:4]:
+            detail = ai_theme_detail(t)
+            detail_parts.append(f'━━━━━━━━━━━━━━━━━━\n**{t[:40]}**\n{detail}\n')
+        theme_detail = '\n'.join(detail_parts)
+    else:
+        theme_detail = ''
 
     return embed, theme_detail
 
@@ -542,7 +618,7 @@ async def on_ready():
         daily_push.start()
 
 # ── 待辦指令 ──────────────────────────────────────────────────
-@tree.command(name='todo', description='待辦事項管理')
+@tree.command(name='待辦', description='待辦事項管理')
 @app_commands.describe(action='add / list / done / delete', content='內容或 ID')
 async def cmd_todo(interaction: discord.Interaction, action: str, content: str = ''):
     a = action.lower().strip()
@@ -578,7 +654,7 @@ async def cmd_todo(interaction: discord.Interaction, action: str, content: str =
         await interaction.response.send_message('可用：`add` / `list` / `done` / `delete`', ephemeral=True)
 
 # ── 股票指令 ──────────────────────────────────────────────────
-@tree.command(name='stock', description='股票管理')
+@tree.command(name='股票', description='股票管理')
 @app_commands.describe(
     action='buy / sell / list / pnl / calc / delete',
     ticker='股票代號（例如 2330）',
@@ -697,7 +773,7 @@ async def cmd_stock(interaction: discord.Interaction,
         await interaction.followup.send('可用：`buy` / `sell` / `list` / `pnl` / `calc` / `delete`', ephemeral=True)
 
 # ── 設定指令 ──────────────────────────────────────────────────
-@tree.command(name='config', description='Bot 設定')
+@tree.command(name='設定', description='Bot 設定')
 @app_commands.describe(key='push_time 或 channel', value='設定值')
 async def cmd_config(interaction: discord.Interaction, key: str, value: str):
     k = key.lower().strip()
@@ -713,7 +789,7 @@ async def cmd_config(interaction: discord.Interaction, key: str, value: str):
         await interaction.response.send_message('可設定：`push_time` / `channel`', ephemeral=True)
 
 # ── 學習指令 ──────────────────────────────────────────────────
-@tree.command(name='learn', description='查詢台股術語，填 reset 重置學習紀錄')
+@tree.command(name='學習', description='查詢台股術語，填 reset 重置學習紀錄')
 @app_commands.describe(term='術語名稱（空白列出全部）')
 async def cmd_learn(interaction: discord.Interaction, term: str = ''):
     t = term.strip()
@@ -751,7 +827,7 @@ async def cmd_learn(interaction: discord.Interaction, term: str = ''):
     await interaction.response.send_message(f'**📖 {t}**\n{expl}', ephemeral=True)
 
 # ── 手動推送 ──────────────────────────────────────────────────
-@tree.command(name='push', description='立即推送今日市場報告')
+@tree.command(name='推送', description='立即推送今日市場報告')
 async def cmd_push(interaction: discord.Interaction):
     channel_id = int(get_cfg('channel_id') or str(PUSH_CHANNEL_ID))
     channel = bot.get_channel(channel_id)
@@ -768,7 +844,7 @@ async def cmd_push(interaction: discord.Interaction):
         await channel.send(f'⚠️ 推送失敗：{e}')
 
 # ── 週報指令 ──────────────────────────────────────────────────
-@tree.command(name='weekly', description='產生本週市場回顧')
+@tree.command(name='週報', description='產生本週市場回顧')
 async def cmd_weekly(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     hs = get_holdings()
