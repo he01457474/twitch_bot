@@ -605,7 +605,12 @@ tree = app_commands.CommandTree(bot)
 
 @bot.event
 async def on_ready():
-    # 立即同步到所有已加入的伺服器（比全域同步快，不用等 1 小時）
+    # 先清除舊的全域指令，避免舊英文指令殘留衝突
+    tree.clear_commands(guild=None)
+    await tree.sync()
+    log.info('已清除舊的全域指令')
+
+    # 同步新指令到所有已加入的伺服器
     for guild in bot.guilds:
         try:
             tree.copy_global_to(guild=guild)
