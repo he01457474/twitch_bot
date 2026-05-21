@@ -392,7 +392,7 @@ def ai_holding_analysis(enriched: list[dict]) -> str:
     return ask_ai(prompt, max_tokens=400)
 
 def ai_recommend_tickers(held_tickers: list[str]) -> list[dict]:
-    """請 AI 推薦股票代號，回傳 [{ticker, name, reason, action}]，再由程式查真實股價"""
+    """請 AI 推薦股票代號，回傳 [{ticker, name, sector, tsmc_rel, reason, action}]"""
     exclude = '、'.join(held_tickers) if held_tickers else '無'
     raw = ask_ai(
         f"你是台股投資顧問，請用繁體中文推薦 2 檔目前基本面良好、股價相對低估的台股。\n\n"
@@ -400,24 +400,29 @@ def ai_recommend_tickers(held_tickers: list[str]) -> list[dict]:
         f"每一檔請嚴格按照以下格式輸出，不要加任何額外說明：\n"
         f"代號：XXXX\n"
         f"名稱：股票中文名稱\n"
+        f"產業：例如半導體、IC設計、電子零件、電腦周邊、金融等\n"
+        f"台積電關聯：一句話說明是否為台積電供應商/客戶/上下游，或填「無直接關聯」\n"
         f"理由：一句話\n"
         f"操作：一句話建議\n\n"
         f"只輸出兩檔，每檔之間空一行，不要加股價。",
-        max_tokens=300,
+        max_tokens=400,
     )
     results = []
-    # 解析格式
     for block in raw.strip().split('\n\n'):
         item = {}
         for line in block.strip().splitlines():
-            if line.startswith('代號：') or line.startswith('代號:'):
-                item['ticker'] = line.split('：', 1)[-1].split(':', 1)[-1].strip()
-            elif line.startswith('名稱：') or line.startswith('名稱:'):
-                item['name'] = line.split('：', 1)[-1].split(':', 1)[-1].strip()
-            elif line.startswith('理由：') or line.startswith('理由:'):
-                item['reason'] = line.split('：', 1)[-1].split(':', 1)[-1].strip()
-            elif line.startswith('操作：') or line.startswith('操作:'):
-                item['action'] = line.split('：', 1)[-1].split(':', 1)[-1].strip()
+            for key, prefixes in [
+                ('ticker',   ['代號：', '代號:']),
+                ('name',     ['名稱：', '名稱:']),
+                ('sector',   ['產業：', '產業:']),
+                ('tsmc_rel', ['台積電關聯：', '台積電關聯:']),
+                ('reason',   ['理由：', '理由:']),
+                ('action',   ['操作：', '操作:']),
+            ]:
+                for prefix in prefixes:
+                    if line.startswith(prefix):
+                        item[key] = line[len(prefix):].strip()
+                        break
         if 'ticker' in item and 'name' in item:
             results.append(item)
     return results
@@ -505,11 +510,14 @@ def build_report() -> tuple[discord.Embed, str]:
         p = f.result()
         cur = (p.get('today_close') or p.get('yesterday_close')) if p else None
         price_str = f"{'今' if p and p.get('today_close') else '昨收'} {cur:.0f}元" if cur else '股價暫無資料'
-        recommend_lines.append(
-            f"**{item.get('name', item['ticker'])} {item['ticker']}**（{price_str}）\n"
-            f"理由：{item.get('reason', '')}\n"
-            f"操作：{item.get('action', '')}"
-        )
+        parts = [f"**{item.get('name', item['ticker'])} {item['ticker']}**（{price_str}）"]
+        if item.get('sector'):
+            parts.append(f"產業：{item['sector']}")
+        if item.get('tsmc_rel'):
+            parts.append(f"台積電：{item['tsmc_rel']}")
+        parts.append(f"理由：{item.get('reason', '')}")
+        parts.append(f"操作：{item.get('action', '')}")
+        recommend_lines.append('\n'.join(parts))
     recommend_lines.append('⚠️ 以上為 AI 輔助參考，不構成投資建議。')
     recommend_text = '\n\n'.join(recommend_lines)
 
