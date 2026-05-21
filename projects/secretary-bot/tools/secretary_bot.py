@@ -614,12 +614,7 @@ tree = app_commands.CommandTree(bot)
 
 @bot.event
 async def on_ready():
-    # 先清除舊的全域指令，避免舊英文指令殘留衝突
-    tree.clear_commands(guild=None)
-    await tree.sync()
-    log.info('已清除舊的全域指令')
-
-    # 同步新指令到所有已加入的伺服器
+    # 先同步到伺服器（這一步才真正把指令推上去）
     for guild in bot.guilds:
         try:
             tree.copy_global_to(guild=guild)
@@ -627,6 +622,10 @@ async def on_ready():
             log.info(f'指令已同步到伺服器：{guild.name}')
         except Exception as e:
             log.warning(f'伺服器 {guild.name} 同步失敗: {e}')
+
+    # 同步完再清掉舊的全域指令（避免舊英文指令殘留）
+    tree.clear_commands(guild=None)
+    await tree.sync()
     log.info(f'Bot 已上線：{bot.user}，共加入 {len(bot.guilds)} 個伺服器')
     if not daily_push.is_running():
         daily_push.start()
