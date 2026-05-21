@@ -16,7 +16,7 @@ from discord.ext import tasks
 import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
-from google import genai
+from groq import Groq
 
 # ── 基本設定 ──────────────────────────────────────────────────
 BASE_DIR = Path(__file__).parent.parent
@@ -26,15 +26,15 @@ DB_FILE  = BASE_DIR / 'data' / 'secretary.db'
 load_dotenv(ENV_FILE)
 
 DISCORD_TOKEN   = os.getenv('DISCORD_TOKEN', '')
-GEMINI_API_KEY  = os.getenv('GEMINI_API_KEY', '')
+GROQ_API_KEY    = os.getenv('GROQ_API_KEY', '')
 FINMIND_TOKEN   = os.getenv('FINMIND_TOKEN', '')
 PUSH_CHANNEL_ID = int(os.getenv('PUSH_CHANNEL_ID', '0') or '0')
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 log = logging.getLogger('secretary')
 
-gemini_client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
-GEMINI_MODEL  = 'gemini-2.0-flash'
+groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
+GROQ_MODEL  = 'llama-3.3-70b-versatile'
 
 FINMIND_BASE = 'https://api.finmindtrade.com/api/v4/data'
 TWSE_BASE    = 'https://www.twse.com.tw/exchangeReport/STOCK_DAY'
@@ -309,15 +309,19 @@ def scrape_hot_themes() -> list[str]:
         return []
 
 # ── Gemini ────────────────────────────────────────────────────
-def ask_gemini(prompt: str) -> str:
-    if not gemini_client:
-        return '（Gemini API 未設定）'
+def ask_ai(prompt: str) -> str:
+    if not groq_client:
+        return '（AI API 未設定）'
     try:
-        resp = gemini_client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
-        return resp.text.strip()
+        resp = groq_client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[{'role': 'user', 'content': prompt}],
+            max_tokens=800,
+        )
+        return resp.choices[0].message.content.strip()
     except Exception as e:
-        log.warning(f'Gemini: {e}')
-        return f'（AI 暫時無法使用）'
+        log.warning(f'Groq: {e}')
+        return '（AI 暫時無法使用）'
 
 def ai_holding_analysis(enriched: list[dict]) -> str:
     if not enriched:
@@ -327,7 +331,7 @@ def ai_holding_analysis(enriched: list[dict]) -> str:
         f"現價 {h.get('today_close') or '未知'}元"
         for h in enriched
     )
-    return ask_gemini(
+    return ask_ai(
         f"你是台股投資助理，請用繁體中文對以下持股做簡短分析（約 200 字）。\n\n"
         f"持股：\n{summary}\n\n"
         f"分三段回覆：\n"
@@ -339,7 +343,7 @@ def ai_holding_analysis(enriched: list[dict]) -> str:
 
 def ai_recommend(held_tickers: list[str]) -> str:
     exclude = '、'.join(held_tickers) if held_tickers else '無'
-    return ask_gemini(
+    return ask_ai(
         f"你是台股投資顧問，請用繁體中文推薦 2 檔目前市場低估但基本面良好的台股。\n\n"
         f"排除已持有：{exclude}\n\n"
         f"每檔格式：\n"
@@ -350,7 +354,7 @@ def ai_recommend(held_tickers: list[str]) -> str:
     )
 
 def ai_theme_detail(theme: str) -> str:
-    return ask_gemini(
+    return ask_ai(
         f"你是台股產業分析師，請用繁體中文說明以下台股題材（約 150 字）：\n\n"
         f"題材：{theme}\n\n"
         f"請包含：\n"
