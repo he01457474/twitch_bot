@@ -525,8 +525,15 @@ tree = app_commands.CommandTree(bot)
 
 @bot.event
 async def on_ready():
-    await tree.sync()
-    log.info(f'Bot 已上線：{bot.user}')
+    # 立即同步到所有已加入的伺服器（比全域同步快，不用等 1 小時）
+    for guild in bot.guilds:
+        try:
+            tree.copy_global_to(guild=guild)
+            await tree.sync(guild=guild)
+            log.info(f'指令已同步到伺服器：{guild.name}')
+        except Exception as e:
+            log.warning(f'伺服器 {guild.name} 同步失敗: {e}')
+    log.info(f'Bot 已上線：{bot.user}，共加入 {len(bot.guilds)} 個伺服器')
     if not daily_push.is_running():
         daily_push.start()
 
