@@ -475,13 +475,14 @@ def build_report() -> tuple[discord.Embed, str]:
         yc  = p['yesterday_close'] if p else None
         avg, sh = h['avg_cost'], h['shares']
 
+        cur = tc or yc  # 今日無收盤就用昨日收盤代替計算
         dc  = (tc - yc) if (tc and yc) else None
         dp  = dc / yc * 100 if (dc is not None and yc) else None
-        pnl = (tc - avg) * sh if tc else None
-        pp  = (tc - avg) / avg * 100 if tc else None
+        pnl = (cur - avg) * sh if cur else None
+        pp  = (cur - avg) / avg * 100 if cur else None
 
         total_cost  += avg * sh
-        total_value += (tc * sh) if tc else (avg * sh)
+        total_value += (cur * sh) if cur else (avg * sh)
         enriched.append({**h, 'today_close': tc, 'yesterday_close': yc,
                          'day_change': dc, 'day_pct': dp, 'pnl': pnl, 'pnl_pct': pp})
 
@@ -525,10 +526,12 @@ def build_report() -> tuple[discord.Embed, str]:
         # 第二行：日漲跌
         if dc is not None and dp is not None:
             lines.append(f'日漲跌 {signed(dc)}元（{signed(dp, ".2f")}%）{color(dc)}')
-        # 第三行：成本對照
+        # 第三行：成本對照（pnl/pp 已在 enriched 用 cur 算好）
         cur = tc or yc
-        if cur is not None:
-            lines.append(f'成本 {avg:.0f} → 現價 {cur:.0f}元｜損益 {signed(pnl) if pnl is not None else "—"}元（{signed(pp, ".1f") if pp is not None else "—"}%）{color(pnl) if pnl else "🟡"}')
+        if cur is not None and pnl is not None:
+            lines.append(f'成本 {avg:.0f} → 現價 {cur:.0f}元｜損益 {signed(pnl)}元（{signed(pp, ".1f")}%）{color(pnl)}')
+        elif cur is not None:
+            lines.append(f'成本 {avg:.0f} → 現價 {cur:.0f}元')
         else:
             lines.append(f'成本 {avg:.0f}元（尚無市價）')
         hold_parts.append('\n'.join(lines))
@@ -561,8 +564,6 @@ def build_report() -> tuple[discord.Embed, str]:
             f'投信 {fi(inst["trust"])}\n'
             f'自營 {fi(inst["dealer"])}'
         )
-    if not has_inst_data:
-        inst_parts.append('今日法人資料待更新')
     if mkt:
         fnet = sum(v for k, v in mkt.items() if '外資' in k)
         tnet = sum(v for k, v in mkt.items() if '投信' in k)
@@ -571,7 +572,8 @@ def build_report() -> tuple[discord.Embed, str]:
             f'大盤外資 {signed(fnet/1e8, ".0f")}億\n'
             f'大盤投信 {signed(tnet/1e8, ".0f")}億'
         )
-    inst_text = '\n\n'.join(inst_parts)
+    # 無個股資料且無大盤資料，整欄不顯示
+    inst_text = '\n\n'.join(inst_parts) if (has_inst_data or mkt) else ''
 
     # ── 新聞欄（無新聞的股票略過）────────────────────────────
     news_pairs: list[tuple[str, str]] = []
@@ -599,9 +601,12 @@ def build_report() -> tuple[discord.Embed, str]:
     # ── 組 Embed ──────────────────────────────────────────────
     embed = discord.Embed(title=f'📊 每日市場報告｜{date_str}', color=0xE74C3C)
 
-    embed.add_field(name='​', value=hold_text[:1024], inline=True)
-    embed.add_field(name='​', value=inst_text[:1024], inline=True)
-    embed.add_field(name='​', value='​', inline=False)
+    if inst_text:
+        embed.add_field(name='​', value=hold_text[:1024], inline=True)
+        embed.add_field(name='​', value=inst_text[:1024], inline=True)
+        embed.add_field(name='​', value='​', inline=False)
+    else:
+        embed.add_field(name='​', value=hold_text[:1024], inline=False)
 
     if news_pairs:
         embed.add_field(name='📰 持股新聞', value='​', inline=False)
