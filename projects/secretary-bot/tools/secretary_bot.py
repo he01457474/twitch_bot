@@ -252,6 +252,10 @@ def fetch_market_inst() -> dict:
         return {}
 
 # ── 持股計算 ──────────────────────────────────────────────────
+def _is_etf(ticker: str) -> bool:
+    """台灣 ETF 代號通常開頭為 0 或為 6 碼"""
+    return ticker.startswith('0') or len(ticker) == 6
+
 def get_holdings() -> list[dict]:
     with db() as c:
         rows = c.execute(
@@ -368,20 +372,23 @@ def ask_ai(prompt: str, max_tokens=800) -> str:
 def ai_holding_analysis(enriched: list[dict]) -> str:
     if not enriched:
         return '目前沒有持股資料。'
+    # 只分析個股，ETF 不做新聞摘要
+    stocks = [h for h in enriched if not _is_etf(h['ticker'])]
+    etfs   = [h for h in enriched if _is_etf(h['ticker'])]
     summary = '\n'.join(
-        f"{h['name']} {h['ticker']}：均價 {h['avg_cost']:.0f}元，持股 {h['shares']}股，"
-        f"現價 {h.get('today_close') or '未知'}元"
-        for h in enriched
+        f"{h['name']}（{h['ticker']}）：均價{h['avg_cost']:.0f}元，現價{h.get('today_close') or '未知'}元"
+        for h in stocks
     )
-    return ask_ai(
-        f"你是台股投資助理，請用繁體中文對以下持股做簡短分析（約 200 字）。\n\n"
-        f"持股：\n{summary}\n\n"
-        f"分三段回覆：\n"
-        f"1.【新聞摘要】各股近期重點消息（每股一句）\n"
-        f"2.【方向分析】籌碼面和基本面的方向看法\n"
-        f"3.【操作建議】具體建議（最多兩句），最後附一行免責聲明\n\n"
-        f"語氣友善，適合新手，若使用術語請在括號內簡短說明。"
+    etf_str = '、'.join(f"{h['name']}（{h['ticker']}）" for h in etfs) if etfs else ''
+    prompt = (
+        f"你是台股投資助理，用繁體中文分析以下個股，回覆控制在 150 字內，不要重複說免責聲明。\n\n"
+        f"個股：\n{summary or '（無）'}\n"
+        + (f"ETF（不需分析）：{etf_str}\n" if etf_str else '') +
+        f"\n分兩段：\n"
+        f"1.【方向】各股一句話看法（漲跌原因或趨勢）\n"
+        f"2.【建議】一句話操作方向，直接講重點，不要解釋術語定義"
     )
+    return ask_ai(prompt, max_tokens=400)
 
 def ai_recommend_tickers(held_tickers: list[str]) -> list[dict]:
     """請 AI 推薦股票代號，回傳 [{ticker, name, reason, action}]，再由程式查真實股價"""
@@ -515,11 +522,13 @@ def build_report() -> tuple[discord.Embed, str]:
         )
     inst_text = '\n\n'.join(inst_parts)
 
-    # ── 新聞 ──
+    # ── 新聞（ETF 不顯示個股新聞）──
     news_pairs: list[tuple[str, str]] = []
-    for e in enriched[:4]:
+    for e in enriched:
+        if _is_etf(e['ticker']): continue
         news = scrape_stock_news(e['ticker'], e['name'])
         news_pairs.append((f'{e["name"]} {e["ticker"]}', '\n'.join(f'・{n}' for n in news)))
+        if len(news_pairs) >= 4: break
 
     # ── 題材 ──
     themes = scrape_hot_themes()[:4]
