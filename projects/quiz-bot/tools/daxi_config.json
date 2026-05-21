@@ -1,0 +1,72 @@
+{
+  "game_install_dir": "D:\\遊戲(非破解)\\黃易群俠傳之風起雙龍 日月新空",
+  "game_process_names": [
+    "HY2D.exe",
+    "NEW-HEOGame.exe",
+    "NEW-HEOnline.exe"
+  ],
+  "popup_check_x": 0.45,
+  "popup_check_y": 0.1,
+  "popup_brightness_threshold": 80.0,
+  "popup_edge_threshold": 35.0,
+  "popup_recognition_cooldown": 2.0,
+  "question_region": {
+    "left": 0.1669,
+    "top": 0.019,
+    "right": 0.6856,
+    "bottom": 0.2362
+  },
+  "options_region": {
+    "left": 0.17,
+    "top": 0.27,
+    "right": 0.74,
+    "bottom": 0.34
+  },
+  "popup_full_region": {
+    "left": 0.1695,
+    "top": 0.019,
+    "right": 0.6843,
+    "bottom": 0.2362
+  },
+  "map_name_region": {
+    "left": 0.7814,
+    "top": 0.0086,
+    "right": 0.8745,
+    "bottom": 0.0328
+  },
+  "coord_region": {
+    "left": 0.881,
+    "top": 0.0017,
+    "right": 0.9767,
+    "bottom": 0.0345
+  },
+  "quiz_map_keywords": [
+    "機智擂台"
+  ],
+  "map_check_interval": 3,
+  "map_image_match_threshold": 0.78,
+  "coord_check_interval": 1.0,
+  "coord_template_threshold": 0.34,
+  "coord_auto_learn": 1.0,
+  "sidestand_auto_nav": 0.0,
+  "sidestand_nav_max_steps": 12.0,
+  "sidestand_nav_step_wait": 0.5,
+  "sidestand_nav_center_x": 0.5,
+  "sidestand_nav_center_y": 0.55,
+  "sidestand_nav_radius_x": 0.16,
+  "sidestand_nav_radius_y": 0.13,
+  "sidestand_coord_tolerance": 80.0,
+  "sidestand_o_coord_x": 4584.0,
+  "sidestand_o_coord_y": 4008.0,
+  "sidestand_x_coord_x": 3784.0,
+  "sidestand_x_coord_y": 4104.0,
+  "gemini_api_key": "AIzaSyAax9E03NQU2GojKjRF4eeUTlsTRybOeS4",
+  "gemini_model": "gemini-2.0-flash",
+  "api_key": "",
+  "api_cooldown": 10,
+  "api_rate_limit_backoff": 300,
+  "match_threshold": 0.72,
+  "auto_add_duplicate_threshold": 0.8,
+  "window_width": 674,
+  "window_height": 678
+}

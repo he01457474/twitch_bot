@@ -1,93 +1,382 @@
 [
-  {"question": "日本引發盧溝橋事變的藉口是士兵失蹤", "answer": "O"},
-  {"question": "有名的句子「不為五斗米折腰」是出自陶淵明", "answer": "O"},
-  {"question": "NBA籃球聯盟2018年到2019年球季的總冠軍是暴龍隊", "answer": "O"},
-  {"question": "網球比賽術語中，LOVE代表0分", "answer": "O"},
-  {"question": "漫畫「火影忍者」的主角鳴人最後和雛田結婚", "answer": "O"},
-  {"question": "日落半杯中猜一字：東", "answer": "O"},
-  {"question": "黃義畢業於香港中文大學藝術系嗎", "answer": "O"},
-  {"question": "食神中的七大武器之首為折凳", "answer": "O"},
-  {"question": "在天氣圖上附有尖齒形的線條，是表示氣象學的冷鋒", "answer": "O"},
-  {"question": "一千除以二十等於五十", "answer": "O"},
-  {"question": "黑武士是「星際大戰」系列電影的反派角色", "answer": "O"},
-  {"question": "林來瘋說的是前NBA球員林書豪", "answer": "O"},
-  {"question": "滑鐵盧是拿破崙戰役失敗的地方", "answer": "O"},
-  {"question": "聖經故事中，耶穌在馬槽出身", "answer": "O"},
-  {"question": "農曆正月初三的晚上，是民間傳說老鼠娶親的日子", "answer": "O"},
-  {"question": "愛因斯坦9歲時不能流利說話，他媽媽一度以為他是弱智", "answer": "O"},
-  {"question": "在中國能發現到恐龍化石", "answer": "O"},
-  {"question": "報名「大俠選邊站」的NPC名叫古靈精怪", "answer": "O"},
-  {"question": "夏威夷是美國領土", "answer": "O"},
-  {"question": "如果一個月中，第一天是星期日，那個月便出現黑色星期五", "answer": "O"},
-  {"question": "黃易本名叫黃祖強", "answer": "O"},
-  {"question": "打狗指的是現在的高雄", "answer": "O"},
-  {"question": "黃易四大期書指的是「戰神圖錄」、「天魔策」、「慈航劍典」、「長生訣」", "answer": "O"},
-  {"question": "WWE是現在的美國摔角聯盟", "answer": "O"},
-  {"question": "王水是由硝酸加鹽酸兩種酸性物質調製而成的", "answer": "O"},
-  {"question": "奈米是一種長度的單位", "answer": "O"},
-  {"question": "普立茲獎是為了新聞方面的優秀人才所設立的獎項", "answer": "O"},
-  {"question": "日本的火箭發射基地在種子島", "answer": "O"},
-  {"question": "電影動畫「你的名子」和「天氣之子」是同一個日本導演的作品", "answer": "O"},
-  {"question": "哆啦A夢在台灣舊譯名是小叮噹", "answer": "O"},
-  {"question": "F1賽車的中文稱為「一級方程式錦標賽」", "answer": "O"},
-  {"question": "電影魔戒裡的「咕魯」最後成功地搶奪到了魔戒但卻葬身岩漿之中", "answer": "O"},
-  {"question": "日本動畫「假面騎士」第一部拍攝時間是在昭和期間", "answer": "O"},
-  {"question": "兩生類幾乎生長在潮濕地方的主要原因是因為要保持水分", "answer": "O"},
-  {"question": "史記中紀載，秦始皇的陵墓結構，以水銀作為百川江河大海", "answer": "O"},
-  {"question": "麵包超人最害怕的就是下雨天", "answer": "O"},
-  {"question": "四片葉子的酢醬草又稱為幸運草", "answer": "O"},
-  {"question": "黃秋生在電影「頭文字-D」裡面飾演拓海他老爸", "answer": "O"},
-  {"question": "大黃蜂是「變形金剛」的角色之一", "answer": "O"},
-  {"question": "玉山比富士山還要高", "answer": "O"},
-  {"question": "朱元璋是明太祖", "answer": "O"},
-  {"question": "志玲姊姊的老公是日本人", "answer": "O"},
-  {"question": "美國首府是華盛頓", "answer": "O"},
-  {"question": "電影「蜘蛛人」中的男主角是由屁股吐出蜘蛛絲", "answer": "X"},
-  {"question": "AKB48是台灣的少女偶像團體", "answer": "X"},
-  {"question": "撞球的母球顏色是黑色的", "answer": "X"},
-  {"question": "黃易M製作團隊的公司位於新竹科學園區", "answer": "X"},
-  {"question": "民法規定結婚雙方，女性必須年滿13歲", "answer": "X"},
-  {"question": "坐著看電視比睡覺所消耗的熱量還多", "answer": "X"},
-  {"question": "蝙蝠俠曾和鋼鐵人一起對付過薩諾斯", "answer": "X"},
-  {"question": "哈利波特小說，魁地奇比賽中有翅膀的器材是飛天掃帚", "answer": "X"},
-  {"question": "摩西帶領亞利安人通過黑海，脫離埃及人的控制", "answer": "X"},
-  {"question": "大導演史帝芬匹柏曾經指導過拍攝電影「報告班長」", "answer": "X"},
-  {"question": "電影「鋼鐵人」的男主角是佐藤健", "answer": "X"},
-  {"question": "大堂雙龍傳裡，唐朝的首都是紅毛城", "answer": "X"},
-  {"question": "金洲勇士隊是台灣的職業棒球隊伍之一", "answer": "X"},
-  {"question": "麥當勞叔叔的頭髮，顏色是橘色的", "answer": "X"},
-  {"question": "在籃球規則中，個人犯規可以犯六次，第七次後退場", "answer": "X"},
-  {"question": "現在火星上已發現人形的蟑螂外星人", "answer": "X"},
-  {"question": "浮世繪是屬於希臘的傳統繪畫", "answer": "X"},
-  {"question": "足球選手拿到一張綠牌算是被警告一次", "answer": "X"},
-  {"question": "阿拉斯加是一個獨立國家", "answer": "X"},
-  {"question": "台北101是目前世界最高的建築物", "answer": "X"},
-  {"question": "美人軍師曾經九擒孟獲", "answer": "X"},
-  {"question": "岳飛和張飛是表兄弟關係", "answer": "X"},
-  {"question": "美國首府是紐約", "answer": "X"},
-  {"question": "可口可樂汽水的吉祥物是無尾熊", "answer": "X"},
-  {"question": "王心凌和蔡依林其實是表姊妹", "answer": "X"},
-  {"question": "「火影忍者」漫畫中，擁有九尾妖狐力量的是宇智波佐助", "answer": "X"},
-  {"question": "小明的爸爸有三個小孩，老大叫小豐、老二叫小嘉、老三叫小強", "answer": "X"},
-  {"question": "通常蛀牙發生時，象牙質是最先被破壞的部份", "answer": "X"},
-  {"question": "捷安特是台灣溜冰鞋製造商的名子", "answer": "X"},
-  {"question": "在山海關引清兵入關的明朝大將是韋小寶", "answer": "X"},
-  {"question": "你現在在玩的遊戲是「古龍M」", "answer": "X"},
-  {"question": "孔明是孔子的兒子", "answer": "X"},
-  {"question": "莊智淵是台灣羽球國手", "answer": "X"},
-  {"question": "「金鋼狼」系列電影的男主角演員國籍為紐西蘭", "answer": "X"},
-  {"question": "黃祖賢是黃易的兒子", "answer": "X"},
-  {"question": "現任美國華盛頓州長韋阿諾史瓦辛格", "answer": "X"},
-  {"question": "北京位於中國的四川地區", "answer": "X"},
-  {"question": "關公使用的兵器稱為屠龍刀", "answer": "X"},
-  {"question": "在赤壁之戰中借東風的是孔慶祥", "answer": "X"},
-  {"question": "孫悟空的觔斗雲一次可以翻一萬八千里遠", "answer": "X"},
-  {"question": "民間故事中，到地獄救母親的是鍾馗", "answer": "X"},
-  {"question": "法拉利是一間德國跑車製造商", "answer": "X"},
-  {"question": "SAS特種空勤隊是台灣的特種部隊之一", "answer": "X"},
-  {"question": "靜者恆靜，動者恆動是守恆定律", "answer": "X"},
-  {"question": "詠春又被稱為唐拳", "answer": "X"},
-  {"question": "劍心是七龍珠的角色", "answer": "X"},
-  {"question": "黃易四大期書指的是「三國志」、「水滸傳」、「西遊記」、「金瓶梅」", "answer": "X"},
-  {"question": "漫畫「海賊王」中，魯夫吃的是天使果實", "answer": "X"}
+  {
+    "question": "日本引發盧溝橋事變的藉口是士兵失蹤",
+    "answer": "O"
+  },
+  {
+    "question": "有名的句子「不為五斗米折腰」是出自陶淵明",
+    "answer": "O"
+  },
+  {
+    "question": "NBA籃球聯盟2018年到2019年球季的總冠軍是暴龍隊",
+    "answer": "O"
+  },
+  {
+    "question": "網球比賽術語中，LOVE代表0分",
+    "answer": "O"
+  },
+  {
+    "question": "漫畫「火影忍者」的主角鳴人最後和雛田結婚",
+    "answer": "O"
+  },
+  {
+    "question": "日落半杯中猜一字：東",
+    "answer": "O"
+  },
+  {
+    "question": "黃義畢業於香港中文大學藝術系嗎",
+    "answer": "O"
+  },
+  {
+    "question": "食神中的七大武器之首為折凳",
+    "answer": "O"
+  },
+  {
+    "question": "在天氣圖上附有尖齒形的線條，是表示氣象學的冷鋒",
+    "answer": "O"
+  },
+  {
+    "question": "一千除以二十等於五十",
+    "answer": "O"
+  },
+  {
+    "question": "黑武士是「星際大戰」系列電影的反派角色",
+    "answer": "O"
+  },
+  {
+    "question": "林來瘋說的是前NBA球員林書豪",
+    "answer": "O"
+  },
+  {
+    "question": "滑鐵盧是拿破崙戰役失敗的地方",
+    "answer": "O"
+  },
+  {
+    "question": "聖經故事中，耶穌在馬槽出身",
+    "answer": "O"
+  },
+  {
+    "question": "農曆正月初三的晚上，是民間傳說老鼠娶親的日子",
+    "answer": "O"
+  },
+  {
+    "question": "愛因斯坦9歲時不能流利說話，他媽媽一度以為他是弱智",
+    "answer": "O"
+  },
+  {
+    "question": "在中國能發現到恐龍化石",
+    "answer": "O"
+  },
+  {
+    "question": "報名「大俠選邊站」的NPC名叫古靈精怪",
+    "answer": "O"
+  },
+  {
+    "question": "夏威夷是美國領土",
+    "answer": "O"
+  },
+  {
+    "question": "如果一個月中，第一天是星期日，那個月便出現黑色星期五",
+    "answer": "O"
+  },
+  {
+    "question": "黃易本名叫黃祖強",
+    "answer": "O"
+  },
+  {
+    "question": "打狗指的是現在的高雄",
+    "answer": "O"
+  },
+  {
+    "question": "黃易四大期書指的是「戰神圖錄」、「天魔策」、「慈航劍典」、「長生訣」",
+    "answer": "O"
+  },
+  {
+    "question": "WWE是現在的美國摔角聯盟",
+    "answer": "O"
+  },
+  {
+    "question": "王水是由硝酸加鹽酸兩種酸性物質調製而成的",
+    "answer": "O"
+  },
+  {
+    "question": "奈米是一種長度的單位",
+    "answer": "O"
+  },
+  {
+    "question": "普立茲獎是為了新聞方面的優秀人才所設立的獎項",
+    "answer": "O"
+  },
+  {
+    "question": "日本的火箭發射基地在種子島",
+    "answer": "O"
+  },
+  {
+    "question": "電影動畫「你的名子」和「天氣之子」是同一個日本導演的作品",
+    "answer": "O"
+  },
+  {
+    "question": "哆啦A夢在台灣舊譯名是小叮噹",
+    "answer": "O"
+  },
+  {
+    "question": "F1賽車的中文稱為「一級方程式錦標賽」",
+    "answer": "O"
+  },
+  {
+    "question": "電影魔戒裡的「咕魯」最後成功地搶奪到了魔戒但卻葬身岩漿之中",
+    "answer": "O"
+  },
+  {
+    "question": "日本動畫「假面騎士」第一部拍攝時間是在昭和期間",
+    "answer": "O"
+  },
+  {
+    "question": "兩生類幾乎生長在潮濕地方的主要原因是因為要保持水分",
+    "answer": "O"
+  },
+  {
+    "question": "史記中紀載，秦始皇的陵墓結構，以水銀作為百川江河大海",
+    "answer": "O"
+  },
+  {
+    "question": "麵包超人最害怕的就是下雨天",
+    "answer": "O"
+  },
+  {
+    "question": "四片葉子的酢醬草又稱為幸運草",
+    "answer": "O"
+  },
+  {
+    "question": "黃秋生在電影「頭文字-D」裡面飾演拓海他老爸",
+    "answer": "O"
+  },
+  {
+    "question": "大黃蜂是「變形金剛」的角色之一",
+    "answer": "O"
+  },
+  {
+    "question": "玉山比富士山還要高",
+    "answer": "O"
+  },
+  {
+    "question": "朱元璋是明太祖",
+    "answer": "O"
+  },
+  {
+    "question": "志玲姊姊的老公是日本人",
+    "answer": "O"
+  },
+  {
+    "question": "美國首府是華盛頓",
+    "answer": "O"
+  },
+  {
+    "question": "電影「蜘蛛人」中的男主角是由屁股吐出蜘蛛絲",
+    "answer": "X"
+  },
+  {
+    "question": "AKB48是台灣的少女偶像團體",
+    "answer": "X"
+  },
+  {
+    "question": "撞球的母球顏色是黑色的",
+    "answer": "X"
+  },
+  {
+    "question": "黃易M製作團隊的公司位於新竹科學園區",
+    "answer": "X"
+  },
+  {
+    "question": "民法規定結婚雙方，女性必須年滿13歲",
+    "answer": "X"
+  },
+  {
+    "question": "坐著看電視比睡覺所消耗的熱量還多",
+    "answer": "X"
+  },
+  {
+    "question": "蝙蝠俠曾和鋼鐵人一起對付過薩諾斯",
+    "answer": "X"
+  },
+  {
+    "question": "哈利波特小說，魁地奇比賽中有翅膀的器材是飛天掃帚",
+    "answer": "X"
+  },
+  {
+    "question": "摩西帶領亞利安人通過黑海，脫離埃及人的控制",
+    "answer": "X"
+  },
+  {
+    "question": "大導演史帝芬匹柏曾經指導過拍攝電影「報告班長」",
+    "answer": "X"
+  },
+  {
+    "question": "電影「鋼鐵人」的男主角是佐藤健",
+    "answer": "X"
+  },
+  {
+    "question": "大堂雙龍傳裡，唐朝的首都是紅毛城",
+    "answer": "X"
+  },
+  {
+    "question": "金洲勇士隊是台灣的職業棒球隊伍之一",
+    "answer": "X"
+  },
+  {
+    "question": "麥當勞叔叔的頭髮，顏色是橘色的",
+    "answer": "X"
+  },
+  {
+    "question": "在籃球規則中，個人犯規可以犯六次，第七次後退場",
+    "answer": "X"
+  },
+  {
+    "question": "現在火星上已發現人形的蟑螂外星人",
+    "answer": "X"
+  },
+  {
+    "question": "浮世繪是屬於希臘的傳統繪畫",
+    "answer": "X"
+  },
+  {
+    "question": "足球選手拿到一張綠牌算是被警告一次",
+    "answer": "X"
+  },
+  {
+    "question": "阿拉斯加是一個獨立國家",
+    "answer": "X"
+  },
+  {
+    "question": "台北101是目前世界最高的建築物",
+    "answer": "X"
+  },
+  {
+    "question": "美人軍師曾經九擒孟獲",
+    "answer": "X"
+  },
+  {
+    "question": "岳飛和張飛是表兄弟關係",
+    "answer": "X"
+  },
+  {
+    "question": "美國首府是紐約",
+    "answer": "X"
+  },
+  {
+    "question": "可口可樂汽水的吉祥物是無尾熊",
+    "answer": "X"
+  },
+  {
+    "question": "王心凌和蔡依林其實是表姊妹",
+    "answer": "X"
+  },
+  {
+    "question": "「火影忍者」漫畫中，擁有九尾妖狐力量的是宇智波佐助",
+    "answer": "X"
+  },
+  {
+    "question": "小明的爸爸有三個小孩，老大叫小豐、老二叫小嘉、老三叫小強",
+    "answer": "X"
+  },
+  {
+    "question": "通常蛀牙發生時，象牙質是最先被破壞的部份",
+    "answer": "X"
+  },
+  {
+    "question": "捷安特是台灣溜冰鞋製造商的名子",
+    "answer": "X"
+  },
+  {
+    "question": "在山海關引清兵入關的明朝大將是韋小寶",
+    "answer": "X"
+  },
+  {
+    "question": "你現在在玩的遊戲是「古龍M」",
+    "answer": "X"
+  },
+  {
+    "question": "孔明是孔子的兒子",
+    "answer": "X"
+  },
+  {
+    "question": "莊智淵是台灣羽球國手",
+    "answer": "X"
+  },
+  {
+    "question": "「金鋼狼」系列電影的男主角演員國籍為紐西蘭",
+    "answer": "X"
+  },
+  {
+    "question": "黃祖賢是黃易的兒子",
+    "answer": "X"
+  },
+  {
+    "question": "現任美國華盛頓州長韋阿諾史瓦辛格",
+    "answer": "X"
+  },
+  {
+    "question": "北京位於中國的四川地區",
+    "answer": "X"
+  },
+  {
+    "question": "關公使用的兵器稱為屠龍刀",
+    "answer": "X"
+  },
+  {
+    "question": "在赤壁之戰中借東風的是孔慶祥",
+    "answer": "X"
+  },
+  {
+    "question": "孫悟空的觔斗雲一次可以翻一萬八千里遠",
+    "answer": "X"
+  },
+  {
+    "question": "民間故事中，到地獄救母親的是鍾馗",
+    "answer": "X"
+  },
+  {
+    "question": "法拉利是一間德國跑車製造商",
+    "answer": "X"
+  },
+  {
+    "question": "SAS特種空勤隊是台灣的特種部隊之一",
+    "answer": "X"
+  },
+  {
+    "question": "靜者恆靜，動者恆動是守恆定律",
+    "answer": "X"
+  },
+  {
+    "question": "詠春又被稱為唐拳",
+    "answer": "X"
+  },
+  {
+    "question": "劍心是七龍珠的角色",
+    "answer": "X"
+  },
+  {
+    "question": "黃易四大期書指的是「三國志」、「水滸傳」、「西遊記」、「金瓶梅」",
+    "answer": "X"
+  },
+  {
+    "question": "漫畫「海賊王」中，魯夫吃的是天使果實",
+    "answer": "X"
+  },
+  {
+    "question": "在 《 大唐雙龍俥 》 小說中,冦仲最後殉情而死 ?",
+    "answer": "X"
+  },
+  {
+    "question": "冦仲和徐子陵是長安城中的小混混",
+    "answer": "X"
+  },
+  {
+    "question": "「 鬼哭神號 」 曹應龍為四大冦之首,真實身份是 「 邪王 」 石之軒的弟",
+    "answer": "O"
+  },
+  {
+    "question": "冦仲因徐子陵與師妃暄勸進而開始爭奪天下",
+    "answer": "X"
+  }
 ]
