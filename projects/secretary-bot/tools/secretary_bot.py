@@ -30,6 +30,8 @@ DISCORD_TOKEN   = os.getenv('DISCORD_TOKEN', '')
 GROQ_API_KEY    = os.getenv('GROQ_API_KEY', '')
 FINMIND_TOKEN   = os.getenv('FINMIND_TOKEN', '')
 PUSH_CHANNEL_ID = int(os.getenv('PUSH_CHANNEL_ID', '0') or '0')
+# 若設定 MAIN_GUILD_ID，指令只在該伺服器生效；空白則全伺服器都開放
+MAIN_GUILD_ID   = int(os.getenv('MAIN_GUILD_ID', '0') or '0')
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 log = logging.getLogger('secretary')
@@ -654,10 +656,24 @@ intents.message_content = True
 bot  = discord.Client(intents=intents)
 tree = app_commands.CommandTree(bot)
 
+def _guild_allowed(guild_id: int) -> bool:
+    """若未設定 MAIN_GUILD_ID，所有伺服器都允許；設定後只允許該伺服器。"""
+    return (not MAIN_GUILD_ID) or (guild_id == MAIN_GUILD_ID)
+
+async def _check_guild(interaction: discord.Interaction) -> bool:
+    """指令入口守衛，不在允許的伺服器時靜默拒絕。"""
+    if not _guild_allowed(interaction.guild_id or 0):
+        await interaction.response.send_message('此伺服器未啟用私人秘書功能。', ephemeral=True)
+        return False
+    return True
+
 @bot.event
 async def on_ready():
-    # 先同步到伺服器（這一步才真正把指令推上去）
+    # 先同步到允許的伺服器
     for guild in bot.guilds:
+        if not _guild_allowed(guild.id):
+            log.info(f'跳過同步（非主伺服器）：{guild.name}')
+            continue
         try:
             tree.copy_global_to(guild=guild)
             await tree.sync(guild=guild)
@@ -665,7 +681,7 @@ async def on_ready():
         except Exception as e:
             log.warning(f'伺服器 {guild.name} 同步失敗: {e}')
 
-    # 同步完再清掉舊的全域指令（避免舊英文指令殘留）
+    # 清掉舊的全域指令
     tree.clear_commands(guild=None)
     await tree.sync()
     log.info(f'Bot 已上線：{bot.user}，共加入 {len(bot.guilds)} 個伺服器')
@@ -682,6 +698,7 @@ async def on_ready():
     app_commands.Choice(name='刪除', value='delete'),
 ])
 async def cmd_todo(interaction: discord.Interaction, action: str, content: str = ''):
+    if not await _check_guild(interaction): return
     a = action.lower().strip()
     if a == 'add':
         if not content:
@@ -733,6 +750,7 @@ async def cmd_todo(interaction: discord.Interaction, action: str, content: str =
 async def cmd_stock(interaction: discord.Interaction,
                     action: str, ticker: str = '',
                     shares: int = 0, price: float = 0.0):
+    if not await _check_guild(interaction): return
     a = action.lower().strip()
     await interaction.response.defer(ephemeral=True)
 
@@ -849,6 +867,7 @@ async def cmd_stock(interaction: discord.Interaction,
     app_commands.Choice(name='推送頻道', value='channel'),
 ])
 async def cmd_config(interaction: discord.Interaction, key: str, value: str):
+    if not await _check_guild(interaction): return
     k = key.lower().strip()
     if k == 'push_time':
         if not re.match(r'^\d{2}:\d{2}$', value):
@@ -865,6 +884,7 @@ async def cmd_config(interaction: discord.Interaction, key: str, value: str):
 @tree.command(name='學習', description='查詢台股術語，填 reset 重置學習紀錄')
 @app_commands.describe(term='術語名稱（空白列出全部）')
 async def cmd_learn(interaction: discord.Interaction, term: str = ''):
+    if not await _check_guild(interaction): return
     t = term.strip()
     if t.lower() == 'reset':
         with db() as c:
@@ -902,6 +922,7 @@ async def cmd_learn(interaction: discord.Interaction, term: str = ''):
 # ── 手動推送 ──────────────────────────────────────────────────
 @tree.command(name='推送', description='立即推送今日市場報告')
 async def cmd_push(interaction: discord.Interaction):
+    if not await _check_guild(interaction): return
     channel_id = int(get_cfg('channel_id') or str(PUSH_CHANNEL_ID))
     channel = bot.get_channel(channel_id)
     if not channel:
@@ -919,6 +940,7 @@ async def cmd_push(interaction: discord.Interaction):
 # ── 週報指令 ──────────────────────────────────────────────────
 @tree.command(name='週報', description='產生本週市場回顧')
 async def cmd_weekly(interaction: discord.Interaction):
+    if not await _check_guild(interaction): return
     await interaction.response.defer(ephemeral=True)
     hs = get_holdings()
     tickers = '、'.join(h['ticker'] for h in hs) if hs else '無'
