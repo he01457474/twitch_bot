@@ -460,7 +460,7 @@ def build_report() -> tuple[discord.Embed, str]:
         p = prices.get(h['ticker'])
         tc = p['today_close']   if p else None
         yc = p['yesterday_close'] if p else None
-        name = p['name'] if p else h['name']
+        name = h['name']  # FinMind TaiwanStockPrice 無 stock_name，固定用 DB 名稱
         avg = h['avg_cost']
         sh  = h['shares']
 
@@ -482,6 +482,8 @@ def build_report() -> tuple[discord.Embed, str]:
         lines = [f'**{e["name"]} {e["ticker"]}**']
         if tc and yc:
             lines.append(f'昨收 {yc:.0f}→今收 {tc:.0f}元')
+        elif yc:
+            lines.append(f'收盤 {yc:.0f}元（今日資料待更新）')
         if dc is not None and dp is not None:
             lines.append(f'{arrow(dc)} {signed(dc)}元（{signed(dp, ".2f")}%）{color(dc)}')
         if pnl is not None and pp is not None:
@@ -498,19 +500,27 @@ def build_report() -> tuple[discord.Embed, str]:
     hold_text = '\n\n'.join(hold_parts)
 
     # ── 法人欄 ──
+    def fi(v):
+        b = v / 1e8
+        return f'{signed(b, ".2f")}億 {color(v)}'
+
     inst_parts = ['**三大法人**\n──────────']
+    has_inst_data = False
     for e in enriched:
         inst = fetch_institutional(e['ticker'])
-        if not inst: continue
-        def fi(v):
-            b = v / 1e8
-            return f'{signed(b, ".2f")}億 {color(v)}'
+        if not inst:
+            continue
+        if inst['foreign'] == 0 and inst['trust'] == 0 and inst['dealer'] == 0:
+            continue  # 全零代表今日尚無資料，略過
+        has_inst_data = True
         inst_parts.append(
             f'**{e["name"]} {e["ticker"]}**\n'
             f'外資 {fi(inst["foreign"])}\n'
             f'投信 {fi(inst["trust"])}\n'
             f'自營 {fi(inst["dealer"])}'
         )
+    if not has_inst_data:
+        inst_parts.append('今日法人資料待更新')
     mkt = fetch_market_inst()
     if mkt:
         fnet = sum(v for k, v in mkt.items() if '外資' in k)
