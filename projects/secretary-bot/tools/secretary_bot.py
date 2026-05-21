@@ -624,7 +624,13 @@ async def on_ready():
 
 # ── 待辦指令 ──────────────────────────────────────────────────
 @tree.command(name='待辦', description='待辦事項管理')
-@app_commands.describe(action='add / list / done / delete', content='內容或 ID')
+@app_commands.describe(action='選擇動作', content='新增時填內容，完成/刪除時填編號')
+@app_commands.choices(action=[
+    app_commands.Choice(name='新增', value='add'),
+    app_commands.Choice(name='查看清單', value='list'),
+    app_commands.Choice(name='標記完成', value='done'),
+    app_commands.Choice(name='刪除', value='delete'),
+])
 async def cmd_todo(interaction: discord.Interaction, action: str, content: str = ''):
     a = action.lower().strip()
     if a == 'add':
@@ -659,13 +665,21 @@ async def cmd_todo(interaction: discord.Interaction, action: str, content: str =
         await interaction.response.send_message('可用：`add` / `list` / `done` / `delete`', ephemeral=True)
 
 # ── 股票指令 ──────────────────────────────────────────────────
-@tree.command(name='股票', description='股票管理')
+@tree.command(name='股票', description='股票買賣記錄與損益查詢')
 @app_commands.describe(
-    action='buy / sell / list / pnl / calc / delete',
+    action='選擇動作',
     ticker='股票代號（例如 2330）',
     shares='股數',
-    price='價格'
+    price='每股價格（元）'
 )
+@app_commands.choices(action=[
+    app_commands.Choice(name='買入記錄', value='buy'),
+    app_commands.Choice(name='賣出記錄', value='sell'),
+    app_commands.Choice(name='持股清單', value='list'),
+    app_commands.Choice(name='損益查看', value='pnl'),
+    app_commands.Choice(name='試算損益（不動資料）', value='calc'),
+    app_commands.Choice(name='刪除交易紀錄', value='delete'),
+])
 async def cmd_stock(interaction: discord.Interaction,
                     action: str, ticker: str = '',
                     shares: int = 0, price: float = 0.0):
@@ -778,8 +792,12 @@ async def cmd_stock(interaction: discord.Interaction,
         await interaction.followup.send('可用：`buy` / `sell` / `list` / `pnl` / `calc` / `delete`', ephemeral=True)
 
 # ── 設定指令 ──────────────────────────────────────────────────
-@tree.command(name='設定', description='Bot 設定')
-@app_commands.describe(key='push_time 或 channel', value='設定值')
+@tree.command(name='設定', description='設定推送時間與頻道')
+@app_commands.describe(key='選擇要設定的項目', value='推送時間填 HH:MM（例如 08:30）；頻道填頻道 ID')
+@app_commands.choices(key=[
+    app_commands.Choice(name='推送時間', value='push_time'),
+    app_commands.Choice(name='推送頻道', value='channel'),
+])
 async def cmd_config(interaction: discord.Interaction, key: str, value: str):
     k = key.lower().strip()
     if k == 'push_time':
