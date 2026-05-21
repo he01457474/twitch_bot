@@ -503,7 +503,8 @@ def build_report() -> tuple[discord.Embed, str]:
     recommend_lines = []
     for item, f in rec_futs:
         p = f.result()
-        price_str = f"今日 {p['today_close']:.0f}元" if p and p.get('today_close') else '股價暫無資料'
+        cur = (p.get('today_close') or p.get('yesterday_close')) if p else None
+        price_str = f"{'今' if p and p.get('today_close') else '昨收'} {cur:.0f}元" if cur else '股價暫無資料'
         recommend_lines.append(
             f"**{item.get('name', item['ticker'])} {item['ticker']}**（{price_str}）\n"
             f"理由：{item.get('reason', '')}\n"
