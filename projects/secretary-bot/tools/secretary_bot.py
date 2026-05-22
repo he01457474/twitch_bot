@@ -152,6 +152,69 @@ def set_cfg(key: str, value: str):
     with db() as c:
         c.execute('INSERT OR REPLACE INTO config (key,value) VALUES (?,?)', (key, value))
 
+# ── 股票名稱對照 ──────────────────────────────────────────────
+_ticker_map: dict[str, str] = {}        # name → ticker
+_ticker_map_ts: datetime.date | None = None
+
+def _load_ticker_map() -> dict[str, str]:
+    """從 TWSE + TPEX OpenAPI 載入「名稱→代號」對照表，每天快取一次。"""
+    global _ticker_map, _ticker_map_ts
+    today = datetime.date.today()
+    if _ticker_map and _ticker_map_ts == today:
+        return _ticker_map
+
+    mapping: dict[str, str] = {}
+    sources = [
+        'https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL',
+        'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_peratio_analysis',
+    ]
+    for url in sources:
+        try:
+            r = requests.get(url, timeout=10)
+            for item in r.json():
+                code = (item.get('Code') or item.get('SecuritiesCompanyCode') or '').strip()
+                name = (item.get('Name') or item.get('CompanyName') or '').strip()
+                if code and name:
+                    mapping[name] = code
+        except Exception as e:
+            log.warning(f'載入股票清單失敗 {url}: {e}')
+
+    if mapping:
+        _ticker_map = mapping
+        _ticker_map_ts = today
+    return _ticker_map
+
+def resolve_ticker(query: str) -> tuple[str, str] | tuple[None, None]:
+    """
+    輸入代號或名稱，回傳 (ticker, name)。
+    找不到回傳 (None, None)。
+    """
+    query = query.strip()
+
+    # 若看起來就是代號（純數字或 6 碼以內字母數字）直接用
+    if query.isdigit() or (query.isalnum() and len(query) <= 6):
+        # 先從持股 DB 取中文名
+        for h in get_holdings():
+            if h['ticker'] == query:
+                return query, h['name']
+        return query, query
+
+    # 從持股 DB 模糊比對
+    for h in get_holdings():
+        if query in h['name'] or h['name'] in query:
+            return h['ticker'], h['name']
+
+    # 從全市場清單精確 / 模糊比對
+    mapping = _load_ticker_map()
+    if query in mapping:
+        return mapping[query], query
+    # 模糊：找名稱包含 query 的第一筆
+    for name, code in mapping.items():
+        if query in name:
+            return code, name
+
+    return None, None
+
 # ── 股價 API ──────────────────────────────────────────────────
 def _recent_trading_days(n=5) -> list[datetime.date]:
     days, d = [], datetime.date.today()
@@ -1015,16 +1078,17 @@ async def cmd_weekly(interaction: discord.Interaction):
         await interaction.followup.send(embed=embed)
 
 # ── 個股分析 ──────────────────────────────────────────────────
-def build_stock_analysis(ticker: str) -> discord.Embed | None:
+def build_stock_analysis(ticker: str, display_name: str = '') -> discord.Embed | None:
     """抓個股資料並用 AI 分析，回傳 Embed；找不到股票回傳 None"""
     from concurrent.futures import ThreadPoolExecutor
 
     ticker = ticker.strip().upper()
+    label  = display_name or ticker
 
     with ThreadPoolExecutor(max_workers=3) as ex:
         price_fut = ex.submit(fetch_price, ticker)
         inst_fut  = ex.submit(fetch_institutional, ticker)
-        news_fut  = ex.submit(scrape_stock_news, ticker, ticker, 4)
+        news_fut  = ex.submit(scrape_stock_news, ticker, label, 4)
 
     p    = price_fut.result()
     inst = inst_fut.result()
@@ -1069,7 +1133,7 @@ def build_stock_analysis(ticker: str) -> discord.Embed | None:
     # 組 Embed
     title_price = f'{cur:.0f}元' if cur else '—'
     embed = discord.Embed(
-        title=f'🔍 個股分析｜{ticker}　{title_price}',
+        title=f'🔍 個股分析｜{label} {ticker}　{title_price}',
         color=0x2ECC71 if (dc and dc > 0) else (0xE74C3C if (dc and dc < 0) else 0x95A5A6)
     )
 
@@ -1120,15 +1184,22 @@ def build_stock_analysis(ticker: str) -> discord.Embed | None:
     return embed
 
 @tree.command(name='分析', description='分析指定股票的產業定位、法人動向與 AI 建議')
-@app_commands.describe(代號='股票代號，例如 2330')
-async def cmd_analyze(interaction: discord.Interaction, 代號: str):
+@app_commands.describe(查詢='股票代號或名稱，例如 2330 或 台積電')
+async def cmd_analyze(interaction: discord.Interaction, 查詢: str):
     if not await _check_guild(interaction): return
     await interaction.response.defer(ephemeral=True)
-    embed = await asyncio.get_event_loop().run_in_executor(
-        None, build_stock_analysis, 代號.strip()
-    )
+
+    def _run():
+        ticker, name = resolve_ticker(查詢.strip())
+        if ticker is None:
+            return None, 查詢
+        return build_stock_analysis(ticker, name or ticker), None
+
+    embed, bad_query = await asyncio.get_event_loop().run_in_executor(None, _run)
     if embed is None:
-        await interaction.followup.send(f'找不到股票「{代號}」，請確認代號是否正確。', ephemeral=True)
+        await interaction.followup.send(
+            f'找不到股票「{bad_query}」，請確認代號或名稱是否正確。', ephemeral=True
+        )
     else:
         await interaction.followup.send(embed=embed, ephemeral=True)
 
