@@ -661,12 +661,11 @@ def build_report() -> tuple[discord.Embed, str]:
     total_pnl = total_value - total_cost
     total_pct = total_pnl / total_cost * 100 if total_cost else 0
     rt_note = '（即時報價，約 15 分鐘延遲）' if any_realtime else ''
-    hold_parts.append(
-        f'──────────\n'
+    hold_text = '\n\n'.join(hold_parts)
+    hold_summary = (
         f'投入 {total_cost/1e4:.1f}萬｜市值 {total_value/1e4:.2f}萬\n'
         f'總損益 {signed(total_pnl)}元 {color(total_pnl)}（{signed(total_pct, ".2f")}%）{rt_note}'
     )
-    hold_text = '\n\n'.join(hold_parts)
 
     # ── 法人欄 ────────────────────────────────────────────────
     def fi(v):
@@ -730,6 +729,7 @@ def build_report() -> tuple[discord.Embed, str]:
         embed.add_field(name='​', value='​', inline=False)
     else:
         embed.add_field(name='​', value=hold_text[:1024], inline=False)
+    embed.add_field(name='💰 總覽', value=hold_summary, inline=False)
 
     if news_pairs:
         embed.add_field(name='📰 持股新聞', value='​', inline=False)
