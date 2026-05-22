@@ -499,11 +499,14 @@ def ai_recommend_tickers(held_tickers: list[str]) -> list[dict]:
     raw = ask_ai(
         f"你是台股投資顧問，請用繁體中文推薦 2 檔目前基本面良好、股價相對低估的台股。\n\n"
         f"排除以下已持有股票（代號）：{exclude}\n\n"
+        f"推薦條件：\n"
+        f"・第 1 檔：必須與台積電有供應鏈關聯（供應商、客戶或上下游）\n"
+        f"・第 2 檔：必須與台積電無直接關聯（不同產業或生態系）\n\n"
         f"每一檔請嚴格按照以下格式輸出，不要加任何額外說明：\n"
         f"代號：XXXX\n"
         f"名稱：股票中文名稱\n"
         f"產業：例如半導體、IC設計、電子零件、電腦周邊、金融等\n"
-        f"台積電關聯：一句話說明是否為台積電供應商/客戶/上下游，或填「無直接關聯」\n"
+        f"台積電關聯：一句話說明關聯方式，或填「無直接關聯」\n"
         f"理由：一句話\n"
         f"操作：一句話建議\n\n"
         f"只輸出兩檔，每檔之間空一行，不要加股價。",
@@ -609,7 +612,8 @@ def build_report() -> tuple[discord.Embed, str]:
         rec_futs = [(item, ex.submit(fetch_price, item['ticker'])) for item in recommend_items]
 
     recommend_lines = []
-    for item, f in rec_futs:
+    rec_headers = ['🔗 台積電供應鏈', '🌐 非台積電關聯']
+    for idx, (item, f) in enumerate(rec_futs):
         p = f.result()
         cur = (p.get('today_close') or p.get('yesterday_close')) if p else None
         if cur:
@@ -620,7 +624,8 @@ def build_report() -> tuple[discord.Embed, str]:
             price_str = f'{label} {cur:.0f}元'
         else:
             price_str = '股價暫無資料'
-        parts = [f"**{item.get('name', item['ticker'])} {item['ticker']}**（{price_str}）"]
+        header = rec_headers[idx] if idx < len(rec_headers) else ''
+        parts = [f"**{header}｜{item.get('name', item['ticker'])} {item['ticker']}**（{price_str}）"]
         if item.get('sector'):
             parts.append(f"產業：{item['sector']}")
         if item.get('tsmc_rel'):
