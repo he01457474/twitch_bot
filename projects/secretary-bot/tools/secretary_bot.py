@@ -1014,6 +1014,124 @@ async def cmd_weekly(interaction: discord.Interaction):
     else:
         await interaction.followup.send(embed=embed)
 
+# ── 個股分析 ──────────────────────────────────────────────────
+def build_stock_analysis(ticker: str) -> discord.Embed | None:
+    """抓個股資料並用 AI 分析，回傳 Embed；找不到股票回傳 None"""
+    from concurrent.futures import ThreadPoolExecutor
+
+    ticker = ticker.strip().upper()
+
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        price_fut = ex.submit(fetch_price, ticker)
+        inst_fut  = ex.submit(fetch_institutional, ticker)
+        news_fut  = ex.submit(scrape_stock_news, ticker, ticker, 4)
+
+    p    = price_fut.result()
+    inst = inst_fut.result()
+    news = news_fut.result()
+
+    if not p:
+        return None
+
+    tc   = p.get('today_close')
+    yc   = p.get('yesterday_close')
+    cur  = tc or yc
+    is_rt = p.get('is_realtime', False)
+    price_label = '即時' if is_rt else ('今收' if tc else '昨收')
+
+    dc = (tc - yc) if (tc and yc) else None
+    dp = dc / yc * 100 if (dc is not None and yc) else None
+
+    # 從 DB 查持有資訊
+    holdings = {h['ticker']: h for h in get_holdings()}
+    holding  = holdings.get(ticker)
+
+    # AI 分析
+    price_info = f"目前價格 {cur:.0f} 元（{price_label}）" if cur else "目前無價格資料"
+    inst_info  = ''
+    if inst and any(v != 0 for v in inst.values()):
+        inst_info = (f"外資 {inst['foreign']/1e8:+.2f}億、"
+                     f"投信 {inst['trust']/1e8:+.2f}億、"
+                     f"自營 {inst['dealer']/1e8:+.2f}億")
+    news_info = '、'.join(news[:3]) if news else '暫無新聞'
+    ai_text = ask_ai(
+        f"你是台股投資顧問，請用繁體中文分析台股 {ticker}（約 200 字）。\n\n"
+        f"資料：{price_info}{'；法人：' + inst_info if inst_info else ''}；近期新聞：{news_info}\n\n"
+        f"請包含：\n"
+        f"1.【產業定位】這檔股票屬於哪個產業、主要業務\n"
+        f"2.【台積電關聯】是否為供應商/客戶/無關，一句話\n"
+        f"3.【近況分析】結合新聞和法人動向\n"
+        f"4.【操作提示】短線/長線建議，一句話\n\n"
+        f"語氣適合新手，不要加免責聲明。",
+        max_tokens=500,
+    )
+
+    # 組 Embed
+    title_price = f'{cur:.0f}元' if cur else '—'
+    embed = discord.Embed(
+        title=f'🔍 個股分析｜{ticker}　{title_price}',
+        color=0x2ECC71 if (dc and dc > 0) else (0xE74C3C if (dc and dc < 0) else 0x95A5A6)
+    )
+
+    # 價格區
+    price_lines = []
+    if tc and yc:
+        price_lines.append(f'昨收 {yc:.0f} → {price_label} {tc:.0f}元 {arrow(dc) if dc else ""}')
+    elif yc:
+        price_lines.append(f'收盤 {yc:.0f}元（今日資料待更新）')
+    if dc is not None and dp is not None:
+        price_lines.append(f'日漲跌 {signed(dc)}元（{signed(dp, ".2f")}%）{color(dc)}')
+    if is_rt:
+        price_lines.append('*即時報價，約 15 分鐘延遲*')
+    embed.add_field(name='📈 價格', value='\n'.join(price_lines) or '—', inline=True)
+
+    # 持有資訊（若有）
+    if holding and cur:
+        avg = holding['avg_cost']
+        sh  = holding['shares']
+        pnl = (cur - avg) * sh
+        pp  = (cur - avg) / avg * 100
+        embed.add_field(
+            name='💼 我的持股',
+            value=f'持有 {sh} 股\n成本 {avg:.0f} → 現價 {cur:.0f}元\n損益 {signed(pnl)}元（{signed(pp, ".1f")}%）{color(pnl)}',
+            inline=True
+        )
+
+    # 法人
+    if inst and any(v != 0 for v in inst.values()):
+        def fi(v): return f'{signed(v/1e8, ".2f")}億 {color(v)}'
+        embed.add_field(
+            name='🏦 三大法人',
+            value=f'外資 {fi(inst["foreign"])}\n投信 {fi(inst["trust"])}\n自營 {fi(inst["dealer"])}',
+            inline=True
+        )
+
+    # 新聞
+    if news:
+        embed.add_field(
+            name='📰 近期新聞',
+            value='\n'.join(f'・{n}' for n in news[:4]),
+            inline=False
+        )
+
+    # AI 分析
+    embed.add_field(name='🤖 AI 分析', value=ai_text[:1024], inline=False)
+    embed.set_footer(text='⚠️ 以上為 AI 輔助參考，不構成投資建議。')
+    return embed
+
+@tree.command(name='分析', description='分析指定股票的產業定位、法人動向與 AI 建議')
+@app_commands.describe(代號='股票代號，例如 2330')
+async def cmd_analyze(interaction: discord.Interaction, 代號: str):
+    if not await _check_guild(interaction): return
+    await interaction.response.defer(ephemeral=True)
+    embed = await asyncio.get_event_loop().run_in_executor(
+        None, build_stock_analysis, 代號.strip()
+    )
+    if embed is None:
+        await interaction.followup.send(f'找不到股票「{代號}」，請確認代號是否正確。', ephemeral=True)
+    else:
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
 # ── 定時推送 ──────────────────────────────────────────────────
 @tasks.loop(minutes=1)
 async def daily_push():
