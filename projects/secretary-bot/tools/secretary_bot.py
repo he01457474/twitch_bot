@@ -161,8 +161,45 @@ def _recent_trading_days(n=5) -> list[datetime.date]:
         d -= datetime.timedelta(days=1)
     return days
 
+def _is_trading_hours() -> bool:
+    """判斷現在是否為台股盤中（週一至五 09:00–13:30，台北時間）"""
+    tz = datetime.timezone(datetime.timedelta(hours=8))
+    now = datetime.datetime.now(tz)
+    if now.weekday() >= 5:
+        return False
+    t = now.time()
+    return datetime.time(9, 0) <= t <= datetime.time(13, 30)
+
+def fetch_realtime_price(ticker: str) -> dict | None:
+    """盤中即時報價，使用 yfinance（約 15 分鐘延遲）"""
+    try:
+        import yfinance as yf
+        for suffix in ('.TW', '.TWO'):
+            try:
+                yt = yf.Ticker(f'{ticker}{suffix}')
+                fi = yt.fast_info
+                cur  = getattr(fi, 'last_price', None)
+                prev = getattr(fi, 'previous_close', None)
+                if cur:
+                    return {'ticker': ticker, 'name': ticker,
+                            'today_close': cur, 'yesterday_close': prev,
+                            'is_realtime': True}
+            except Exception:
+                continue
+    except ImportError:
+        log.warning('yfinance 未安裝，請執行安裝套件.bat')
+    except Exception as e:
+        log.warning(f'yfinance {ticker}: {e}')
+    return None
+
 def fetch_price(ticker: str) -> dict | None:
-    """回傳 {ticker, name, today_close, yesterday_close}"""
+    """回傳 {ticker, name, today_close, yesterday_close, is_realtime}"""
+    # 盤中優先走即時報價
+    if _is_trading_hours():
+        result = fetch_realtime_price(ticker)
+        if result:
+            return result
+
     trading_days = _recent_trading_days(5)
     today = trading_days[0]
     start = (trading_days[-1] - datetime.timedelta(days=3)).isoformat()
@@ -185,7 +222,7 @@ def fetch_price(ticker: str) -> dict | None:
                 for d in trading_days[1:]:
                     if d.isoformat() in closes:
                         y = closes[d.isoformat()]; break
-                return {'ticker': ticker, 'name': name, 'today_close': t, 'yesterday_close': y}
+                return {'ticker': ticker, 'name': name, 'today_close': t, 'yesterday_close': y, 'is_realtime': False}
         except Exception as e:
             log.warning(f'FinMind price {ticker}: {e}')
 
@@ -203,7 +240,7 @@ def fetch_price(ticker: str) -> dict | None:
             title = j.get('title', '').split(' ')
             name = title[-1] if len(title) > 1 else ticker
             return {'ticker': ticker, 'name': name,
-                    'today_close': closes[-1][1], 'yesterday_close': closes[-2][1]}
+                    'today_close': closes[-1][1], 'yesterday_close': closes[-2][1], 'is_realtime': False}
     except Exception as e:
         log.warning(f'TWSE price {ticker}: {e}')
     return None
@@ -491,7 +528,8 @@ def build_report() -> tuple[discord.Embed, str]:
         total_cost  += avg * sh
         total_value += (cur * sh) if cur else (avg * sh)
         enriched.append({**h, 'today_close': tc, 'yesterday_close': yc,
-                         'day_change': dc, 'day_pct': dp, 'pnl': pnl, 'pnl_pct': pp})
+                         'day_change': dc, 'day_pct': dp, 'pnl': pnl, 'pnl_pct': pp,
+                         'is_realtime': p.get('is_realtime', False) if p else False})
 
     # ── Phase 2：並行 AI 運算 ────────────────────────────────
     with ThreadPoolExecutor(max_workers=6) as ex:
@@ -511,7 +549,14 @@ def build_report() -> tuple[discord.Embed, str]:
     for item, f in rec_futs:
         p = f.result()
         cur = (p.get('today_close') or p.get('yesterday_close')) if p else None
-        price_str = f"{'今' if p and p.get('today_close') else '昨收'} {cur:.0f}元" if cur else '股價暫無資料'
+        if cur:
+            if p and p.get('today_close'):
+                label = '即時' if p.get('is_realtime') else '今收'
+            else:
+                label = '昨收'
+            price_str = f'{label} {cur:.0f}元'
+        else:
+            price_str = '股價暫無資料'
         parts = [f"**{item.get('name', item['ticker'])} {item['ticker']}**（{price_str}）"]
         if item.get('sector'):
             parts.append(f"產業：{item['sector']}")
@@ -528,10 +573,12 @@ def build_report() -> tuple[discord.Embed, str]:
     for e in enriched:
         tc, yc, dc, dp = e['today_close'], e['yesterday_close'], e['day_change'], e['day_pct']
         avg, pnl, pp = e['avg_cost'], e['pnl'], e['pnl_pct']
+        is_rt = e.get('is_realtime', False)
+        price_label = '即時' if is_rt else '今收'
         lines = [f'**{e["name"]} {e["ticker"]}**']
         # 第一行：收盤價
         if tc and yc:
-            lines.append(f'昨收 {yc:.0f} → 今收 {tc:.0f}元 {arrow(dc) if dc else ""}')
+            lines.append(f'昨收 {yc:.0f} → {price_label} {tc:.0f}元 {arrow(dc) if dc else ""}')
         elif yc:
             lines.append(f'收盤 {yc:.0f}元（今日資料待更新）')
         # 第二行：日漲跌
@@ -547,12 +594,14 @@ def build_report() -> tuple[discord.Embed, str]:
             lines.append(f'成本 {avg:.0f}元（尚無市價）')
         hold_parts.append('\n'.join(lines))
 
+    any_realtime = any(e.get('is_realtime') for e in enriched)
     total_pnl = total_value - total_cost
     total_pct = total_pnl / total_cost * 100 if total_cost else 0
+    rt_note = '（即時報價，約 15 分鐘延遲）' if any_realtime else ''
     hold_parts.append(
         f'──────────\n'
         f'投入 {total_cost/1e4:.1f}萬｜市值 {total_value/1e4:.2f}萬\n'
-        f'總損益 {signed(total_pnl)}元 {color(total_pnl)}（{signed(total_pct, ".2f")}%）'
+        f'總損益 {signed(total_pnl)}元 {color(total_pnl)}（{signed(total_pct, ".2f")}%）{rt_note}'
     )
     hold_text = '\n\n'.join(hold_parts)
 
