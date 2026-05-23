@@ -89,11 +89,11 @@ class App(tk.Tk):
         self.protocol('WM_DELETE_WINDOW', self._on_close)
 
     def _build(self):
-        pad = dict(padx=10, pady=4)
+        pad = dict(padx=10)
 
         # ── 搜尋區 ──
         frm = ttk.LabelFrame(self, text='搜尋歌詞', padding=8)
-        frm.grid(row=0, column=0, sticky='ew', **pad, pady=(10, 4))
+        frm.grid(row=0, column=0, sticky='ew', pady=(10, 4), **pad)
 
         ttk.Label(frm, text='歌名').grid(row=0, column=0, sticky='w')
         self.v_song = tk.StringVar()
@@ -107,7 +107,7 @@ class App(tk.Tk):
 
         # ── 結果列表 ──
         frm2 = ttk.LabelFrame(self, text='搜尋結果（點選後下載）', padding=8)
-        frm2.grid(row=1, column=0, sticky='ew', **pad)
+        frm2.grid(row=1, column=0, sticky='ew', pady=4, **pad)
 
         self.listbox = tk.Listbox(frm2, height=7, width=62, activestyle='dotbox',
                                   selectmode='single')
@@ -117,7 +117,7 @@ class App(tk.Tk):
 
         # ── 輸出設定 ──
         frm3 = ttk.LabelFrame(self, text='輸出設定', padding=8)
-        frm3.grid(row=2, column=0, sticky='ew', **pad)
+        frm3.grid(row=2, column=0, sticky='ew', pady=4, **pad)
 
         ttk.Label(frm3, text='翻唱者名稱').grid(row=0, column=0, sticky='w')
         self.v_cover = tk.StringVar(value=self.cfg.get('cover_artist', ''))
