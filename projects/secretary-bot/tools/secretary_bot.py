@@ -1060,7 +1060,7 @@ async def cmd_weekly(interaction: discord.Interaction):
     hs = get_holdings()
     tickers = '、'.join(h['ticker'] for h in hs) if hs else '無'
     today = datetime.date.today().strftime('%Y/%m/%d')
-    result = await asyncio.get_event_loop().run_in_executor(None, ask_gemini,
+    result = await asyncio.get_event_loop().run_in_executor(None, ask_ai,
         f"你是台股週報分析師，請用繁體中文寫本週市場週報（約 300 字）。\n"
         f"今日：{today}，持股：{tickers}\n\n"
         f"請包含：\n1.持股週績效\n2.三大法人動向\n3.重要新聞 TOP3\n4.下週題材預覽\n5.新手學習提醒一句\n\n"
