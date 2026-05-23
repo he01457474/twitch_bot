@@ -234,7 +234,9 @@ class App(tk.Tk):
 
         ttk.Label(frm3, text='翻唱者名稱').grid(row=0, column=0, sticky='w')
         self.v_cover = tk.StringVar(value=self.cfg.get('cover_artist', ''))
-        ttk.Entry(frm3, textvariable=self.v_cover, width=22).grid(row=0, column=1, padx=(6,0))
+        self._cb_cover = ttk.Combobox(frm3, textvariable=self.v_cover, width=21,
+                                       values=self.cfg.get('cover_history', []))
+        self._cb_cover.grid(row=0, column=1, padx=(6,0))
 
         ttk.Label(frm3, text='原唱名稱（替換用）').grid(row=1, column=0, sticky='w', pady=(4,0))
         self.v_replace = tk.StringVar()
@@ -331,6 +333,11 @@ class App(tk.Tk):
             self.after(0, lambda: self._status(f'✅ 已儲存：{path.name}', 'green'))
             self.cfg['cover_artist'] = cover
             self.cfg['out_dir']      = self.v_outdir.get()
+            history = self.cfg.get('cover_history', [])
+            if cover not in history:
+                history.insert(0, cover)
+                self.cfg['cover_history'] = history[:20]
+                self.after(0, lambda h=history[:20]: self._cb_cover.configure(values=h))
             save_cfg(self.cfg)
         except Exception as e:
             self.after(0, lambda: self._status(f'失敗：{e}', 'red'))
