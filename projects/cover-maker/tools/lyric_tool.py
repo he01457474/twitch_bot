@@ -5,11 +5,13 @@
 import re
 import json
 import threading
+import subprocess
 from pathlib import Path
+import tkinter as tk
+from tkinter import ttk, messagebox, filedialog
 
 import requests
 import opencc
-import dearpygui.dearpygui as dpg
 
 BASE_DIR  = Path(__file__).parent.parent
 OUT_DIR   = BASE_DIR / 'output'
@@ -18,7 +20,6 @@ LRCLIB    = 'https://lrclib.net/api'
 HEADERS   = {'User-Agent': 'LyricTool/1.0'}
 
 converter = opencc.OpenCC('s2twp')
-_results: list[dict] = []
 
 # ── 設定 ──────────────────────────────────────────────────────
 def load_cfg() -> dict:
@@ -76,159 +77,152 @@ def search_lrclib(song: str, artist: str) -> list[dict]:
     r.raise_for_status()
     return [x for x in r.json() if x.get('syncedLyrics')]
 
-# ── UI 回呼 ───────────────────────────────────────────────────
-def set_status(msg: str, color=(200, 200, 200)):
-    dpg.set_value('status', msg)
-    dpg.configure_item('status', color=color)
+# ── GUI ───────────────────────────────────────────────────────
+class App(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title('AI 翻唱歌詞工具')
+        self.resizable(False, False)
+        self.cfg = load_cfg()
+        self._results: list[dict] = []
+        self._build()
+        self.protocol('WM_DELETE_WINDOW', self._on_close)
 
-def do_search():
-    global _results
-    song   = dpg.get_value('inp_song').strip()
-    artist = dpg.get_value('inp_artist').strip()
-    if not song:
-        set_status('請填入歌名', (255, 100, 100))
-        return
-    set_status('搜尋中…')
-    dpg.configure_item('btn_search', enabled=False)
+    def _build(self):
+        pad = dict(padx=10, pady=4)
 
-    def _run():
-        global _results
+        # ── 搜尋區 ──
+        frm = ttk.LabelFrame(self, text='搜尋歌詞', padding=8)
+        frm.grid(row=0, column=0, sticky='ew', **pad, pady=(10, 4))
+
+        ttk.Label(frm, text='歌名').grid(row=0, column=0, sticky='w')
+        self.v_song = tk.StringVar()
+        ttk.Entry(frm, textvariable=self.v_song, width=32).grid(row=0, column=1, padx=(6,0))
+
+        ttk.Label(frm, text='原唱（選填）').grid(row=1, column=0, sticky='w', pady=(4,0))
+        self.v_artist = tk.StringVar()
+        ttk.Entry(frm, textvariable=self.v_artist, width=32).grid(row=1, column=1, padx=(6,0), pady=(4,0))
+
+        ttk.Button(frm, text='🔍 搜尋', command=self._search).grid(row=2, column=0, columnspan=2, pady=(8,0))
+
+        # ── 結果列表 ──
+        frm2 = ttk.LabelFrame(self, text='搜尋結果（點選後下載）', padding=8)
+        frm2.grid(row=1, column=0, sticky='ew', **pad)
+
+        self.listbox = tk.Listbox(frm2, height=7, width=62, activestyle='dotbox',
+                                  selectmode='single')
+        sb = ttk.Scrollbar(frm2, orient='vertical', command=self.listbox.yview)
+        self.listbox.configure(yscrollcommand=sb.set)
+        self.listbox.pack(side='left'); sb.pack(side='right', fill='y')
+
+        # ── 輸出設定 ──
+        frm3 = ttk.LabelFrame(self, text='輸出設定', padding=8)
+        frm3.grid(row=2, column=0, sticky='ew', **pad)
+
+        ttk.Label(frm3, text='翻唱者名稱').grid(row=0, column=0, sticky='w')
+        self.v_cover = tk.StringVar(value=self.cfg.get('cover_artist', ''))
+        ttk.Entry(frm3, textvariable=self.v_cover, width=22).grid(row=0, column=1, padx=(6,0))
+
+        ttk.Label(frm3, text='原唱名稱（替換用）').grid(row=1, column=0, sticky='w', pady=(4,0))
+        self.v_replace = tk.StringVar()
+        ttk.Entry(frm3, textvariable=self.v_replace, width=22).grid(row=1, column=1, padx=(6,0), pady=(4,0))
+        ttk.Label(frm3, text='歌詞中出現時自動替換', foreground='gray').grid(row=1, column=2, padx=6)
+
+        ttk.Label(frm3, text='輸出資料夾').grid(row=2, column=0, sticky='w', pady=(4,0))
+        self.v_outdir = tk.StringVar(value=self.cfg.get('out_dir', str(OUT_DIR)))
+        ttk.Entry(frm3, textvariable=self.v_outdir, width=36).grid(row=2, column=1, padx=(6,0), pady=(4,0))
+        ttk.Button(frm3, text='…', width=3, command=self._pick_dir).grid(row=2, column=2, padx=4, pady=(4,0))
+
+        # ── 按鈕 ──
+        frm4 = ttk.Frame(self)
+        frm4.grid(row=3, column=0, pady=6)
+        ttk.Button(frm4, text='⬇ 下載並轉換 SRT', command=self._download).pack(side='left', padx=6)
+        ttk.Button(frm4, text='📂 開啟輸出資料夾', command=self._open_dir).pack(side='left', padx=6)
+
+        # ── 狀態 ──
+        self.v_status = tk.StringVar(value='請輸入歌名後按搜尋')
+        self._lbl_status = ttk.Label(self, textvariable=self.v_status, foreground='gray')
+        self._lbl_status.grid(row=4, column=0, pady=(0,10))
+
+    def _status(self, msg: str, color='gray'):
+        self.v_status.set(msg)
+        self._lbl_status.configure(foreground=color)
+        self.update_idletasks()
+
+    def _pick_dir(self):
+        d = filedialog.askdirectory(initialdir=self.v_outdir.get())
+        if d:
+            self.v_outdir.set(d)
+
+    def _open_dir(self):
+        subprocess.Popen(f'explorer "{Path(self.v_outdir.get())}"')
+
+    def _search(self):
+        song = self.v_song.get().strip()
+        if not song:
+            messagebox.showwarning('提示', '請填入歌名')
+            return
+        self.listbox.delete(0, 'end')
+        self._status('搜尋中…')
+        threading.Thread(target=self._do_search,
+                         args=(song, self.v_artist.get().strip()), daemon=True).start()
+
+    def _do_search(self, song, artist):
         try:
-            _results = search_lrclib(song, artist)
-            dpg.delete_item('result_list', children_only=True)
-            if not _results:
-                set_status('找不到有時間軸的歌詞，試試修改歌名或原唱', (255, 180, 80))
-            else:
-                for r in _results[:10]:
-                    dur = r.get('duration', 0)
-                    m, s = divmod(int(dur or 0), 60)
-                    label = f"{r.get('trackName','')}  —  {r.get('artistName','')}  [{m}:{s:02d}]"
-                    dpg.add_selectable(label=label, parent='result_list',
-                                       callback=lambda s, a, u: None)
-                set_status(f'找到 {len(_results)} 筆，點選後按下載', (100, 220, 100))
+            self._results = search_lrclib(song, artist)
+            self.after(0, self._fill_list)
         except Exception as e:
-            set_status(f'搜尋失敗：{e}', (255, 100, 100))
-        finally:
-            dpg.configure_item('btn_search', enabled=True)
+            self.after(0, lambda: self._status(f'搜尋失敗：{e}', 'red'))
 
-    threading.Thread(target=_run, daemon=True).start()
+    def _fill_list(self):
+        self.listbox.delete(0, 'end')
+        if not self._results:
+            self._status('找不到有時間軸的歌詞，試試修改歌名或原唱', 'orange')
+            return
+        for r in self._results[:10]:
+            dur = r.get('duration', 0)
+            m, s = divmod(int(dur or 0), 60)
+            self.listbox.insert('end',
+                f"  {r.get('trackName','')}  —  {r.get('artistName','')}  [{m}:{s:02d}]")
+        self._status(f'找到 {len(self._results)} 筆，點選後按下載', 'green')
 
-def do_download():
-    # 找被選中的那一行
-    selected = None
-    for i, child in enumerate(dpg.get_item_children('result_list', 1)):
-        if dpg.get_value(child):
-            selected = i
-            break
-    if selected is None:
-        set_status('請先點選一首歌', (255, 180, 80))
-        return
-    if selected >= len(_results):
-        return
-    item = _results[selected]
+    def _download(self):
+        sel = self.listbox.curselection()
+        if not sel:
+            messagebox.showwarning('提示', '請先從列表點選一首歌')
+            return
+        cover = self.v_cover.get().strip()
+        if not cover:
+            messagebox.showwarning('提示', '請填入翻唱者名稱')
+            return
+        item = self._results[sel[0]]
+        self._status('轉換中…')
+        threading.Thread(target=self._do_download,
+                         args=(item, cover), daemon=True).start()
 
-    cover   = dpg.get_value('inp_cover').strip()
-    orig_r  = dpg.get_value('inp_orig_replace').strip()
-    out_dir = dpg.get_value('inp_outdir').strip()
-
-    if not cover:
-        set_status('請填入翻唱者名稱', (255, 100, 100))
-        return
-
-    set_status('轉換中…')
-    dpg.configure_item('btn_download', enabled=False)
-
-    def _run():
+    def _do_download(self, item, cover):
         try:
-            lrc  = item.get('syncedLyrics', '')
-            srt  = lrc_to_srt(lrc, cover, orig_r)
-            d    = Path(out_dir)
-            d.mkdir(parents=True, exist_ok=True)
-            safe = re.sub(r'[\\/:*?"<>|]', '_', item.get('trackName', 'output'))
-            path = d / f'{safe}.srt'
+            lrc     = item.get('syncedLyrics', '')
+            orig_r  = self.v_replace.get().strip()
+            srt     = lrc_to_srt(lrc, cover, orig_r)
+            out_dir = Path(self.v_outdir.get())
+            out_dir.mkdir(parents=True, exist_ok=True)
+            safe    = re.sub(r'[\\/:*?"<>|]', '_', item.get('trackName', 'output'))
+            path    = out_dir / f'{safe}.srt'
             path.write_text(srt, encoding='utf-8-sig')
-            set_status(f'✅ 已儲存：{path}', (100, 220, 100))
-            cfg = load_cfg()
-            cfg['cover_artist'] = cover
-            cfg['out_dir']      = out_dir
-            save_cfg(cfg)
+            self.after(0, lambda: self._status(f'✅ 已儲存：{path.name}', 'green'))
+            self.cfg['cover_artist'] = cover
+            self.cfg['out_dir']      = self.v_outdir.get()
+            save_cfg(self.cfg)
         except Exception as e:
-            set_status(f'下載失敗：{e}', (255, 100, 100))
-        finally:
-            dpg.configure_item('btn_download', enabled=True)
+            self.after(0, lambda: self._status(f'失敗：{e}', 'red'))
 
-    threading.Thread(target=_run, daemon=True).start()
-
-def open_output():
-    out = dpg.get_value('inp_outdir').strip()
-    import subprocess
-    subprocess.Popen(f'explorer "{Path(out)}"')
-
-# ── 建立視窗 ──────────────────────────────────────────────────
-def main():
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    cfg = load_cfg()
-
-    dpg.create_context()
-    dpg.create_viewport(title='AI 翻唱歌詞工具', width=620, height=540, resizable=False)
-    dpg.setup_dearpygui()
-
-    with dpg.font_registry():
-        pass  # 使用系統預設字型
-
-    with dpg.window(label='main', tag='main', no_title_bar=True, no_move=True,
-                    no_resize=True, no_close=True):
-
-        dpg.add_text('🔍  搜尋歌詞')
-        dpg.add_separator()
-        with dpg.group(horizontal=True):
-            dpg.add_text('歌名        ', color=(180, 180, 180))
-            dpg.add_input_text(tag='inp_song', width=300, hint='例：月亮')
-        with dpg.group(horizontal=True):
-            dpg.add_text('原唱（選填）', color=(180, 180, 180))
-            dpg.add_input_text(tag='inp_artist', width=200, hint='不填也可搜尋')
-        dpg.add_button(label='搜尋', tag='btn_search', callback=do_search, width=80)
-
-        dpg.add_spacer(height=8)
-        dpg.add_text('📋  搜尋結果')
-        dpg.add_separator()
-        with dpg.child_window(tag='result_list', height=140, border=True):
-            dpg.add_text('（搜尋後顯示結果）', color=(120, 120, 120))
-
-        dpg.add_spacer(height=8)
-        dpg.add_text('⚙️  輸出設定')
-        dpg.add_separator()
-        with dpg.group(horizontal=True):
-            dpg.add_text('翻唱者名稱          ', color=(180, 180, 180))
-            dpg.add_input_text(tag='inp_cover', width=200,
-                               default_value=cfg.get('cover_artist', ''))
-        with dpg.group(horizontal=True):
-            dpg.add_text('原唱名稱（替換用）  ', color=(180, 180, 180))
-            dpg.add_input_text(tag='inp_orig_replace', width=200,
-                               hint='歌詞中若有出現會取代')
-        with dpg.group(horizontal=True):
-            dpg.add_text('輸出資料夾          ', color=(180, 180, 180))
-            dpg.add_input_text(tag='inp_outdir', width=340,
-                               default_value=cfg.get('out_dir', str(OUT_DIR)))
-
-        dpg.add_spacer(height=8)
-        with dpg.group(horizontal=True):
-            dpg.add_button(label='⬇  下載並轉換 SRT', tag='btn_download',
-                           callback=do_download, width=180)
-            dpg.add_button(label='📂  開啟輸出資料夾',
-                           callback=open_output, width=160)
-
-        dpg.add_spacer(height=10)
-        dpg.add_separator()
-        dpg.add_text('請輸入歌名後按搜尋', tag='status', color=(200, 200, 200))
-
-    dpg.set_primary_window('main', True)
-    dpg.show_viewport()
-
-    while dpg.is_dearpygui_running():
-        dpg.render_dearpygui_frame()
-
-    dpg.destroy_context()
+    def _on_close(self):
+        self.cfg['cover_artist'] = self.v_cover.get().strip()
+        self.cfg['out_dir']      = self.v_outdir.get().strip()
+        save_cfg(self.cfg)
+        self.destroy()
 
 if __name__ == '__main__':
-    main()
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    App().mainloop()
