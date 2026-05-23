@@ -12,6 +12,7 @@ from tkinter import ttk, messagebox, filedialog
 
 import requests
 import opencc
+import syncedlyrics
 
 BASE_DIR  = Path(__file__).parent.parent
 OUT_DIR   = BASE_DIR / 'output'
@@ -70,12 +71,39 @@ def lrc_to_srt(lrc: str, cover_artist: str, orig_artist: str) -> str:
             )
     return '\n\n'.join(srt_parts)
 
-# ── LRCLIB ────────────────────────────────────────────────────
+# ── 搜尋（LRCLIB 優先，找不到再試 NetEase / Musixmatch） ────────
+FALLBACK_PROVIDERS = ['NetEase', 'Musixmatch']
+
 def search_lrclib(song: str, artist: str) -> list[dict]:
     q = f'{artist} {song}'.strip() if artist else song
     r = requests.get(f'{LRCLIB}/search', params={'q': q}, headers=HEADERS, timeout=10)
     r.raise_for_status()
     return [x for x in r.json() if x.get('syncedLyrics')]
+
+def search_fallback(song: str, artist: str) -> list[dict]:
+    q = f'{song} {artist}'.strip() if artist else song
+    results = []
+    for provider in FALLBACK_PROVIDERS:
+        try:
+            lrc = syncedlyrics.search(q, synced_only=True, providers=[provider])
+            if lrc:
+                results.append({
+                    'trackName': song,
+                    'artistName': artist or '',
+                    'albumName': '',
+                    'duration': 0,
+                    'syncedLyrics': lrc,
+                    '_source': provider,
+                })
+        except Exception:
+            pass
+    return results
+
+def search_all(song: str, artist: str) -> list[dict]:
+    results = search_lrclib(song, artist)
+    if not results:
+        results = search_fallback(song, artist)
+    return results
 
 # ── GUI ───────────────────────────────────────────────────────
 class App(tk.Tk):
@@ -169,7 +197,7 @@ class App(tk.Tk):
 
     def _do_search(self, song, artist):
         try:
-            self._results = search_lrclib(song, artist)
+            self._results = search_all(song, artist)
             self.after(0, self._fill_list)
         except Exception as e:
             self.after(0, lambda: self._status(f'搜尋失敗：{e}', 'red'))
@@ -182,8 +210,10 @@ class App(tk.Tk):
         for r in self._results[:10]:
             dur = r.get('duration', 0)
             m, s = divmod(int(dur or 0), 60)
+            src = r.get('_source', 'LRCLIB')
+            dur_str = f'[{m}:{s:02d}]' if dur else ''
             self.listbox.insert('end',
-                f"  {r.get('trackName','')}  —  {r.get('artistName','')}  [{m}:{s:02d}]")
+                f"  [{src}] {r.get('trackName','')}  —  {r.get('artistName','')}  {dur_str}")
         self._status(f'找到 {len(self._results)} 筆，點選後按下載', 'green')
 
     def _download(self):
