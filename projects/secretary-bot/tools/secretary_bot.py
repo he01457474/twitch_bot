@@ -612,8 +612,7 @@ def build_report() -> tuple[discord.Embed, str]:
         rec_futs = [(item, ex.submit(fetch_price, item['ticker'])) for item in recommend_items]
 
     recommend_lines = []
-    rec_headers = ['🔗 台積電供應鏈', '🌐 非台積電關聯']
-    for idx, (item, f) in enumerate(rec_futs):
+    for item, f in rec_futs:
         p = f.result()
         cur = (p.get('today_close') or p.get('yesterday_close')) if p else None
         if cur:
@@ -624,8 +623,7 @@ def build_report() -> tuple[discord.Embed, str]:
             price_str = f'{label} {cur:.0f}元'
         else:
             price_str = '股價暫無資料'
-        header = rec_headers[idx] if idx < len(rec_headers) else ''
-        parts = [f"**{header}｜{item.get('name', item['ticker'])} {item['ticker']}**（{price_str}）"]
+        parts = [f"**{item.get('name', item['ticker'])} {item['ticker']}**（{price_str}）"]
         if item.get('sector'):
             parts.append(f"產業：{item['sector']}")
         if item.get('tsmc_rel'):
