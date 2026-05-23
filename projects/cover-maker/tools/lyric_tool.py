@@ -113,19 +113,59 @@ def fetch_qq_lyric(songmid: str) -> str:
     return r.json().get('lyric', '')
 
 # ── QQ 製作人員字幕清除 ────────────────────────────────────────
-_CREDIT_RE = re.compile(
-    r'^(編曲|编曲|Arrangement|製作人|制作人|Producer|'
-    r'吉他|Guitar|鋼琴|Piano|貝斯|Bass|'
-    r'音樂製作|音乐制作|Music\s*[Pp]roduction|'
-    r'錄音師?|录音师?|Recording|錄音棚|录音棚|'
-    r'和聲|和声|Backing\s*[Vv]ocal|'
-    r'混音|Mixing|母帶|母带|Mastering|'
-    r'藝人|艺人|製作統|制作统|監製|监制|'
-    r'出品|發行|发行|營銷|营销|推廣|推广|'
-    r'版權|版权|Rap[：:]|弦樂|弦乐|OP[：:]|SP[：:])'
+# 明確關鍵字（行首即可，前面有前綴也能匹配）
+_CREDIT_KW = re.compile(
+    r'編曲|编曲|Arrangement|'
+    r'製作人|制作人|Producer|'
+    r'混音|Mixing|'
+    r'母帶|母带|Mastering|'
+    r'錄音|录音|Recording|'
+    r'和聲|和声|Backing|'
+    r'吉他|Guitar|鋼琴|Piano|貝斯|Bass|鍵盤|Keyboard|鼓手|'
+    r'弦樂|弦乐|音效|'
+    r'藝人|艺人|統籌|统筹|監製|监制|'
+    r'出品|發行|发行|營銷|营销|推廣|推广|宣傳|宣传|企劃|企划|'
+    r'版權|版权'
 )
+# 格式型：「短角色詞（不含歌詞字符）+ 冒號 + 內容」也視為製作資訊
+_CREDIT_FMT = re.compile(r'^[^，。！？…\n]{2,20}[：:][^\n]{1,40}$')
 _COPYRIGHT_RE = re.compile(r'著作權|著作权|翻唱翻錄|翻唱翻录|\(未經|\(未经')
 _CI_RE        = re.compile(r'^(詞|词|曲|作詞|作词|作曲|填詞|填词)[：:]\s*(.+)$')
+
+def _is_credit(text: str) -> bool:
+    """判斷是否為製作人員字幕：關鍵字命中，或短角色+冒號格式且包含製作關鍵字。"""
+    if _COPYRIGHT_RE.search(text):
+        return True
+    if re.match(r'^Rap[：:]|^OP[：:]|^SP[：:]', text):
+        return True
+    # 格式符合「角色：姓名」且角色部分含製作關鍵字
+    if _CREDIT_FMT.match(text):
+        role = text.split('：')[0].split(':')[0]
+        if _CREDIT_KW.search(role):
+            return True
+    return False
+
+def _ms_to_lrc(ms: int) -> str:
+    m = ms // 60000; ms %= 60000
+    s = ms // 1000;  ms %= 1000
+    return f'[{m:02d}:{s:02d}.{ms // 10:02d}]'
+
+def _prepend_title(lrc: str, title: str, min_ms: int = 2000, max_ms: int = 10000) -> str:
+    """在 LRC 開頭插入標題行，前奏 <2s 不插，>10s 只顯示到 10s。"""
+    lines = [l for l in lrc.splitlines() if re.match(r'\[\d+:\d+[.:]\d+\]', l)]
+    if not lines:
+        return lrc
+    m = re.match(r'\[(\d+:\d+[.:]\d+)\]', lines[0])
+    if not m:
+        return lrc
+    first_ms = lrc_time_to_ms(m.group(1))
+    if first_ms < min_ms:
+        return lrc
+    new = [f'{_ms_to_lrc(0)}{title}']
+    if first_ms > max_ms:
+        new.append(_ms_to_lrc(max_ms))   # 空行讓標題在 10s 結束
+    new.extend(lines)
+    return '\n'.join(new)
 
 def _filter_qq_credits(lrc: str) -> str:
     parsed = []
@@ -147,7 +187,7 @@ def _filter_qq_credits(lrc: str) -> str:
             elif role in ('曲', '作曲') and not 曲_ts:
                 曲_ts, 曲_p = ts, person
             continue
-        if _CREDIT_RE.match(text) or _COPYRIGHT_RE.search(text):
+        if _is_credit(text):
             continue
         output.append((ts, text))
 
@@ -323,6 +363,8 @@ class App(tk.Tk):
                 lrc = _filter_qq_credits(fetch_qq_lyric(item['_songmid']))
             else:
                 lrc = item.get('syncedLyrics', '')
+                title = f'{item.get("trackName", "")} - {cover}'
+                lrc = _prepend_title(lrc, title)
             orig_r  = self.v_replace.get().strip()
             srt     = lrc_to_srt(lrc, cover, orig_r)
             out_dir = Path(self.v_outdir.get())
