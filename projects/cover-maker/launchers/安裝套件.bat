@@ -1,7 +1,6 @@
 @echo off
-chcp 65001 > nul
-echo 安裝歌詞工具所需套件...
-py -m pip install requests opencc-python-reimplemented
+echo Installing lyric tool packages...
+"C:\Users\he014\AppData\Local\Programs\Python\Python311\python.exe" -m pip install requests opencc-python-reimplemented
 echo.
-echo 安裝完成，請關閉此視窗。
+echo Done. Close this window.
 pause
