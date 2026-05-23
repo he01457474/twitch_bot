@@ -349,9 +349,6 @@ class App(tk.Tk):
             messagebox.showwarning('提示', '請先從列表點選一首歌')
             return
         cover = self.v_cover.get().strip()
-        if not cover:
-            messagebox.showwarning('提示', '請填入翻唱者名稱')
-            return
         item = self._results[sel[0]]
         self._status('轉換中…')
         threading.Thread(target=self._do_download,
@@ -360,19 +357,20 @@ class App(tk.Tk):
     def _do_download(self, item, cover):
         try:
             track   = item.get('trackName', '')
-            orig_r  = self.v_replace.get().strip() or item.get('artistName', '')
+            orig_r  = self.v_replace.get().strip() or (item.get('artistName', '') if cover else '')
             if item.get('_source') == 'QQ':
                 lrc = _filter_qq_credits(fetch_qq_lyric(item['_songmid']))
-                # 直接把第一行標題換成乾淨的「歌名 - 翻唱歌手」
-                lines = lrc.splitlines()
-                if lines:
-                    m = re.match(r'(\[\d+:\d+[.:]\d+\])', lines[0])
-                    if m:
-                        lines[0] = f'{m.group(1)}{track} - {cover}'
-                        lrc = '\n'.join(lines)
+                if cover:
+                    lines = lrc.splitlines()
+                    if lines:
+                        m = re.match(r'(\[\d+:\d+[.:]\d+\])', lines[0])
+                        if m:
+                            lines[0] = f'{m.group(1)}{track} - {cover}'
+                            lrc = '\n'.join(lines)
             else:
                 lrc = item.get('syncedLyrics', '')
-                lrc = _prepend_title(lrc, f'{track} - {cover}')
+                if cover:
+                    lrc = _prepend_title(lrc, f'{track} - {cover}')
             srt     = lrc_to_srt(lrc, cover, orig_r)
             out_dir = Path(self.v_outdir.get())
             out_dir.mkdir(parents=True, exist_ok=True)
