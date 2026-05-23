@@ -20,6 +20,14 @@ CFG_FILE  = BASE_DIR / 'config.json'
 LRCLIB    = 'https://lrclib.net/api'
 HEADERS   = {'User-Agent': 'LyricTool/1.0'}
 
+QQ_SEARCH = 'https://c.y.qq.com/soso/fcgi-bin/search_for_qq_cp'
+QQ_LYRIC  = 'https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg'
+QQ_HDR    = {
+    'Referer': 'https://y.qq.com/',
+    'Origin': 'https://y.qq.com',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+}
+
 converter = opencc.OpenCC('s2twp')
 
 # ── 設定 ──────────────────────────────────────────────────────
@@ -71,29 +79,50 @@ def lrc_to_srt(lrc: str, cover_artist: str, orig_artist: str) -> str:
             )
     return '\n\n'.join(srt_parts)
 
-# ── 搜尋（LRCLIB 優先，找不到再試 NetEase / Musixmatch） ────────
-FALLBACK_PROVIDERS = ['NetEase', 'Musixmatch']
-
+# ── 搜尋（LRCLIB → QQ → NetEase → Musixmatch） ──────────────────
 def search_lrclib(song: str, artist: str) -> list[dict]:
     q = f'{artist} {song}'.strip() if artist else song
     r = requests.get(f'{LRCLIB}/search', params={'q': q}, headers=HEADERS, timeout=10)
     r.raise_for_status()
     return [x for x in r.json() if x.get('syncedLyrics')]
 
-def search_fallback(song: str, artist: str) -> list[dict]:
+def search_qq(song: str, artist: str) -> list[dict]:
+    q = f'{song} {artist}'.strip() if artist else song
+    r = requests.get(QQ_SEARCH, params={
+        'w': q, 'p': 1, 'n': 10, 'format': 'json', 'cr': 1, 'g_tk': 5381, 't': 0,
+    }, headers=QQ_HDR, timeout=10)
+    r.raise_for_status()
+    songs = r.json().get('data', {}).get('song', {}).get('list', [])
+    results = []
+    for s in songs:
+        results.append({
+            'trackName': s.get('songname', ''),
+            'artistName': '、'.join(si['name'] for si in s.get('singer', [])),
+            'albumName': s.get('albumname', ''),
+            'duration': s.get('interval', 0),
+            '_songmid': s.get('songmid', ''),
+            '_source': 'QQ',
+        })
+    return results
+
+def fetch_qq_lyric(songmid: str) -> str:
+    r = requests.get(QQ_LYRIC, params={
+        'songmid': songmid, 'format': 'json', 'nobase64': 1,
+    }, headers=QQ_HDR, timeout=10)
+    r.raise_for_status()
+    return r.json().get('lyric', '')
+
+def search_syncedlyrics(song: str, artist: str) -> list[dict]:
     q = f'{song} {artist}'.strip() if artist else song
     results = []
-    for provider in FALLBACK_PROVIDERS:
+    for provider in ['NetEase', 'Musixmatch']:
         try:
             lrc = syncedlyrics.search(q, synced_only=True, providers=[provider])
             if lrc:
                 results.append({
-                    'trackName': song,
-                    'artistName': artist or '',
-                    'albumName': '',
-                    'duration': 0,
-                    'syncedLyrics': lrc,
-                    '_source': provider,
+                    'trackName': song, 'artistName': artist or '',
+                    'albumName': '', 'duration': 0,
+                    'syncedLyrics': lrc, '_source': provider,
                 })
         except Exception:
             pass
@@ -102,7 +131,9 @@ def search_fallback(song: str, artist: str) -> list[dict]:
 def search_all(song: str, artist: str) -> list[dict]:
     results = search_lrclib(song, artist)
     if not results:
-        results = search_fallback(song, artist)
+        results = search_qq(song, artist)
+    if not results:
+        results = search_syncedlyrics(song, artist)
     return results
 
 # ── GUI ───────────────────────────────────────────────────────
@@ -232,7 +263,10 @@ class App(tk.Tk):
 
     def _do_download(self, item, cover):
         try:
-            lrc     = item.get('syncedLyrics', '')
+            if item.get('_source') == 'QQ':
+                lrc = fetch_qq_lyric(item['_songmid'])
+            else:
+                lrc = item.get('syncedLyrics', '')
             orig_r  = self.v_replace.get().strip()
             srt     = lrc_to_srt(lrc, cover, orig_r)
             out_dir = Path(self.v_outdir.get())
