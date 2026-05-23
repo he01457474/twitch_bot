@@ -112,6 +112,60 @@ def fetch_qq_lyric(songmid: str) -> str:
     r.raise_for_status()
     return r.json().get('lyric', '')
 
+# ── QQ 製作人員字幕清除 ────────────────────────────────────────
+_CREDIT_RE = re.compile(
+    r'^(編曲|编曲|Arrangement|製作人|制作人|Producer|'
+    r'吉他|Guitar|鋼琴|Piano|貝斯|Bass|'
+    r'音樂製作|音乐制作|Music\s*[Pp]roduction|'
+    r'錄音師?|录音师?|Recording|錄音棚|录音棚|'
+    r'和聲|和声|Backing\s*[Vv]ocal|'
+    r'混音|Mixing|母帶|母带|Mastering|'
+    r'藝人|艺人|製作統|制作统|監製|监制|'
+    r'出品|發行|发行|營銷|营销|推廣|推广|'
+    r'版權|版权|Rap[：:]|弦樂|弦乐|OP[：:]|SP[：:])'
+)
+_COPYRIGHT_RE = re.compile(r'著作權|著作权|翻唱翻錄|翻唱翻录|\(未經|\(未经')
+_CI_RE        = re.compile(r'^(詞|词|曲|作詞|作词|作曲|填詞|填词)[：:]\s*(.+)$')
+
+def _filter_qq_credits(lrc: str) -> str:
+    parsed = []
+    for line in lrc.splitlines():
+        m = re.match(r'(\[\d+:\d+[.:]\d+\])(.*)', line)
+        if m:
+            parsed.append((m.group(1), m.group(2).strip()))
+
+    詞_ts, 詞_p = None, None
+    曲_ts, 曲_p = None, None
+    output = []
+
+    for ts, text in parsed:
+        m_ci = _CI_RE.match(text)
+        if m_ci:
+            role, person = m_ci.group(1), m_ci.group(2).strip()
+            if role in ('詞', '词', '作詞', '作词', '填詞', '填词') and not 詞_ts:
+                詞_ts, 詞_p = ts, person
+            elif role in ('曲', '作曲') and not 曲_ts:
+                曲_ts, 曲_p = ts, person
+            continue
+        if _CREDIT_RE.match(text) or _COPYRIGHT_RE.search(text):
+            continue
+        output.append((ts, text))
+
+    # 建立詞曲行（同人合併）
+    ci_out = []
+    if 詞_p and 曲_p and 詞_p == 曲_p:
+        ci_out.append((詞_ts, f'詞曲：{詞_p}'))
+    else:
+        if 詞_p:
+            ci_out.append((詞_ts, f'詞：{詞_p}'))
+        if 曲_p:
+            ci_out.append((曲_ts, f'曲：{曲_p}'))
+
+    # 依時間戳排序合併回去
+    all_items = output + ci_out
+    all_items.sort(key=lambda x: lrc_time_to_ms(x[0][1:-1]))
+    return '\n'.join(f'{ts}{text}' for ts, text in all_items)
+
 def search_syncedlyrics(song: str, artist: str) -> list[dict]:
     q = f'{song} {artist}'.strip() if artist else song
     results = []
@@ -264,7 +318,7 @@ class App(tk.Tk):
     def _do_download(self, item, cover):
         try:
             if item.get('_source') == 'QQ':
-                lrc = fetch_qq_lyric(item['_songmid'])
+                lrc = _filter_qq_credits(fetch_qq_lyric(item['_songmid']))
             else:
                 lrc = item.get('syncedLyrics', '')
             orig_r  = self.v_replace.get().strip()
