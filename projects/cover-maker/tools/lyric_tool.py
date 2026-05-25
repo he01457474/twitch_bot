@@ -30,6 +30,14 @@ QQ_HDR    = {
 
 converter = opencc.OpenCC('s2twp')
 
+def _is_cjk_dominant(text: str) -> bool:
+    if not text:
+        return False
+    cjk = sum(1 for c in text if '一' <= c <= '鿿'
+              or '぀' <= c <= 'ヿ'   # 日文假名
+              or '가' <= c <= '힯')  # 韓文
+    return cjk / len(text) > 0.35
+
 # ── 設定 ──────────────────────────────────────────────────────
 def load_cfg() -> dict:
     if CFG_FILE.exists():
@@ -57,7 +65,8 @@ def ms_to_srt(ms: int) -> str:
     s  = ms // 1000;    ms %= 1000
     return f'{h:02d}:{m:02d}:{s:02d},{ms:03d}'
 
-def lrc_to_srt(lrc: str, cover_artist: str, orig_artist: str) -> str:
+def lrc_to_srt(lrc: str, cover_artist: str, orig_artist: str,
+               translations: dict | None = None) -> str:
     lines = []
     for line in lrc.splitlines():
         m = re.match(r'\[(\d+:\d+[.:]\d+)\](.*)', line)
@@ -72,6 +81,10 @@ def lrc_to_srt(lrc: str, cover_artist: str, orig_artist: str) -> str:
         is_credit_line = re.match(r'^(詞曲|詞|曲)[：:]', text_tw)
         if orig_artist and orig_artist in text_tw and not is_credit_line:
             text_tw = text_tw.replace(orig_artist, cover_artist)
+        if translations and not is_credit_line:
+            trans = translations.get(text, '')
+            if trans:
+                text_tw = f'{text_tw}\n{trans}'
         if text_tw:
             srt_parts.append(
                 f'{len(srt_parts)+1}\n'
@@ -343,6 +356,11 @@ class App(tk.Tk):
         ttk.Entry(frm3, textvariable=self.v_outdir, width=36).grid(row=2, column=1, padx=(6,0), pady=(4,0))
         ttk.Button(frm3, text='…', width=3, command=self._pick_dir).grid(row=2, column=2, padx=4, pady=(4,0))
 
+        self.v_bilingual = tk.BooleanVar(value=self.cfg.get('bilingual', False))
+        ttk.Checkbutton(frm3, text='雙語字幕（加中文翻譯，限非中文歌曲）',
+                        variable=self.v_bilingual).grid(row=3, column=0, columnspan=3,
+                                                        sticky='w', pady=(6,0))
+
         # ── 按鈕 ──
         frm4 = ttk.Frame(self)
         frm4.grid(row=3, column=0, pady=6)
@@ -434,7 +452,31 @@ class App(tk.Tk):
                 except Exception:
                     pass
                 lrc = _prepend_title(lrc, f'{track} - {cover}' if cover else '', ci_line)
-            srt     = lrc_to_srt(lrc, cover, orig_r)
+            # 雙語翻譯
+            translations = {}
+            if self.v_bilingual.get():
+                self.after(0, lambda: self._status('翻譯中…'))
+                lyric_texts = []
+                for line in lrc.splitlines():
+                    m = re.match(r'\[\d+:\d+[.:]\d+\](.*)', line)
+                    if m:
+                        t = m.group(1).strip()
+                        if t and not _CI_RE.match(t) and not _is_cjk_dominant(t):
+                            lyric_texts.append(t)
+                if lyric_texts:
+                    try:
+                        from deep_translator import GoogleTranslator
+                        translator = GoogleTranslator(source='auto', target='zh-TW')
+                        chunk_size = 50
+                        for i in range(0, len(lyric_texts), chunk_size):
+                            chunk = lyric_texts[i:i + chunk_size]
+                            results_t = translator.translate_batch(chunk)
+                            for orig, trans in zip(chunk, results_t):
+                                if trans and trans.strip() != orig.strip():
+                                    translations[orig] = trans.strip()
+                    except Exception as te:
+                        self.after(0, lambda e=te: self._status(f'翻譯失敗：{e}', 'orange'))
+            srt     = lrc_to_srt(lrc, cover, orig_r, translations or None)
             out_dir = Path(self.v_outdir.get())
             out_dir.mkdir(parents=True, exist_ok=True)
             safe    = re.sub(r'[\\/:*?"<>|]', '_', item.get('trackName', 'output'))
@@ -443,6 +485,7 @@ class App(tk.Tk):
             self.after(0, lambda: self._status(f'✅ 已儲存：{path.name}', 'green'))
             self.cfg['cover_artist'] = cover
             self.cfg['out_dir']      = self.v_outdir.get()
+            self.cfg['bilingual']    = self.v_bilingual.get()
             history = self.cfg.get('cover_history', [])
             if cover not in history:
                 history.insert(0, cover)
