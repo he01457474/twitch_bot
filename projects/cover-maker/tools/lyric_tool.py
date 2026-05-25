@@ -151,8 +151,32 @@ def _ms_to_lrc(ms: int) -> str:
     s = ms // 1000;  ms %= 1000
     return f'[{m:02d}:{s:02d}.{ms // 10:02d}]'
 
-def _prepend_title(lrc: str, title: str, min_ms: int = 2000, max_ms: int = 10000) -> str:
-    """在 LRC 開頭插入標題行，前奏 <2s 不插，>10s 只顯示到 10s。"""
+def _get_ci_line(lrc: str) -> str:
+    """從 LRC 中提取詞/曲資訊，回傳合併後的單行文字（如無則回傳空字串）。"""
+    詞_p, 曲_p = None, None
+    for line in lrc.splitlines():
+        m = re.match(r'\[\d+:\d+[.:]\d+\](.*)', line)
+        if not m:
+            continue
+        text = m.group(1).strip()
+        mc = _CI_RE.match(text)
+        if mc:
+            role, person = mc.group(1), mc.group(2).strip()
+            if role in ('詞', '词', '作詞', '作词', '填詞', '填词') and not 詞_p:
+                詞_p = person
+            elif role in ('曲', '作曲') and not 曲_p:
+                曲_p = person
+    if 詞_p and 曲_p:
+        return f'詞曲：{詞_p}' if 詞_p == 曲_p else f'詞：{詞_p}　曲：{曲_p}'
+    if 詞_p:
+        return f'詞：{詞_p}'
+    if 曲_p:
+        return f'曲：{曲_p}'
+    return ''
+
+def _prepend_title(lrc: str, title: str, ci_line: str = '',
+                   min_ms: int = 2000, max_ms: int = 10000) -> str:
+    """在 LRC 開頭插入標題（和詞曲行），前奏 <2s 不插，>10s 只顯示到 10s。"""
     lines = [l for l in lrc.splitlines() if re.match(r'\[\d+:\d+[.:]\d+\]', l)]
     if not lines:
         return lrc
@@ -162,9 +186,14 @@ def _prepend_title(lrc: str, title: str, min_ms: int = 2000, max_ms: int = 10000
     first_ms = lrc_time_to_ms(m.group(1))
     if first_ms < min_ms:
         return lrc
-    new = [f'{_ms_to_lrc(0)}{title}']
+    new = []
+    if title:
+        new.append(f'{_ms_to_lrc(0)}{title}')
+    if ci_line:
+        ci_ms = min(1000, first_ms // 2)
+        new.append(f'{_ms_to_lrc(ci_ms)}{ci_line}')
     if first_ms > max_ms:
-        new.append(_ms_to_lrc(max_ms))   # 空行讓標題在 10s 結束
+        new.append(_ms_to_lrc(max_ms))
     new.extend(lines)
     return '\n'.join(new)
 
@@ -394,8 +423,16 @@ class App(tk.Tk):
                             lrc = '\n'.join(lines)
             else:
                 lrc = item.get('syncedLyrics', '')
-                if cover:
-                    lrc = _prepend_title(lrc, f'{track} - {cover}')
+                # 嘗試從同名 QQ 結果取詞曲資訊
+                ci_line = ''
+                for r in self._results:
+                    if r.get('_source') == 'QQ' and r.get('trackName') == track:
+                        try:
+                            ci_line = _get_ci_line(fetch_qq_lyric(r['_songmid']))
+                        except Exception:
+                            pass
+                        break
+                lrc = _prepend_title(lrc, f'{track} - {cover}' if cover else '', ci_line)
             srt     = lrc_to_srt(lrc, cover, orig_r)
             out_dir = Path(self.v_outdir.get())
             out_dir.mkdir(parents=True, exist_ok=True)
