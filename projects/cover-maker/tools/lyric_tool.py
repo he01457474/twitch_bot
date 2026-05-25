@@ -139,6 +139,7 @@ def fetch_qq_lyric(songmid: str) -> str:
 _CREDIT_KW = re.compile(
     r'編曲|编曲|Arrangement|'
     r'製作人|制作人|Producer|'
+    r'製作公司|制作公司|'
     r'混音|Mixing|'
     r'母帶|母带|Mastering|'
     r'錄音|录音|Recording|'
