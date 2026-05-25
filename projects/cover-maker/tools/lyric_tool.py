@@ -333,7 +333,7 @@ def search_all(song: str, artist: str) -> list[dict]:
     for t in threads: t.start()
     for t in threads: t.join()
 
-    results = qq_res + lrclib_res + ne_res
+    results = qq_res[:5] + lrclib_res[:5] + ne_res[:5]
     if not results:
         results = search_syncedlyrics(song, artist)
     return results
@@ -450,7 +450,7 @@ class App(tk.Tk):
         if not self._results:
             self._status('找不到有時間軸的歌詞，試試修改歌名或原唱', 'orange')
             return
-        for r in self._results[:10]:
+        for r in self._results[:15]:
             dur = r.get('duration', 0)
             m, s = divmod(int(dur or 0), 60)
             src     = r.get('_source', 'LRCLIB')
