@@ -223,9 +223,28 @@ def search_syncedlyrics(song: str, artist: str) -> list[dict]:
     return results
 
 def search_all(song: str, artist: str) -> list[dict]:
-    results = search_lrclib(song, artist)
-    if not results:
-        results = search_qq(song, artist)
+    qq_res, lrclib_res = [], []
+
+    def _qq():
+        try:
+            nonlocal qq_res
+            qq_res = search_qq(song, artist)
+        except Exception:
+            pass
+
+    def _lrclib():
+        try:
+            nonlocal lrclib_res
+            lrclib_res = search_lrclib(song, artist)
+        except Exception:
+            pass
+
+    t1 = threading.Thread(target=_qq, daemon=True)
+    t2 = threading.Thread(target=_lrclib, daemon=True)
+    t1.start(); t2.start()
+    t1.join(); t2.join()
+
+    results = qq_res + lrclib_res
     if not results:
         results = search_syncedlyrics(song, artist)
     return results
