@@ -7,6 +7,7 @@ import json
 import threading
 import subprocess
 from pathlib import Path
+from difflib import SequenceMatcher
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
@@ -301,6 +302,18 @@ def search_syncedlyrics(song: str, artist: str) -> list[dict]:
             pass
     return results
 
+def _sim(a: str, b: str) -> float:
+    """字串相似度 0~1，忽略大小寫與常見分隔符。"""
+    if not a or not b:
+        return 0.0
+    norm = lambda s: re.sub(r'[\s\-_·・・]', '', s.lower())
+    return SequenceMatcher(None, norm(a), norm(b)).ratio()
+
+def _score(item: dict, song: str, artist: str) -> float:
+    track_sim = _sim(item.get('trackName', ''), song)
+    art_sim   = _sim(item.get('artistName', ''), artist) if artist else 0.0
+    return track_sim * 0.7 + art_sim * 0.3
+
 def search_all(song: str, artist: str) -> list[dict]:
     qq_res, lrclib_res, ne_res = [], [], []
 
@@ -333,9 +346,10 @@ def search_all(song: str, artist: str) -> list[dict]:
     for t in threads: t.start()
     for t in threads: t.join()
 
-    results = qq_res[:5] + lrclib_res[:5] + ne_res[:5]
+    results = qq_res + lrclib_res + ne_res
     if not results:
         results = search_syncedlyrics(song, artist)
+    results.sort(key=lambda x: _score(x, song, artist), reverse=True)
     return results
 
 # ── GUI ───────────────────────────────────────────────────────
@@ -450,7 +464,7 @@ class App(tk.Tk):
         if not self._results:
             self._status('找不到有時間軸的歌詞，試試修改歌名或原唱', 'orange')
             return
-        for r in self._results[:15]:
+        for r in self._results:
             dur = r.get('duration', 0)
             m, s = divmod(int(dur or 0), 60)
             src     = r.get('_source', 'LRCLIB')
