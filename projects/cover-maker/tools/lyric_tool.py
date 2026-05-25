@@ -286,9 +286,12 @@ class App(tk.Tk):
 
         self.listbox = tk.Listbox(frm2, height=7, width=62, activestyle='dotbox',
                                   selectmode='single')
-        sb = ttk.Scrollbar(frm2, orient='vertical', command=self.listbox.yview)
-        self.listbox.configure(yscrollcommand=sb.set)
-        self.listbox.pack(side='left'); sb.pack(side='right', fill='y')
+        sb_y = ttk.Scrollbar(frm2, orient='vertical',   command=self.listbox.yview)
+        sb_x = ttk.Scrollbar(frm2, orient='horizontal', command=self.listbox.xview)
+        self.listbox.configure(yscrollcommand=sb_y.set, xscrollcommand=sb_x.set)
+        sb_y.pack(side='right', fill='y')
+        sb_x.pack(side='bottom', fill='x')
+        self.listbox.pack(side='left', fill='both', expand=True)
 
         # ── 輸出設定 ──
         frm3 = ttk.LabelFrame(self, text='輸出設定', padding=8)
@@ -359,7 +362,7 @@ class App(tk.Tk):
         for r in self._results[:10]:
             dur = r.get('duration', 0)
             m, s = divmod(int(dur or 0), 60)
-            src = r.get('_source', 'LRCLIB')
+            src     = r.get('_source', 'LRCLIB')
             dur_str = f'[{m}:{s:02d}]' if dur else ''
             self.listbox.insert('end',
                 f"  [{src}] {r.get('trackName','')}  —  {r.get('artistName','')}  {dur_str}")
