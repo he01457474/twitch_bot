@@ -69,7 +69,8 @@ def lrc_to_srt(lrc: str, cover_artist: str, orig_artist: str) -> str:
     for i, (start_ms, text) in enumerate(lines):
         end_ms = lines[i + 1][0] if i + 1 < len(lines) else start_ms + 3000
         text_tw = converter.convert(text)
-        if orig_artist and orig_artist in text_tw:
+        is_credit_line = re.match(r'^(詞曲|詞|曲)[：:]', text_tw)
+        if orig_artist and orig_artist in text_tw and not is_credit_line:
             text_tw = text_tw.replace(orig_artist, cover_artist)
         if text_tw:
             srt_parts.append(
