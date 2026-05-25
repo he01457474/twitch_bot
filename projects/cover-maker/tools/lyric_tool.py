@@ -192,15 +192,17 @@ def _filter_qq_credits(lrc: str) -> str:
             continue
         output.append((ts, text))
 
-    # 建立詞曲行（同人合併）
+    # 建立詞曲行（同人合併為「詞曲：」，不同人合成同一行）
     ci_out = []
-    if 詞_p and 曲_p and 詞_p == 曲_p:
-        ci_out.append((詞_ts, f'詞曲：{詞_p}'))
-    else:
-        if 詞_p:
-            ci_out.append((詞_ts, f'詞：{詞_p}'))
-        if 曲_p:
-            ci_out.append((曲_ts, f'曲：{曲_p}'))
+    if 詞_p and 曲_p:
+        if 詞_p == 曲_p:
+            ci_out.append((詞_ts, f'詞曲：{詞_p}'))
+        else:
+            ci_out.append((詞_ts, f'詞：{詞_p}　曲：{曲_p}'))
+    elif 詞_p:
+        ci_out.append((詞_ts, f'詞：{詞_p}'))
+    elif 曲_p:
+        ci_out.append((曲_ts, f'曲：{曲_p}'))
 
     # 依時間戳排序合併回去
     all_items = output + ci_out
