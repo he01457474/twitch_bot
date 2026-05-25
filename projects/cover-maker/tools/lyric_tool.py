@@ -423,15 +423,15 @@ class App(tk.Tk):
                             lrc = '\n'.join(lines)
             else:
                 lrc = item.get('syncedLyrics', '')
-                # 嘗試從同名 QQ 結果取詞曲資訊
+                # 用歌名 + 歌手去 QQ 查詞曲（比同名比對更準）
                 ci_line = ''
-                for r in self._results:
-                    if r.get('_source') == 'QQ' and r.get('trackName') == track:
-                        try:
-                            ci_line = _get_ci_line(fetch_qq_lyric(r['_songmid']))
-                        except Exception:
-                            pass
-                        break
+                try:
+                    lrclib_artist = item.get('artistName', '')
+                    qq_hits = search_qq(track, lrclib_artist)
+                    if qq_hits:
+                        ci_line = _get_ci_line(fetch_qq_lyric(qq_hits[0]['_songmid']))
+                except Exception:
+                    pass
                 lrc = _prepend_title(lrc, f'{track} - {cover}' if cover else '', ci_line)
             srt     = lrc_to_srt(lrc, cover, orig_r)
             out_dir = Path(self.v_outdir.get())
