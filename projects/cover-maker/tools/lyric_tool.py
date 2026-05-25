@@ -28,6 +28,13 @@ QQ_HDR    = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
 }
 
+NE_SEARCH = 'https://music.163.com/api/search/get/web'
+NE_LYRIC  = 'https://music.163.com/api/song/lyric'
+NE_HDR    = {
+    'Referer': 'https://music.163.com/',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+}
+
 converter = opencc.OpenCC('s2twp')
 
 def _is_cjk_dominant(text: str) -> bool:
@@ -252,6 +259,32 @@ def _filter_qq_credits(lrc: str) -> str:
     all_items.sort(key=lambda x: lrc_time_to_ms(x[0][1:-1]))
     return '\n'.join(f'{ts}{text}' for ts, text in all_items)
 
+def search_netease(song: str, artist: str) -> list[dict]:
+    q = f'{song} {artist}'.strip() if artist else song
+    r = requests.get(NE_SEARCH,
+                     params={'s': q, 'type': 1, 'limit': 10, 'offset': 0},
+                     headers=NE_HDR, timeout=10)
+    r.raise_for_status()
+    songs = r.json().get('result', {}).get('songs', [])
+    results = []
+    for s in songs:
+        results.append({
+            'trackName':  s.get('name', ''),
+            'artistName': '、'.join(a['name'] for a in s.get('artists', [])),
+            'albumName':  s.get('album', {}).get('name', ''),
+            'duration':   s.get('duration', 0) // 1000,
+            '_song_id':   s.get('id'),
+            '_source':    'NetEase',
+        })
+    return results
+
+def fetch_netease_lyric(song_id: int) -> str:
+    r = requests.get(NE_LYRIC,
+                     params={'id': song_id, 'lv': 1, 'kv': 1, 'tv': -1},
+                     headers=NE_HDR, timeout=10)
+    r.raise_for_status()
+    return r.json().get('lrc', {}).get('lyric', '')
+
 def search_syncedlyrics(song: str, artist: str) -> list[dict]:
     q = f'{song} {artist}'.strip() if artist else song
     results = []
@@ -269,7 +302,7 @@ def search_syncedlyrics(song: str, artist: str) -> list[dict]:
     return results
 
 def search_all(song: str, artist: str) -> list[dict]:
-    qq_res, lrclib_res = [], []
+    qq_res, lrclib_res, ne_res = [], [], []
 
     def _qq():
         try:
@@ -285,12 +318,22 @@ def search_all(song: str, artist: str) -> list[dict]:
         except Exception:
             pass
 
-    t1 = threading.Thread(target=_qq, daemon=True)
-    t2 = threading.Thread(target=_lrclib, daemon=True)
-    t1.start(); t2.start()
-    t1.join(); t2.join()
+    def _netease():
+        try:
+            nonlocal ne_res
+            ne_res = search_netease(song, artist)
+        except Exception:
+            pass
 
-    results = qq_res + lrclib_res
+    threads = [
+        threading.Thread(target=_qq,       daemon=True),
+        threading.Thread(target=_lrclib,   daemon=True),
+        threading.Thread(target=_netease,  daemon=True),
+    ]
+    for t in threads: t.start()
+    for t in threads: t.join()
+
+    results = qq_res + lrclib_res + ne_res
     if not results:
         results = search_syncedlyrics(song, artist)
     return results
@@ -431,7 +474,8 @@ class App(tk.Tk):
         try:
             track   = item.get('trackName', '')
             orig_r  = self.v_replace.get().strip() or (item.get('artistName', '') if cover else '')
-            if item.get('_source') == 'QQ':
+            source = item.get('_source', '')
+            if source == 'QQ':
                 lrc = _filter_qq_credits(fetch_qq_lyric(item['_songmid']))
                 if cover:
                     lines = lrc.splitlines()
@@ -440,6 +484,17 @@ class App(tk.Tk):
                         if m:
                             lines[0] = f'{m.group(1)}{track} - {cover}'
                             lrc = '\n'.join(lines)
+            elif source == 'NetEase':
+                raw = fetch_netease_lyric(item['_song_id'])
+                lrc = _filter_qq_credits(raw)
+                ci_line = ''
+                try:
+                    qq_hits = search_qq(track, item.get('artistName', ''))
+                    if qq_hits:
+                        ci_line = _get_ci_line(fetch_qq_lyric(qq_hits[0]['_songmid']))
+                except Exception:
+                    pass
+                lrc = _prepend_title(lrc, f'{track} - {cover}' if cover else '', ci_line)
             else:
                 lrc = item.get('syncedLyrics', '')
                 # 用歌名 + 歌手去 QQ 查詞曲（比同名比對更準）
