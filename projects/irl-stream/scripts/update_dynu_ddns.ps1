@@ -1,6 +1,7 @@
 ﻿chcp 65001 | Out-Null
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 . (Join-Path $PSScriptRoot 'irl_settings.ps1')
 
@@ -38,8 +39,34 @@ $parts = foreach ($item in $query.GetEnumerator()) {
 }
 $uri = 'https://api.dynu.com/nic/update?' + ($parts -join '&')
 
-$response = Invoke-WebRequest -Uri $uri -UseBasicParsing -TimeoutSec 20
-$body = ($response.Content | Out-String).Trim()
+try {
+    $response = Invoke-WebRequest -Uri $uri -UseBasicParsing -TimeoutSec 20
+    $body = ($response.Content | Out-String).Trim()
+} catch {
+    $node = Get-Command node.exe -ErrorAction SilentlyContinue
+    if (-not $node) { throw }
+
+    $nodeCode = @'
+const url = process.argv[1];
+fetch(url)
+  .then(async (response) => {
+    const text = await response.text();
+    if (!response.ok) {
+      console.error(text || response.statusText);
+      process.exit(1);
+    }
+    process.stdout.write(text);
+  })
+  .catch((error) => {
+    console.error(error && error.message ? error.message : String(error));
+    process.exit(1);
+  });
+'@
+    $body = (& $node.Source -e $nodeCode $uri 2>&1 | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0) {
+        throw "Dynu HTTPS 連線失敗：$body"
+    }
+}
 
 if ($body -match '^(good|nochg)\b') {
     Write-Host "Dynu DDNS 已更新：$hostname（$body）" -ForegroundColor Green

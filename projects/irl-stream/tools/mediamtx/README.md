@@ -46,7 +46,7 @@ OBS 媒體來源輸入
 projects/irl-stream/launchers/設定DynuDDNS.bat
 ```
 
-它會要求輸入 Dynu hostname、username 和 IP update password，並建立每 5 分鐘更新一次的 Windows 排程。
+它會要求輸入 Dynu hostname、username 和 IP update password。之後啟動直播環境時，會在背景每 5 分鐘自動更新 Dynu。
 
 設定會存在：
 

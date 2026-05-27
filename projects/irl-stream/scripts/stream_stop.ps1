@@ -15,6 +15,14 @@ if (Test-Path $watchdogPidFile) {
     Write-Host "MediaMTX 監控未在執行" -ForegroundColor DarkGray
 }
 
+$dynuWatchdogPidFile = "$env:TEMP\dynu_ddns_watchdog.pid"
+if (Test-Path $dynuWatchdogPidFile) {
+    $dPid = Get-Content $dynuWatchdogPidFile -ErrorAction SilentlyContinue
+    if ($dPid) { Stop-Process -Id ([int]$dPid) -Force -ErrorAction SilentlyContinue }
+    Remove-Item $dynuWatchdogPidFile -ErrorAction SilentlyContinue
+    Write-Host "Dynu DDNS 監控已關閉" -ForegroundColor Green
+}
+
 # MediaMTX 本機版
 $mediamtx = Get-Process "mediamtx" -ErrorAction SilentlyContinue
 if ($mediamtx) {
@@ -24,7 +32,7 @@ if ($mediamtx) {
     Write-Host "MediaMTX 未在執行" -ForegroundColor DarkGray
 }
 
-Write-Host "Dynu DDNS 使用 Windows 排程自動更新，不會在這裡關閉。" -ForegroundColor DarkGray
+Write-Host "Dynu DDNS 會在下次啟動直播環境時重新啟動背景更新。" -ForegroundColor DarkGray
 
 Write-Host ""
 Write-Host "中繼伺服器環境已關閉完成。" -ForegroundColor Cyan

@@ -9,6 +9,8 @@ $mediamtxExe = Join-Path $mediamtxDir "mediamtx.exe"
 $mediamtxConfig = Join-Path (Join-Path $ProjectRoot "config") "mediamtx.yml"
 $whitelistScript = Join-Path $PSScriptRoot "manage_irl_users.ps1"
 $dynuUpdateScript = Join-Path $PSScriptRoot "update_dynu_ddns.ps1"
+$dynuWatchdogScript = Join-Path $PSScriptRoot "dynu_ddns_watchdog.ps1"
+$dynuWatchdogPidFile = "$env:TEMP\dynu_ddns_watchdog.pid"
 $relayHost = Get-IrlRelayHost
 
 function Test-HttpOk {
@@ -90,6 +92,16 @@ if (Test-Path $dynuUpdateScript) {
     }
 } else {
     Write-Host "[警告] 找不到 Dynu 更新腳本：$dynuUpdateScript" -ForegroundColor Yellow
+}
+
+if (Test-Path $dynuWatchdogScript) {
+    if (Test-Path $dynuWatchdogPidFile) {
+        $oldPid = Get-Content $dynuWatchdogPidFile -ErrorAction SilentlyContinue
+        if ($oldPid) { Stop-Process -Id ([int]$oldPid) -Force -ErrorAction SilentlyContinue }
+        Remove-Item $dynuWatchdogPidFile -ErrorAction SilentlyContinue
+    }
+    Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$dynuWatchdogScript`" -PidFile `"$dynuWatchdogPidFile`"" -WindowStyle Hidden
+    Write-Host "Dynu DDNS 監控已啟動（每 5 分鐘自動更新）" -ForegroundColor Green
 }
 
 Write-Host ""

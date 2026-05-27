@@ -7,7 +7,6 @@ $ErrorActionPreference = 'Stop'
 $ConfigDir = Get-IrlConfigDir
 $DynuConfig = Join-Path $ConfigDir 'dynu_ddns.json'
 $UpdaterScript = Join-Path $PSScriptRoot 'update_dynu_ddns.ps1'
-$TaskName = 'FlyCat IRL Dynu DDNS Update'
 
 function Read-Required {
     param([string]$Prompt)
@@ -51,16 +50,7 @@ Write-Host '正在測試 Dynu 更新...' -ForegroundColor Cyan
 & $UpdaterScript
 
 Write-Host ''
-Write-Host '建立 Windows 排程，每 5 分鐘自動更新 Dynu DDNS...' -ForegroundColor Cyan
-$taskCommand = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$UpdaterScript`""
-$startTime = (Get-Date).AddMinutes(1).ToString('HH:mm')
-$result = & schtasks.exe /Create /TN $TaskName /TR $taskCommand /SC MINUTE /MO 5 /ST $startTime /F 2>&1
-if ($LASTEXITCODE -eq 0) {
-    Write-Host 'Dynu 自動更新排程已建立。' -ForegroundColor Green
-} else {
-    Write-Host '建立排程失敗，請用系統管理員身分重跑，或先手動執行「更新DynuDDNS.bat」。' -ForegroundColor Yellow
-    Write-Host ($result | Out-String).Trim() -ForegroundColor DarkGray
-}
+Write-Host 'Dynu 設定已儲存。之後啟動直播環境時，會在背景每 5 分鐘自動更新 Dynu。' -ForegroundColor Green
 
 Write-Host ''
 Write-Host "目前 IRL 對外網址已設定為：$hostname" -ForegroundColor Green
