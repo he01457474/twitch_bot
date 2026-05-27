@@ -20,9 +20,11 @@ if (-not $hostname -or -not $username -or -not $config.password) {
     throw 'Dynu 設定不完整，請重新執行「設定DynuDDNS.bat」。'
 }
 
-$securePassword = ConvertTo-SecureString ([string]$config.password)
-$credential = [pscredential]::new($username, $securePassword)
-$password = $credential.GetNetworkCredential().Password
+if ($config.passwordEncoding -eq 'base64-utf8') {
+    $password = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String([string]$config.password))
+} else {
+    throw 'Dynu 密碼格式已過期，請重新執行「設定DynuDDNS.bat」。'
+}
 
 $query = @{
     hostname = $hostname

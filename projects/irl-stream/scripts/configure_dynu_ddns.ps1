@@ -30,13 +30,16 @@ Write-Host ''
 $hostname = (Read-Required 'Dynu hostname（例如 flycat.dynu.net）').ToLower()
 $username = Read-Required 'Dynu username'
 $securePassword = Read-Host 'Dynu IP update password' -AsSecureString
+$credential = [pscredential]::new($username, $securePassword)
+$plainPassword = $credential.GetNetworkCredential().Password
 
 New-Item -ItemType Directory -Path $ConfigDir -Force | Out-Null
 $config = [pscustomobject]@{
     provider = 'Dynu'
     hostname = $hostname
     username = $username
-    password = ($securePassword | ConvertFrom-SecureString)
+    password = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($plainPassword))
+    passwordEncoding = 'base64-utf8'
     updatedAt = (Get-Date).ToString('yyyy-MM-ddTHH:mm:sszzz')
 }
 $json = $config | ConvertTo-Json -Depth 4
