@@ -7,11 +7,13 @@ chcp 65001 | Out-Null
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
 
-$RelayHost = 'flycat.ddns.net'
+. (Join-Path $PSScriptRoot 'irl_settings.ps1')
+
+$RelayHost = Get-IrlRelayHost
 $SrtPort = 5002
 
-$ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$ConfigDir = Join-Path $ProjectRoot 'config'
+$ProjectRoot = Get-IrlProjectRoot
+$ConfigDir = Get-IrlConfigDir
 $UsersFile = Join-Path $ConfigDir 'relay_users.json'
 $ExportDir = Join-Path $ConfigDir 'exports'
 $MediaMtxDir = Join-Path $ProjectRoot 'tools\mediamtx'

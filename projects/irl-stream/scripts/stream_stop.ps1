@@ -24,14 +24,7 @@ if ($mediamtx) {
     Write-Host "MediaMTX 未在執行" -ForegroundColor DarkGray
 }
 
-# No-IP DUC
-$duc = Get-Process "DUC40" -ErrorAction SilentlyContinue
-if ($duc) {
-    Stop-Process -Name "DUC40" -Force
-    Write-Host "No-IP DUC 已關閉" -ForegroundColor Green
-} else {
-    Write-Host "No-IP DUC 未在執行" -ForegroundColor DarkGray
-}
+Write-Host "Dynu DDNS 使用 Windows 排程自動更新，不會在這裡關閉。" -ForegroundColor DarkGray
 
 Write-Host ""
 Write-Host "中繼伺服器環境已關閉完成。" -ForegroundColor Cyan

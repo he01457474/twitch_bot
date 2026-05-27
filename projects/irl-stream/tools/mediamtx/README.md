@@ -38,4 +38,23 @@ OBS 媒體來源輸入
 
 每次啟動 `啟動直播環境.bat` 時，也會先自動套用白名單，避免忘記手動套用。
 
+## Dynu DDNS
+
+這台電腦改用 Dynu 更新對外網址。第一次使用請雙擊：
+
+```text
+projects/irl-stream/launchers/設定DynuDDNS.bat
+```
+
+它會要求輸入 Dynu hostname、username 和 IP update password，並建立每 5 分鐘更新一次的 Windows 排程。
+
+設定會存在：
+
+```text
+projects/irl-stream/config/dynu_ddns.json
+projects/irl-stream/config/relay_settings.json
+```
+
+這些檔案不進 Git。
+
 SRTLA 之後會另外加 receiver；目前這個伺服器先跑純 SRT。

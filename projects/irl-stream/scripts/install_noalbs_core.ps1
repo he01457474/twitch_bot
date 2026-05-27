@@ -4,6 +4,8 @@ if ($InstallDir) { $InstallDir = $InstallDir.TrimEnd('\').TrimEnd('/') }
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
 
+. (Join-Path $PSScriptRoot 'irl_settings.ps1')
+
 $noalbsUrl = 'https://github.com/NOALBS/nginx-obs-automatic-low-bitrate-switching/releases/download/v2.16.1/noalbs-v2.16.1-x86_64-pc-windows-msvc.zip'
 $tokenUrl  = 'https://irlhosting.com/tmi/'
 
@@ -158,7 +160,7 @@ do {
 } while ($serverChoice -notin @('1','2'))
 
 if ($serverChoice -eq '1') {
-    $serverHost = 'flycat.ddns.net'
+    $serverHost = Get-IrlRelayHost
     $serverType = 'Mediamtx'
     $statsUrl   = Get-StatsUrl -ServerType $serverType -HostName $serverHost -Path $twitchId
     Write-Host "  伺服器：$serverHost（MediaMTX）" -ForegroundColor Green

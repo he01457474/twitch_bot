@@ -2,11 +2,14 @@
 chcp 65001 | Out-Null
 
 $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+. (Join-Path $PSScriptRoot "irl_settings.ps1")
 $sizeFile = Join-Path $PSScriptRoot "window_size.txt"
 $mediamtxDir = Join-Path $ProjectRoot "tools\mediamtx"
 $mediamtxExe = Join-Path $mediamtxDir "mediamtx.exe"
 $mediamtxConfig = Join-Path (Join-Path $ProjectRoot "config") "mediamtx.yml"
 $whitelistScript = Join-Path $PSScriptRoot "manage_irl_users.ps1"
+$dynuUpdateScript = Join-Path $PSScriptRoot "update_dynu_ddns.ps1"
+$relayHost = Get-IrlRelayHost
 
 function Test-HttpOk {
     param([string]$Url)
@@ -76,26 +79,24 @@ if (Test-Path $watchdogScript) {
     Write-Host "MediaMTX 監控已啟動（當機自動重啟）" -ForegroundColor Green
 }
 
-# [2/2] No-IP DUC
-Write-Host "[2/2] 檢查 No-IP DUC..."
-$ducRunning = Get-Process "DUC40" -ErrorAction SilentlyContinue
-if (-not $ducRunning) {
-    $ducExe = "C:\Program Files (x86)\No-IP\DUC40.exe"
-    if (Test-Path $ducExe) {
-        Write-Host "啟動 No-IP DUC..."
-        Start-Process $ducExe
-    } else {
-        Write-Host "[警告] 找不到 No-IP DUC：$ducExe" -ForegroundColor Yellow
-        Write-Host "如果 DDNS 由其他方式維護，可以忽略這個警告。" -ForegroundColor DarkGray
+# [2/2] Dynu DDNS
+Write-Host "[2/2] 更新 Dynu DDNS..."
+if (Test-Path $dynuUpdateScript) {
+    try {
+        & $dynuUpdateScript
+    } catch {
+        Write-Host "[警告] Dynu 更新失敗：$($_.Exception.Message)" -ForegroundColor Yellow
+        Write-Host "中繼伺服器仍會繼續啟動；請稍後檢查「設定DynuDDNS.bat」。" -ForegroundColor DarkGray
     }
 } else {
-    Write-Host "No-IP DUC 已在執行" -ForegroundColor Green
+    Write-Host "[警告] 找不到 Dynu 更新腳本：$dynuUpdateScript" -ForegroundColor Yellow
 }
 
 Write-Host ""
 Write-Host "中繼伺服器已啟動完成。" -ForegroundColor Cyan
 Write-Host "借用者的推流資料請用「管理IRL白名單.bat」新增台主後匯出。" -ForegroundColor Cyan
-Write-Host "借用者的 NOALBS 監測網址是 http://flycat.ddns.net:9997/v3/paths/get/<Twitch ID>。" -ForegroundColor Cyan
+Write-Host "目前對外網址：$relayHost" -ForegroundColor Cyan
+Write-Host "借用者的 NOALBS 監測網址是 http://${relayHost}:9997/v3/paths/get/<Twitch ID>。" -ForegroundColor Cyan
 Write-Host "SRTLA 之後會另外加 receiver；目前這個腳本先跑 SRT。" -ForegroundColor DarkGray
 Read-Host "按 Enter 關閉"
 
