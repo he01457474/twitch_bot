@@ -187,7 +187,8 @@ function Write-MediaMtxConfig {
     $lines.Add('  all_others:')
     $lines.Add('')
 
-    Set-Content -LiteralPath $MediaMtxConfig -Value ($lines -join "`r`n") -Encoding UTF8
+    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+    [System.IO.File]::WriteAllText($MediaMtxConfig, ($lines -join "`r`n"), $utf8NoBom)
 }
 
 function Restart-MediaMtx {
