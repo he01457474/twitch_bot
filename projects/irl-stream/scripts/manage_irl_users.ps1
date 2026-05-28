@@ -128,18 +128,37 @@ function Get-UserSettingsText {
 Twitch ID：
 $TwitchId
 
-手機推流
---------
-URL：
+一、手機推流 App 要填這兩欄
+----------------------------
+把下面兩行分別貼到 IRL Pro / Moblin 的 SRT 設定。
+
+URL / Host：
 srt://$RelayHost`:$SrtPort
 
-Stream ID：
+如果 App 沒有 URL 欄位，請拆開填：
+Host：$RelayHost
+Port：$SrtPort
+
+Stream ID / streamid：
 publish:${TwitchId}:$($Entry.publishUser):$($Entry.publishKey)
 
-OBS 媒體來源
-------------
-輸入：
+二、OBS 媒體來源要填這一整串
+----------------------------
+OBS → IRL 場景 → 媒體來源 → 取消「本機檔案」→「輸入」貼下面整串：
+
 srt://$RelayHost`:$SrtPort`?streamid=read:${TwitchId}:$($Entry.readUser):$($Entry.readKey)
+
+OBS 其他建議：
+輸入格式：mpegts
+重新連線延遲：3 秒
+
+三、每次直播順序
+----------------
+1. 管理員確認中繼伺服器已啟動
+2. 你先開 OBS
+3. 雙擊「啟動_NOALBS.bat」
+4. 手機開始推流
+5. Twitch 聊天室打 !start
 
 提醒
 ----
