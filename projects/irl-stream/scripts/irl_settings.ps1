@@ -11,7 +11,7 @@ function Get-IrlRelaySettingsPath {
 }
 
 function Get-IrlDefaultRelayHost {
-    return 'flycat.ddns.net'
+    return 'flycatirl.ddnsgeek.com'
 }
 
 function Get-IrlRelayHost {
