@@ -58,7 +58,8 @@
 - IRL 中繼伺服器若搬到筆電，目標機器預設為 `LAPTOP-6N12C053`。
 
 ## PowerShell 腳本編碼
-- 包含中文的 `.ps1` 一律加 UTF-8 BOM（`EF BB BF`），否則 PS5 會以 GBK 讀取，破壞語法
+- 包含中文的 `.ps1` 一律加 UTF-8 BOM（`EF BB BF`），否則 PS5 會以 GBK 讀取，破壞語法；缺 BOM 時 GBK 誤讀的位元組可能恰好等於 `{` `}` `"` 等語法字元，造成假性語法錯誤（如「Try 遺漏 Catch」），症狀難以從錯誤訊息直接判斷
+- **`Write` 工具寫入 `.ps1` 後不會自動加 BOM**，因此只要用 `Write` 工具建立或覆蓋含中文的 `.ps1`，必須立刻跟著一條 Bash 補 BOM：`powershell -NoProfile -Command "[System.IO.File]::WriteAllText('PATH', [System.IO.File]::ReadAllText('PATH', [System.Text.Encoding]::UTF8), [System.Text.UTF8Encoding]::new(`$true))"` ；`Edit` 工具只改差異不影響 BOM，不需要補
 - 寫入方式：`[System.IO.File]::WriteAllText($path, $content, (New-Object System.Text.UTF8Encoding $true))`
 - 透過網路下載後再執行的 `.ps1`，下載端可能沒有 BOM，要在執行前補上：在 `.bat` 裡用 `ReadAllText`（指定 UTF8）再 `WriteAllText`（UTF8 with BOM）重新寫入，不要用位元組陣列合併（`[byte[]]+[byte[]]` 會產生 `object[]`，`WriteAllBytes` 吃不下去）
 - 正確補 BOM 寫法：`[System.IO.File]::WriteAllText($path, [System.IO.File]::ReadAllText($path, [System.Text.Encoding]::UTF8), [System.Text.UTF8Encoding]::new($true))`（注意用 `::new($true)` 不是 `New-Object`，避免參數傳遞歧義）
