@@ -335,7 +335,7 @@ $batContent = @"
 @echo off
 powershell -NoProfile -WindowStyle Hidden -Command "Start-Process 'noalbs.exe' -WorkingDirectory '%~dp0' -WindowStyle Hidden"
 echo NOALBS 已啟動。
-timeout /t 3 >nul
+timeout /t 15 >nul
 "@
 [System.IO.File]::WriteAllText((Join-Path $noalbsPath "啟動_NOALBS.bat"), $batContent, $utf8NoBom)
 
