@@ -1,6 +1,4 @@
-﻿# 管理員用：啟動 IRL 中繼伺服器環境
-
-$ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+﻿$ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 . (Join-Path $PSScriptRoot "irl_settings.ps1")
 $sizeFile = Join-Path $PSScriptRoot "window_size.txt"
 $mediamtxDir = Join-Path $ProjectRoot "tools\mediamtx"
