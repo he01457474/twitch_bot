@@ -76,14 +76,20 @@ try {
         throw "robocopy failed with code: $code"
     }
 
-    $launcher = Join-Path $targetRoot 'launchers\初始化筆電IRL環境.bat'
-    if (-not (Test-Path -LiteralPath $launcher)) {
-        throw "Setup launcher not found: $launcher"
+    $setupScript = Join-Path $targetRoot 'scripts\setup_laptop_relay.ps1'
+    if (-not (Test-Path -LiteralPath $setupScript)) {
+        throw "Setup script not found: $setupScript"
+    }
+
+    $bytes = [System.IO.File]::ReadAllBytes($setupScript)
+    if ($bytes[0] -ne 0xEF -or $bytes[1] -ne 0xBB -or $bytes[2] -ne 0xBF) {
+        $bom = [byte[]](0xEF, 0xBB, 0xBF)
+        [System.IO.File]::WriteAllBytes($setupScript, $bom + $bytes)
     }
 
     Write-Host ''
     Write-Host 'Download complete. Opening setup...' -ForegroundColor Green
-    Start-Process -FilePath $launcher
+    Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -NoProfile -File `"$setupScript`""
 } finally {
     if (Test-Path -LiteralPath $zipPath) {
         Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
