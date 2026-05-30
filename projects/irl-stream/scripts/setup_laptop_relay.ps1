@@ -216,9 +216,18 @@ function Show-Summary {
     }
     Write-Host ''
     Write-Host '下一步建議：' -ForegroundColor Cyan
-    Write-Host "1. 若 Dynu 還沒設定，雙擊：$DynuLauncher"
-    Write-Host "2. 若還沒新增台主，雙擊：$UsersLauncher"
-    Write-Host "3. 要開伺服器，雙擊：$StartLauncher"
+    Write-Host "1. 筆電：若 Dynu 還沒設定，雙擊：$DynuLauncher"
+    Write-Host "2. 筆電：若還沒建立白名單，雙擊：$UsersLauncher"
+    Write-Host "3. 筆電：要開中繼伺服器，雙擊：$StartLauncher"
+    Write-Host "4. 桌電：OBS 媒體來源改用 srt://筆電內網IP:8890?streamid=read:<Twitch ID>:<read user>:<read key>"
+    Write-Host "5. 桌電：NOALBS statsUrl 改用 http://筆電內網IP:9997/v3/paths/get/<Twitch ID>"
+
+    if ($localIp) {
+        Write-Host ''
+        Write-Host '用目前偵測到的筆電 IP 來看，桌電端要改成：' -ForegroundColor Cyan
+        Write-Host "OBS：srt://$localIp`:8890?streamid=read:<Twitch ID>:<read user>:<read key>"
+        Write-Host "NOALBS statsUrl：http://$localIp`:9997/v3/paths/get/<Twitch ID>"
+    }
 }
 
 Write-Host ''

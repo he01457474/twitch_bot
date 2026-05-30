@@ -85,9 +85,39 @@ srt://flycatirl.ddnsgeek.com:5002?streamid=read:<Twitch ID>:<read user>:<read ke
 
 SRTLA 之後會另外加 receiver；目前這個伺服器先跑純 SRT。
 
-## 搬到筆電
+## 筆電負責中繼伺服器
 
-之後提到「筆電」時，預設就是 `LAPTOP-6N12C053`。搬到全新筆電環境時，先在原本這台電腦雙擊：
+之後提到「筆電」時，預設就是 `LAPTOP-6N12C053`。目前管理員自用架構是：
+
+```text
+手機 5G / 外部 SRT
+→ flycatirl.ddnsgeek.com:5002
+→ 路由器轉發
+→ 筆電 MediaMTX:8890
+→ 桌電 OBS 拉筆電影像
+→ 桌電 OBS 推到 Twitch
+```
+
+也就是：
+
+```text
+筆電：只負責開中繼伺服器、Dynu、MediaMTX、白名單
+桌電：只負責 OBS、NOALBS、開台
+```
+
+桌電不需要另外分專案腳本；照平常開 OBS 和 NOALBS 即可。差別只有 OBS 拉流網址和 NOALBS 監測網址要改成筆電內網 IP。
+
+## 第一次搬到筆電
+
+如果筆電上還沒有完整專案資料夾，先把下面這個檔案丟到筆電下載資料夾執行即可：
+
+```text
+projects/irl-stream/launchers/下載並初始化筆電IRL環境.bat
+```
+
+這個檔案可以單獨執行，會自動下載主 repo 到 `D:\FlyCatClaude Code`，再開啟筆電初始化流程。
+
+先在原本這台電腦雙擊：
 
 ```text
 projects/irl-stream/launchers/產生筆電IRL搬移包.bat
@@ -103,18 +133,56 @@ projects/irl-stream/launchers/初始化筆電IRL環境.bat
 
 初始化腳本會逐步詢問後才執行下載、匯入設定、建立防火牆規則。它會自動下載 MediaMTX，匯入搬移包，並提示目前筆電內網 IP。
 
-搬到筆電後，路由器轉發要改成筆電的內網 IP：
+## 路由器要改的地方
+
+搬到筆電後，外部 SRT 固定仍然走 `flycatirl.ddnsgeek.com:5002`，但最後要轉到筆電：
 
 ```text
 H660WM：UDP 5002 -> Deco WAN IP:5002
 Deco：UDP 5002 -> 筆電內網 IP:8890
 ```
 
-如果 NOALBS 不在中繼伺服器同一台電腦執行，需要從其他電腦遠端監測 MediaMTX，也要另外確認：
+`H660WM` 那段通常不用改，因為它本來就轉到 Deco。最常需要改的是 Deco，把 UDP `5002` 的目標從桌電改成筆電內網 IP。
+
+如果桌電 NOALBS 要讀筆電 MediaMTX 的訊號狀態，筆電 Windows 防火牆需要允許內網連 TCP `9997`。同區網使用時，不建議把 TCP `9997` 對外開到網際網路。
+
+只有當你真的要讓外部電腦連 MediaMTX API 時，才需要另外確認：
 
 ```text
 H660WM：TCP 9997 -> Deco WAN IP:9997
 Deco：TCP 9997 -> 筆電內網 IP:9997
 ```
 
-如果只有管理員自己本機 OBS 測試，不需要走外網 OBS 網址，直接用 `127.0.0.1:8890`。
+## 桌電要改的地方
+
+桌電 OBS 不能再用 `127.0.0.1:8890`，因為 MediaMTX 已經改在筆電。桌電 OBS 的媒體來源要改成：
+
+```text
+srt://筆電內網IP:8890?streamid=read:<Twitch ID>:<read user>:<read key>
+```
+
+桌電 NOALBS 的 `config.json` 裡，`statsUrl` 也要改成筆電：
+
+```text
+http://筆電內網IP:9997/v3/paths/get/<Twitch ID>
+```
+
+如果 OBS 和 NOALBS 都改到筆電同一台跑，才使用 `127.0.0.1`。
+
+## 每次開台順序
+
+```text
+1. 筆電：雙擊 啟動直播環境.bat
+2. 桌電：開 OBS
+3. 桌電：雙擊 啟動_NOALBS.bat
+4. 手機：開始 SRT 推流
+5. Twitch 聊天室：輸入 !start
+```
+
+關閉時：
+
+```text
+1. 桌電：關掉 noalbs.exe 視窗
+2. 桌電：OBS 停止直播
+3. 筆電：需要關中繼伺服器時，雙擊 關閉直播環境.bat
+```
