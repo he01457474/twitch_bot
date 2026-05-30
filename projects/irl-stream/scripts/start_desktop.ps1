@@ -82,7 +82,7 @@ function Start-BrbServer {
 
     $proc = Start-Process powershell `
         -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$BrbScript`"" `
-        -WindowStyle Minimized -PassThru
+        -WindowStyle Hidden -PassThru
     $proc.Id | Set-Content $BrbPidFile
     Write-Host '  BRB 伺服器已啟動（http://localhost:8080）' -ForegroundColor Green
 }
@@ -114,6 +114,19 @@ function Update-NoalbsStatsUrl {
     }
 }
 
+function Start-ExitWatcher {
+    param([int]$NoalbsPid)
+    $cmd = @"
+`$p = Get-Process -Id $NoalbsPid -ErrorAction SilentlyContinue
+if (`$p) { `$p.WaitForExit() }
+`$wsh = New-Object -ComObject WScript.Shell
+`$wsh.Popup('NOALBS 已關閉，直播環境仍在執行中。`n記得雙擊「關閉桌電環境.bat」關閉 BRB 伺服器。', 0, '直播結束提醒', 64) | Out-Null
+"@
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($cmd))
+    Start-Process powershell -WindowStyle Hidden `
+        -ArgumentList "-NoProfile -ExecutionPolicy Bypass -EncodedCommand $encoded"
+}
+
 function Start-NoalbsProcess {
     param([pscustomobject]$Cfg)
     Write-Host '[3/3] NOALBS...'
@@ -134,12 +147,15 @@ function Start-NoalbsProcess {
 
     Update-NoalbsStatsUrl $exe $Cfg.laptopLocalIp
 
-    if (Get-Process 'noalbs' -ErrorAction SilentlyContinue) {
+    $existing = Get-Process 'noalbs' -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($existing) {
         Write-Host '  NOALBS 已在執行' -ForegroundColor Green
+        Start-ExitWatcher $existing.Id
         return
     }
 
-    Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe)
+    $proc = Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) -PassThru
+    Start-ExitWatcher $proc.Id
     Write-Host '  NOALBS 已啟動' -ForegroundColor Green
     Write-Host '  若聊天室指令無回應，請確認 .env 裡的 TWITCH_BOT_OAUTH 是否過期。' -ForegroundColor DarkGray
 }
