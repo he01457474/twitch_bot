@@ -179,6 +179,7 @@ function Write-MediaMtxConfig {
     $lines.Add('api: yes')
     $lines.Add('apiAddress: :9997')
     $lines.Add("srtAddress: :$LocalSrtPort")
+    $lines.Add('readBufferCount: 256')
     $lines.Add('')
     $lines.Add('authInternalUsers:')
     $lines.Add('  - user: any')
