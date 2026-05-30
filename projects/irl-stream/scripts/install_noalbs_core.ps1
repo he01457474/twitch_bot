@@ -4,7 +4,14 @@ if ($InstallDir) { $InstallDir = $InstallDir.TrimEnd('\').TrimEnd('/') }
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
 
-. (Join-Path $PSScriptRoot 'irl_settings.ps1')
+$settingsScript = Join-Path $PSScriptRoot 'irl_settings.ps1'
+if (Test-Path $settingsScript) {
+    . $settingsScript
+} else {
+    function Get-IrlRelayHost {
+        return 'flycatirl.ddnsgeek.com'
+    }
+}
 
 $noalbsUrl = 'https://github.com/NOALBS/nginx-obs-automatic-low-bitrate-switching/releases/download/v2.16.1/noalbs-v2.16.1-x86_64-pc-windows-msvc.zip'
 $tokenUrl  = 'https://irlhosting.com/tmi/'
@@ -39,6 +46,15 @@ function Find-ExeInDir {
     return $sub
 }
 
+function Get-SafeFolderName {
+    param([string]$Name)
+    $safe = $Name
+    foreach ($char in [System.IO.Path]::GetInvalidFileNameChars()) {
+        $safe = $safe.Replace($char, '_')
+    }
+    return $safe
+}
+
 Write-Host ''
 Write-Host '=============================' -ForegroundColor Cyan
 Write-Host '   戶外直播一條龍設定工具   ' -ForegroundColor Cyan
@@ -54,6 +70,11 @@ $searchDirs = @(
     (Join-Path $env:USERPROFILE 'Downloads'),
     (Join-Path $env:USERPROFILE 'Documents')
 ) | Where-Object { $_ } | Select-Object -Unique
+if ($InstallDir -and (Test-Path $InstallDir)) {
+    $searchDirs += Get-ChildItem $InstallDir -Directory -ErrorAction SilentlyContinue |
+                   Where-Object { $_.Name -imatch '^NOALBS' } |
+                   Select-Object -ExpandProperty FullName
+}
 $searchDirs += Get-ChildItem $env:USERPROFILE -Directory -ErrorAction SilentlyContinue |
                Where-Object { $_.Name -imatch 'noalbs' } |
                Select-Object -ExpandProperty FullName
@@ -128,7 +149,10 @@ if ($existingExe) {
         $twitchId = (Read-Host 'Twitch ID（英文帳號，例如 kevin123）').Trim().ToLower()
         if (-not $twitchId) { Write-Host '  請填入 Twitch ID' -ForegroundColor Red }
     } while (-not $twitchId)
-    $installDir = if ($InstallDir) { $InstallDir } else { Join-Path $env:USERPROFILE "NOALBS" }
+    $safeTwitchId = Get-SafeFolderName $twitchId
+    $installBaseDir = if ($InstallDir) { $InstallDir } else { $env:USERPROFILE }
+    $installDir = Join-Path $installBaseDir "NOALBS_$safeTwitchId"
+    Write-Host "安裝位置：$installDir" -ForegroundColor DarkGray
 }
 
 # ── 安裝 / 更新共用流程 ────────────────────────────────────
@@ -291,6 +315,7 @@ Write-Host '接下來：' -ForegroundColor Yellow
 Write-Host '  1. 照網頁教學設定手機和 OBS'
 Write-Host '  2. 之後每次直播，先開 OBS，再雙擊「啟動_NOALBS.bat」'
 Write-Host '  3. 手機開始推流後，到 Twitch 聊天室打 !start'
+Write-Host '  4. 要關閉 NOALBS，就關掉 noalbs.exe 視窗；看不到視窗時到工作管理員結束 noalbs.exe'
 Write-Host ''
 
 Start-Process explorer.exe $noalbsPath
