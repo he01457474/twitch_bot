@@ -3,26 +3,36 @@ $ErrorActionPreference = 'Stop'
 
 . (Join-Path $PSScriptRoot 'irl_settings.ps1')
 
-$RelayHost     = Get-IrlRelayHost
 $ConfigDir     = Get-IrlConfigDir
 $BrbScript     = Join-Path $PSScriptRoot 'brb_server.ps1'
 $DesktopConfig = Join-Path $ConfigDir 'desktop_settings.json'
 $BrbPidFile    = "$env:TEMP\brb_server.pid"
-
-function Test-RelayOnline {
-    try {
-        Invoke-WebRequest -Uri "http://${RelayHost}:9997/v3/config/global/get" `
-            -UseBasicParsing -TimeoutSec 5 | Out-Null
-        return $true
-    } catch { return $false }
-}
 
 function Load-DesktopConfig {
     if (Test-Path -LiteralPath $DesktopConfig) {
         try { return Get-Content $DesktopConfig -Raw -Encoding UTF8 | ConvertFrom-Json }
         catch {}
     }
-    return [pscustomobject]@{ noalbsExe = '' }
+    return [pscustomobject]@{ noalbsExe = ''; laptopLocalIp = '' }
+}
+
+function Get-LaptopIp {
+    param([pscustomobject]$Cfg)
+    if ($Cfg.laptopLocalIp -and $Cfg.laptopLocalIp -ne '') { return $Cfg.laptopLocalIp }
+    Write-Host ''
+    Write-Host '尚未設定筆電內網 IP。' -ForegroundColor Yellow
+    Write-Host '請到筆電跑 ipconfig，找「IPv4 位址」那行（通常是 192.168.x.x）。' -ForegroundColor DarkGray
+    $ip = (Read-Host '請輸入筆電內網 IP').Trim()
+    return $ip
+}
+
+function Test-RelayOnline {
+    param([string]$Ip)
+    try {
+        Invoke-WebRequest -Uri "http://${Ip}:9997/v3/config/global/get" `
+            -UseBasicParsing -TimeoutSec 5 | Out-Null
+        return $true
+    } catch { return $false }
 }
 
 function Save-DesktopConfig {
@@ -78,9 +88,9 @@ function Start-BrbServer {
 }
 
 function Start-NoalbsProcess {
+    param([pscustomobject]$Cfg)
     Write-Host '[3/3] NOALBS...'
-    $cfg = Load-DesktopConfig
-    $exe = Find-NoalbsExe $cfg.noalbsExe
+    $exe = Find-NoalbsExe $Cfg.noalbsExe
 
     if (-not $exe) {
         Write-Host '  找不到 NOALBS。' -ForegroundColor Yellow
@@ -92,8 +102,9 @@ function Start-NoalbsProcess {
         $exe = $rawPath
     }
 
-    $cfg.noalbsExe = $exe
-    Save-DesktopConfig $cfg
+    $Cfg.noalbsExe = $exe
+    Save-DesktopConfig $Cfg
+
 
     if (Get-Process 'noalbs' -ErrorAction SilentlyContinue) {
         Write-Host '  NOALBS 已在執行' -ForegroundColor Green
@@ -112,11 +123,16 @@ Write-Host '      桌電開台環境啟動       ' -ForegroundColor Cyan
 Write-Host '=============================' -ForegroundColor Cyan
 Write-Host ''
 
+$cfg      = Load-DesktopConfig
+$laptopIp = Get-LaptopIp $cfg
+$cfg.laptopLocalIp = $laptopIp
+Save-DesktopConfig $cfg
+
 Write-Host '[1/3] 確認中繼伺服器...'
-if (Test-RelayOnline) {
-    Write-Host "  中繼伺服器已上線：$RelayHost" -ForegroundColor Green
+if (Test-RelayOnline $laptopIp) {
+    Write-Host "  中繼伺服器已上線（$laptopIp）" -ForegroundColor Green
 } else {
-    Write-Host "  中繼伺服器無回應（$RelayHost）" -ForegroundColor Red
+    Write-Host "  中繼伺服器無回應（$laptopIp）" -ForegroundColor Red
     Write-Host '  請先在筆電雙擊「啟動直播環境.bat」。' -ForegroundColor Yellow
     Write-Host ''
     $ans = (Read-Host '  仍要繼續啟動桌電環境？（y/n）').Trim().ToLower()
@@ -124,7 +140,7 @@ if (Test-RelayOnline) {
 }
 
 Start-BrbServer
-Start-NoalbsProcess
+Start-NoalbsProcess $cfg
 
 Write-Host ''
 Write-Host '=============================' -ForegroundColor Cyan
@@ -137,6 +153,6 @@ Write-Host '2. 手機開始推流'
 Write-Host '3. Twitch 聊天室輸入 !start'
 Write-Host ''
 Write-Host "BRB 網頁：http://localhost:8080" -ForegroundColor Cyan
-Write-Host "串流狀態：http://${RelayHost}:9997/v3/paths/list" -ForegroundColor Cyan
+Write-Host "串流狀態：http://${laptopIp}:9997/v3/paths/list" -ForegroundColor Cyan
 Write-Host ''
 Read-Host '按 Enter 關閉'
