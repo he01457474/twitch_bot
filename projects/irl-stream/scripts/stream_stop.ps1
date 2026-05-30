@@ -25,8 +25,13 @@ if (Test-Path $dynuWatchdogPidFile) {
 # MediaMTX 本機版
 $mediamtx = Get-Process "mediamtx" -ErrorAction SilentlyContinue
 if ($mediamtx) {
-    Stop-Process -Name "mediamtx" -Force
-    Write-Host "MediaMTX 已關閉" -ForegroundColor Green
+    try {
+        Stop-Process -Name "mediamtx" -Force -ErrorAction Stop
+        Write-Host "MediaMTX 已關閉" -ForegroundColor Green
+    } catch {
+        Write-Host "無法關閉 MediaMTX（存取被拒）。" -ForegroundColor Red
+        Write-Host "提示：啟動和關閉直播環境請都用「以系統管理員身分執行」，或都用一般模式，不要混用。" -ForegroundColor Yellow
+    }
 } else {
     Write-Host "MediaMTX 未在執行" -ForegroundColor DarkGray
 }

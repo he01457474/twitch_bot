@@ -225,8 +225,14 @@ function Restart-MediaMtx {
 
     $running = Get-Process 'mediamtx' -ErrorAction SilentlyContinue
     if ($running) {
-        Stop-Process -Name 'mediamtx' -Force
-        Start-Sleep -Seconds 1
+        try {
+            Stop-Process -Name 'mediamtx' -Force -ErrorAction Stop
+            Start-Sleep -Seconds 1
+        } catch {
+            Write-Host '無法停止 MediaMTX（存取被拒）。' -ForegroundColor Red
+            Write-Host '提示：啟動和管理白名單請都用「以系統管理員身分執行」，或都用一般模式，不要混用。' -ForegroundColor Yellow
+            return
+        }
     }
 
     Start-Process -FilePath $MediaMtxExe -ArgumentList "`"$MediaMtxConfig`"" -WorkingDirectory $MediaMtxDir -WindowStyle Hidden
