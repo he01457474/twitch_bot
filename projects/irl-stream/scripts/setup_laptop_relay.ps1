@@ -71,28 +71,36 @@ function Import-PrivateConfig {
         return
     }
 
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
     New-Item -ItemType Directory -Path $ConfigDir -Force | Out-Null
 
-    $allowed = @(
-        'config/dynu_ddns.json',
-        'config/relay_settings.json',
-        'config/relay_users.json',
-        'config/mediamtx.yml'
-    )
+    $allowedFiles = @('dynu_ddns.json', 'relay_settings.json', 'relay_users.json', 'mediamtx.yml')
 
-    $archive = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path -LiteralPath $ZipPath).Path)
-    try {
-        foreach ($entry in $archive.Entries) {
-            $name = $entry.FullName.Replace('\', '/')
-            if ($allowed -notcontains $name) { continue }
-            $fileName = Split-Path $name -Leaf
-            $dest = Join-Path $ConfigDir $fileName
-            [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $dest, $true)
-            Write-Host "已匯入：$fileName" -ForegroundColor Green
+    $resolvedPath = (Resolve-Path -LiteralPath $ZipPath).Path
+
+    if (Test-Path -LiteralPath $resolvedPath -PathType Container) {
+        foreach ($fileName in $allowedFiles) {
+            $src = Join-Path $resolvedPath $fileName
+            if (Test-Path -LiteralPath $src) {
+                Copy-Item -LiteralPath $src -Destination (Join-Path $ConfigDir $fileName) -Force
+                Write-Host "已匯入：$fileName" -ForegroundColor Green
+            }
         }
-    } finally {
-        $archive.Dispose()
+    } else {
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $allowedZipNames = $allowedFiles | ForEach-Object { "config/$_" }
+        $archive = [System.IO.Compression.ZipFile]::OpenRead($resolvedPath)
+        try {
+            foreach ($entry in $archive.Entries) {
+                $name = $entry.FullName.Replace('\', '/')
+                if ($allowedZipNames -notcontains $name) { continue }
+                $fileName = Split-Path $name -Leaf
+                $dest = Join-Path $ConfigDir $fileName
+                [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $dest, $true)
+                Write-Host "已匯入：$fileName" -ForegroundColor Green
+            }
+        } finally {
+            $archive.Dispose()
+        }
     }
 }
 
