@@ -9,25 +9,26 @@ $extractRoot = Join-Path $env:TEMP ('flycat_twitch_bot_' + [Guid]::NewGuid().ToS
 
 Write-Host ''
 Write-Host '=============================' -ForegroundColor Cyan
-Write-Host '  FlyCat IRL Laptop Setup    ' -ForegroundColor Cyan
+Write-Host '  下載並初始化筆電 IRL 環境  ' -ForegroundColor Cyan
 Write-Host '=============================' -ForegroundColor Cyan
 Write-Host ''
-Write-Host 'This downloads only the IRL relay files (not the full bot project).'
+Write-Host '這個入口可以單獨放在下載資料夾執行。'
+Write-Host '只會下載 IRL 相關檔案，不會下載整個 Bot 專案。'
 Write-Host ''
 
-$rawPath = Read-Host 'Install path (e.g. D:\FlyCatIRL)'
+$rawPath = Read-Host '請輸入 IRL 資料夾的安裝位置（例如 D:\FlyCatIRL）'
 $targetRoot = $rawPath.Trim().Trim('"')
 if (-not $targetRoot) {
-    Write-Host 'No path entered. Cancelled.' -ForegroundColor DarkGray
+    Write-Host '未輸入路徑，已取消。' -ForegroundColor DarkGray
     exit 0
 }
 
 Write-Host ''
-Write-Host "Install to: $targetRoot" -ForegroundColor Yellow
-$rawAnswer = Read-Host 'Type y to download, anything else to cancel'
+Write-Host "安裝位置：$targetRoot" -ForegroundColor Yellow
+$rawAnswer = Read-Host '輸入 y 開始下載，其他按鍵取消'
 $answer = if ($null -eq $rawAnswer) { '' } else { $rawAnswer.Trim().ToLower() }
 if ($answer -ne 'y') {
-    Write-Host 'Cancelled.' -ForegroundColor DarkGray
+    Write-Host '已取消。' -ForegroundColor DarkGray
     exit 0
 }
 
@@ -41,24 +42,24 @@ try {
 
     New-Item -ItemType Directory -Path $extractRoot -Force | Out-Null
 
-    Write-Host 'Downloading IRL files...' -ForegroundColor Cyan
+    Write-Host '正在下載 IRL 檔案...' -ForegroundColor Cyan
     Invoke-WebRequest -Uri $repoUrl -OutFile $zipPath -UseBasicParsing -TimeoutSec 120
 
-    Write-Host 'Extracting...' -ForegroundColor Cyan
+    Write-Host '正在解壓縮...' -ForegroundColor Cyan
     Expand-Archive -LiteralPath $zipPath -DestinationPath $extractRoot -Force
 
     $repoDir = Get-ChildItem -LiteralPath $extractRoot -Directory | Select-Object -First 1
     if (-not $repoDir) {
-        throw 'Download incomplete: repo folder not found.'
+        throw '下載內容不完整，找不到專案資料夾。'
     }
 
     $irlSource = Join-Path $repoDir.FullName 'projects\irl-stream'
     if (-not (Test-Path -LiteralPath $irlSource)) {
-        throw "IRL project folder not found in download: $irlSource"
+        throw "找不到 IRL 專案資料夾：$irlSource"
     }
 
     if (Test-Path -LiteralPath $targetRoot) {
-        Write-Host "Target folder exists. Updating files (config folder preserved): $targetRoot" -ForegroundColor Yellow
+        Write-Host "目標資料夾已存在，將保留 config 私有資料並更新其他檔案：$targetRoot" -ForegroundColor Yellow
     } else {
         New-Item -ItemType Directory -Path $targetRoot -Force | Out-Null
     }
@@ -73,22 +74,22 @@ try {
     & robocopy @robocopyArgs | Out-Null
     $code = $LASTEXITCODE
     if ($code -ge 8) {
-        throw "robocopy failed with code: $code"
+        throw "robocopy 失敗，代碼：$code"
     }
 
     $setupScript = Join-Path $targetRoot 'scripts\setup_laptop_relay.ps1'
     if (-not (Test-Path -LiteralPath $setupScript)) {
-        throw "Setup script not found: $setupScript"
+        throw "找不到初始化腳本：$setupScript"
     }
 
-    $bytes = [System.IO.File]::ReadAllBytes($setupScript)
-    if ($bytes[0] -ne 0xEF -or $bytes[1] -ne 0xBB -or $bytes[2] -ne 0xBF) {
-        $bom = [byte[]](0xEF, 0xBB, 0xBF)
-        [System.IO.File]::WriteAllBytes($setupScript, $bom + $bytes)
-    }
+    [System.IO.File]::WriteAllText(
+        $setupScript,
+        [System.IO.File]::ReadAllText($setupScript, [System.Text.Encoding]::UTF8),
+        (New-Object System.Text.UTF8Encoding($true))
+    )
 
     Write-Host ''
-    Write-Host 'Download complete. Opening setup...' -ForegroundColor Green
+    Write-Host '下載完成，正在開啟初始化腳本...' -ForegroundColor Green
     Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -NoProfile -File `"$setupScript`""
 } finally {
     if (Test-Path -LiteralPath $zipPath) {
