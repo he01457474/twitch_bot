@@ -55,6 +55,31 @@ function Get-SafeFolderName {
     return $safe
 }
 
+function Flatten-NoalbsInstallDir {
+    param([string]$Dir)
+
+    $directExe = Join-Path $Dir 'noalbs.exe'
+    if (Test-Path $directExe) { return $Dir }
+
+    $subDirs = @(Get-ChildItem $Dir -Directory -ErrorAction SilentlyContinue)
+    $noalbsSubDir = $subDirs |
+        Where-Object { Test-Path (Join-Path $_.FullName 'noalbs.exe') } |
+        Select-Object -First 1
+
+    if (-not $noalbsSubDir) { return $Dir }
+
+    Write-Host '正在整理 NOALBS 檔案位置...' -ForegroundColor DarkGray
+    Get-ChildItem $noalbsSubDir.FullName -Force | ForEach-Object {
+        Move-Item -LiteralPath $_.FullName -Destination $Dir -Force
+    }
+
+    if (-not (Get-ChildItem $noalbsSubDir.FullName -Force -ErrorAction SilentlyContinue)) {
+        Remove-Item -LiteralPath $noalbsSubDir.FullName -Force -ErrorAction SilentlyContinue
+    }
+
+    return $Dir
+}
+
 Write-Host ''
 Write-Host '=============================' -ForegroundColor Cyan
 Write-Host '   戶外直播一條龍設定工具   ' -ForegroundColor Cyan
@@ -242,8 +267,13 @@ if ($existingExe) {
     Write-Host '正在解壓縮...' -ForegroundColor Cyan
     Expand-Archive -Path $zipPath -DestinationPath $installDir -Force
     Remove-Item $zipPath -ErrorAction SilentlyContinue
-    $exePath    = Find-ExeInDir $installDir
-    $noalbsPath = if ($exePath) { Split-Path $exePath } else { $installDir }
+    $noalbsPath = Flatten-NoalbsInstallDir $installDir
+    $exePath    = Find-ExeInDir $noalbsPath
+    if (-not $exePath) {
+        Write-Host '[錯誤] 解壓縮完成，但找不到 noalbs.exe。' -ForegroundColor Red
+        Read-Host '按 Enter 關閉'
+        exit 1
+    }
     Write-Host '下載完成' -ForegroundColor Green
 }
 
