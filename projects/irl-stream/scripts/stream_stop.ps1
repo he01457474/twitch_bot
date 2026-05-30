@@ -1,5 +1,4 @@
 ﻿# 管理員用：關閉 IRL 中繼伺服器環境
-chcp 65001 | Out-Null
 
 Write-Host "關閉 IRL 中繼伺服器環境..." -ForegroundColor Cyan
 Write-Host "這是管理員端腳本，不會關閉借用者電腦上的 NOALBS。" -ForegroundColor DarkGray

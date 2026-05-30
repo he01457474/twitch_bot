@@ -1,5 +1,4 @@
-﻿chcp 65001 | Out-Null
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+﻿[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
 
 . (Join-Path $PSScriptRoot 'irl_settings.ps1')

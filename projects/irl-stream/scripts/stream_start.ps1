@@ -1,5 +1,4 @@
 ﻿# 管理員用：啟動 IRL 中繼伺服器環境
-chcp 65001 | Out-Null
 
 $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 . (Join-Path $PSScriptRoot "irl_settings.ps1")

@@ -1,5 +1,4 @@
-﻿chcp 65001 | Out-Null
-$port       = 8080
+﻿$port       = 8080
 $root       = (Resolve-Path "$PSScriptRoot\..\tools").Path
 $configPath = Join-Path $root "brb-config.json"
 $gqlUrl     = "https://gql.twitch.tv/gql"
