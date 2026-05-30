@@ -19,6 +19,7 @@ if %errorlevel% neq 0 (
 )
 
 for /f "delims=" %%I in ('git rev-parse --show-toplevel') do set "REPO_DIR=%%I"
+set "REPO_DIR=%REPO_DIR:/=\%"
 if not exist "%REPO_DIR%\update_bot.bat" (
     echo Cannot find update_bot.bat in: %REPO_DIR%
     echo Put this file in the BOT repo_temp folder and run it there.
@@ -49,4 +50,4 @@ if %errorlevel% neq 0 (
 
 echo.
 echo [3/3] Starting repaired update_bot.bat...
-call "%REPO_DIR%update_bot.bat"
+call "%REPO_DIR%\update_bot.bat"
