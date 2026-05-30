@@ -171,7 +171,7 @@ function Ensure-FirewallRule {
 }
 
 function Configure-Firewall {
-    if (-not (Confirm-Step '是否設定 Windows 防火牆？會新增 UDP 8890；若需要台主端 NOALBS 遠端監測，也會詢問 TCP 9997。')) {
+    if (-not (Confirm-Step '是否設定 Windows 防火牆？會新增 UDP 8890；若需要其他電腦上的 NOALBS 遠端監測，也會詢問 TCP 9997。')) {
         Write-Host '已跳過防火牆設定。' -ForegroundColor DarkGray
         return
     }
@@ -184,10 +184,10 @@ function Configure-Firewall {
 
     Ensure-FirewallRule -DisplayName 'IRL MediaMTX SRT UDP 8890' -Protocol 'UDP' -Port 8890
 
-    if (Confirm-Step '台主的 NOALBS 若在對方電腦執行，需要連 http://你的網域:9997。是否開啟 TCP 9997？') {
+    if (Confirm-Step '如果 NOALBS 不在中繼伺服器同一台電腦執行，需要連 http://你的網域:9997。是否開啟 TCP 9997？') {
         Ensure-FirewallRule -DisplayName 'IRL MediaMTX API TCP 9997' -Protocol 'TCP' -Port 9997
     } else {
-        Write-Host '已跳過 TCP 9997。台主端 NOALBS 遠端監測可能不能用。' -ForegroundColor Yellow
+        Write-Host '已跳過 TCP 9997。其他電腦上的 NOALBS 遠端監測可能不能用。' -ForegroundColor Yellow
     }
 }
 
@@ -209,10 +209,10 @@ function Show-Summary {
     Write-Host '1. H660WM：UDP 5002 -> Deco WAN IP:5002'
     if ($localIp) {
         Write-Host "2. Deco：UDP 5002 -> $localIp`:8890"
-        Write-Host "3. 若台主端 NOALBS 要遠端監測：H660WM TCP 9997 -> Deco WAN IP:9997，Deco TCP 9997 -> $localIp`:9997"
+        Write-Host "3. 若其他電腦上的 NOALBS 要遠端監測：H660WM TCP 9997 -> Deco WAN IP:9997，Deco TCP 9997 -> $localIp`:9997"
     } else {
         Write-Host '2. Deco：UDP 5002 -> 筆電內網 IP:8890'
-        Write-Host '3. 若台主端 NOALBS 要遠端監測：H660WM TCP 9997 -> Deco WAN IP:9997，Deco TCP 9997 -> 筆電內網 IP:9997'
+        Write-Host '3. 若其他電腦上的 NOALBS 要遠端監測：H660WM TCP 9997 -> Deco WAN IP:9997，Deco TCP 9997 -> 筆電內網 IP:9997'
     }
     Write-Host ''
     Write-Host '下一步建議：' -ForegroundColor Cyan

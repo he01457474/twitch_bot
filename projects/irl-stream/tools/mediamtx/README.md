@@ -110,7 +110,7 @@ H660WM：UDP 5002 -> Deco WAN IP:5002
 Deco：UDP 5002 -> 筆電內網 IP:8890
 ```
 
-如果台主端 NOALBS 要在對方電腦遠端監測 MediaMTX，也需要另外確認：
+如果 NOALBS 不在中繼伺服器同一台電腦執行，需要從其他電腦遠端監測 MediaMTX，也要另外確認：
 
 ```text
 H660WM：TCP 9997 -> Deco WAN IP:9997
