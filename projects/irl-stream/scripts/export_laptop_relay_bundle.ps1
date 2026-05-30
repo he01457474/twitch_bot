@@ -46,7 +46,7 @@ try {
     New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
 
     # ── launchers（排除桌電端工具）──────────────────────────────────
-    $launcherExclude = @('install_noalbs.bat', '啟動BRB伺服器.bat', '產生筆電IRL搬移包.bat')
+    $launcherExclude = @('install_noalbs.bat', '啟動BRB伺服器.bat', '產生筆電IRL搬移包.bat', '啟動桌電環境.bat', '關閉桌電環境.bat')
     $dstLaunchers = Join-Path $tempRoot 'launchers'
     New-Item -ItemType Directory -Path $dstLaunchers -Force | Out-Null
     Get-ChildItem -LiteralPath (Join-Path $ProjectRoot 'launchers') -File |
@@ -54,7 +54,7 @@ try {
         ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $dstLaunchers -Force }
 
     # ── scripts（排除桌電端工具）────────────────────────────────────
-    $scriptExclude = @('install_noalbs_core.ps1', 'brb_server.ps1', 'export_laptop_relay_bundle.ps1')
+    $scriptExclude = @('install_noalbs_core.ps1', 'brb_server.ps1', 'export_laptop_relay_bundle.ps1', 'start_desktop.ps1', 'stop_desktop.ps1')
     $dstScripts = Join-Path $tempRoot 'scripts'
     New-Item -ItemType Directory -Path $dstScripts -Force | Out-Null
     Get-ChildItem -LiteralPath (Join-Path $ProjectRoot 'scripts') -File |
