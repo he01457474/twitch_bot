@@ -69,6 +69,9 @@
 ## PowerShell 腳本編碼
 - 包含中文的 `.ps1` 一律加 UTF-8 BOM（`EF BB BF`），否則 PS5 會以 GBK 讀取，破壞語法
 - 寫入方式：`[System.IO.File]::WriteAllText($path, $content, (New-Object System.Text.UTF8Encoding $true))`
+- 透過網路下載後再執行的 `.ps1`（例如 bootstrap 腳本）：一律用純英文，不放中文字串，避免下載端 PS5 以 GBK 讀壞
+- 若下載的 `.ps1` 必須執行其他含中文的 `.ps1`，先用 `[System.IO.File]::ReadAllBytes` / `WriteAllBytes` 補 BOM 再 `Start-Process powershell -File`
+- 字串常數中含中文檔名路徑（例如 `'launchers\初始化筆電IRL環境.bat'`）與上面同樣有風險，需一起移除或改成呼叫對應的 `.ps1`
 
 ## 中文亂碼處理
 遇到工具輸出 GBK 亂碼時：
