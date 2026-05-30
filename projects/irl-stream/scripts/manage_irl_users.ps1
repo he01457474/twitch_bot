@@ -89,6 +89,39 @@ function Read-TwitchId {
     return $id
 }
 
+function Select-UserFromList {
+    param(
+        [pscustomobject]$State,
+        [string]$Prompt = '請選擇台主編號'
+    )
+
+    $users = Get-UserProperties $State
+    if ($users.Count -eq 0) {
+        Write-Host '目前沒有台主。' -ForegroundColor Yellow
+        return $null
+    }
+
+    Write-Host ''
+    $i = 1
+    foreach ($prop in $users) {
+        $status = if ($prop.Value.enabled) { '啟用' } else { '停用' }
+        Write-Host ("  {0}.  {1,-25}  {2}" -f $i, $prop.Name, $status)
+        $i++
+    }
+    Write-Host ''
+
+    do {
+        $input = (Read-Host $Prompt).Trim()
+        $n = 0
+        if (-not [int]::TryParse($input, [ref]$n) -or $n -lt 1 -or $n -gt $users.Count) {
+            Write-Host "請輸入 1 到 $($users.Count) 的數字。" -ForegroundColor Red
+            $n = 0
+        }
+    } while ($n -eq 0)
+
+    return $users[$n - 1].Name
+}
+
 function New-Secret {
     $bytes = New-Object byte[] 24
     [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
@@ -358,7 +391,8 @@ function Add-User {
 
 function Disable-User {
     $state = Load-State
-    $id = Read-TwitchId '要停用的 Twitch ID'
+    $id = Select-UserFromList $state '要停用的台主編號'
+    if (-not $id) { return }
     $entry = Get-UserEntry $state $id
     if (-not $entry) {
         Write-Host "找不到 $id。" -ForegroundColor Red
@@ -375,7 +409,8 @@ function Disable-User {
 
 function Rotate-UserKeys {
     $state = Load-State
-    $id = Read-TwitchId '要重新產生密鑰的 Twitch ID'
+    $id = Select-UserFromList $state '要重新產生密鑰的台主編號'
+    if (-not $id) { return }
     $entry = Get-UserEntry $state $id
     if (-not $entry) {
         Write-Host "找不到 $id。" -ForegroundColor Red
@@ -411,13 +446,15 @@ function List-Users {
 
 function Export-UserBundleInteractive {
     $state = Load-State
-    $id = Read-TwitchId '要匯出台主包的 Twitch ID'
+    $id = Select-UserFromList $state '要匯出台主包的台主編號'
+    if (-not $id) { return }
     Export-UserBundle -State $state -TwitchId $id
 }
 
 function Remove-User {
     $state = Load-State
-    $id = Read-TwitchId '要刪除的 Twitch ID'
+    $id = Select-UserFromList $state '要刪除的台主編號'
+    if (-not $id) { return }
     $entry = Get-UserEntry $state $id
     if (-not $entry) {
         Write-Host "找不到 $id。" -ForegroundColor Red
