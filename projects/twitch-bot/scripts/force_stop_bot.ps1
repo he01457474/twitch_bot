@@ -1,8 +1,8 @@
 $ErrorActionPreference = "SilentlyContinue"
 
-$downloadDirName = -join ([char]0x4e0b, [char]0x8f09)
-$botRoot = "D:\$downloadDirName\BOT2"
-$repoRoot = Join-Path $botRoot "repo_temp"
+$scriptRoot = Split-Path -Parent $PSCommandPath
+$repoRoot = Split-Path -Parent $scriptRoot
+$botRoot = Split-Path -Parent $repoRoot
 $chromeProfileRoot = Join-Path $repoRoot "src\.chrome_profiles"
 $privateRoot = "D:\tset\bot_private"
 $knownRoots = @($botRoot, $repoRoot, $privateRoot, $chromeProfileRoot) | Where-Object { $_ -and (Test-Path -LiteralPath $_) }
