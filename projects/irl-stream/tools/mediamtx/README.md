@@ -112,7 +112,7 @@ SRTLA 之後會另外加 receiver；目前這個伺服器先跑純 SRT。
 如果筆電上還沒有完整專案資料夾，先把下面這個檔案丟到筆電下載資料夾執行即可：
 
 ```text
-projects/irl-stream/launchers/下載並初始化筆電IRL環境.bat
+projects/irl-stream/launchers/download_and_initialize_laptop_relay.bat
 ```
 
 這個檔案可以單獨執行，會自動下載主 repo 到 `D:\FlyCatClaude Code`，再開啟筆電初始化流程。
@@ -120,7 +120,7 @@ projects/irl-stream/launchers/下載並初始化筆電IRL環境.bat
 先在原本這台電腦雙擊：
 
 ```text
-projects/irl-stream/launchers/產生筆電IRL搬移包.bat
+projects/irl-stream/launchers/export_laptop_relay_bundle.bat
 ```
 
 它會把 Dynu、白名單、台主密鑰和 MediaMTX 實際設定打包成 zip。這個 zip 是私有資料，不要公開上傳。
@@ -128,7 +128,7 @@ projects/irl-stream/launchers/產生筆電IRL搬移包.bat
 到筆電後，雙擊：
 
 ```text
-projects/irl-stream/launchers/初始化筆電IRL環境.bat
+projects/irl-stream/launchers/initialize_laptop_relay.bat
 ```
 
 初始化腳本會逐步詢問後才執行下載、匯入設定、建立防火牆規則。它會自動下載 MediaMTX，匯入搬移包，並提示目前筆電內網 IP。

@@ -11,7 +11,8 @@ function Confirm-Step {
     param([string]$Message)
     Write-Host ''
     Write-Host $Message -ForegroundColor Yellow
-    $answer = (Read-Host '輸入 y 繼續，其他按鍵取消').Trim().ToLower()
+    $rawAnswer = Read-Host '輸入 y 繼續，其他按鍵取消'
+    $answer = if ($null -eq $rawAnswer) { '' } else { $rawAnswer.Trim().ToLower() }
     return ($answer -eq 'y')
 }
 

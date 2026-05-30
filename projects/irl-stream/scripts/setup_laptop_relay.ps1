@@ -21,7 +21,8 @@ function Confirm-Step {
     param([string]$Message)
     Write-Host ''
     Write-Host $Message -ForegroundColor Yellow
-    $answer = (Read-Host '輸入 y 繼續，其他按鍵跳過').Trim().ToLower()
+    $rawAnswer = Read-Host '輸入 y 繼續，其他按鍵跳過'
+    $answer = if ($null -eq $rawAnswer) { '' } else { $rawAnswer.Trim().ToLower() }
     return ($answer -eq 'y')
 }
 
@@ -246,7 +247,8 @@ if ($env:COMPUTERNAME -ne $ExpectedComputerName) {
 }
 
 if (-not $ImportZip) {
-    $typedZip = (Read-Host '如果有筆電搬移包 zip，貼上完整路徑；沒有就直接按 Enter').Trim('" ')
+    $rawZip = Read-Host '如果有筆電搬移包 zip，貼上完整路徑；沒有就直接按 Enter'
+    $typedZip = if ($null -eq $rawZip) { '' } else { $rawZip.Trim('" ') }
     if ($typedZip) { $ImportZip = $typedZip }
 }
 
