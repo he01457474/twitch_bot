@@ -52,6 +52,9 @@
 - 系統 code page：CP936（GBK），非 Unicode 程式預設用簡體中文編碼
 - 慣用語言順序：中文（簡體，中國）→ 繁體中文（台灣）→ 韓文
 - 本機 Python 執行檔：`D:\tset\FlyCatClaude Code\.tools\python-3.13.3-embed\python.exe`；語法檢查請用完整路徑，例如 `& 'D:\tset\FlyCatClaude Code\.tools\python-3.13.3-embed\python.exe' -m py_compile 3.py`，不要只用 `python` 或 `py`
+- 筆電固定指 `LAPTOP-6N12C053`；之後使用者提到「筆電」時，除非另有說明，一律指這台。
+- 在筆電端執行自動化、下載工具、建立或覆蓋檔案、修改系統設定或防火牆規則前，必須先明確提示並等使用者確認後才繼續。
+- IRL 中繼伺服器若搬到筆電，目標機器預設為 `LAPTOP-6N12C053`。
 
 ## 中文亂碼處理
 遇到工具輸出 GBK 亂碼時：
