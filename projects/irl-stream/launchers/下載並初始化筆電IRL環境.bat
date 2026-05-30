@@ -10,7 +10,6 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
-powershell -NoProfile -Command "[System.IO.File]::WriteAllText('%TMPSCRIPT%', [System.IO.File]::ReadAllText('%TMPSCRIPT%', [System.Text.Encoding]::UTF8), (New-Object System.Text.UTF8Encoding($true)))"
-powershell -ExecutionPolicy Bypass -NoProfile -File "%TMPSCRIPT%"
+powershell -ExecutionPolicy Bypass -NoProfile -Command "& ([scriptblock]::Create([System.IO.File]::ReadAllText('%TMPSCRIPT%', [System.Text.Encoding]::UTF8)))"
 del "%TMPSCRIPT%" 2>nul
 pause

@@ -61,7 +61,8 @@
 - 包含中文的 `.ps1` 一律加 UTF-8 BOM（`EF BB BF`），否則 PS5 會以 GBK 讀取，破壞語法
 - 寫入方式：`[System.IO.File]::WriteAllText($path, $content, (New-Object System.Text.UTF8Encoding $true))`
 - 透過網路下載後再執行的 `.ps1`，下載端可能沒有 BOM，要在執行前補上：在 `.bat` 裡用 `ReadAllText`（指定 UTF8）再 `WriteAllText`（UTF8 with BOM）重新寫入，不要用位元組陣列合併（`[byte[]]+[byte[]]` 會產生 `object[]`，`WriteAllBytes` 吃不下去）
-- 正確補 BOM 寫法：`[System.IO.File]::WriteAllText($path, [System.IO.File]::ReadAllText($path, [System.Text.Encoding]::UTF8), (New-Object System.Text.UTF8Encoding($true)))`
+- 正確補 BOM 寫法：`[System.IO.File]::WriteAllText($path, [System.IO.File]::ReadAllText($path, [System.Text.Encoding]::UTF8), [System.Text.UTF8Encoding]::new($true))`（注意用 `::new($true)` 不是 `New-Object`，避免參數傳遞歧義）
+- bat 下載並直接執行的 ps1：用 `-Command "& ([scriptblock]::Create([System.IO.File]::ReadAllText('path', [System.Text.Encoding]::UTF8)))"` 強制 UTF-8 讀取，完全繞開 BOM 判斷
 - 下載的 `.ps1` 若要再呼叫其他含中文的 `.ps1`，同樣先補 BOM 再 `Start-Process powershell -File`
 
 ## 中文亂碼處理

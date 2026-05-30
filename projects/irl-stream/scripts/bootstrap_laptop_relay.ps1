@@ -85,12 +85,12 @@ try {
     [System.IO.File]::WriteAllText(
         $setupScript,
         [System.IO.File]::ReadAllText($setupScript, [System.Text.Encoding]::UTF8),
-        (New-Object System.Text.UTF8Encoding($true))
+        [System.Text.UTF8Encoding]::new($true)
     )
 
     Write-Host ''
     Write-Host '下載完成，正在開啟初始化腳本...' -ForegroundColor Green
-    Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -NoProfile -File `"$setupScript`""
+    Start-Process powershell -ArgumentList @('-ExecutionPolicy', 'Bypass', '-NoProfile', '-File', $setupScript)
 } finally {
     if (Test-Path -LiteralPath $zipPath) {
         Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
