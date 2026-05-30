@@ -129,7 +129,7 @@ if ($existingExe) {
     } while ($action -notin @('1','2'))
 
     if ($action -eq '2') {
-        $noalbsFiles = @('noalbs.exe', 'config.json', '.env', '啟動_NOALBS.bat')
+        $noalbsFiles = @('noalbs.exe', 'config.json', '.env', '啟動_NOALBS.bat', '關閉_NOALBS.bat')
         Write-Host ''
         Write-Host "即將刪除 $noalbsPath 裡的 NOALBS 檔案" -ForegroundColor Yellow
         $confirm = (Read-Host '確認刪除？（輸入 y 確認）').Trim().ToLower()
@@ -336,6 +336,18 @@ $batContent = @"
 powershell -NoProfile -WindowStyle Hidden -Command "Start-Process 'noalbs.exe' -WorkingDirectory '%~dp0' -WindowStyle Hidden"
 "@
 [System.IO.File]::WriteAllText((Join-Path $noalbsPath "啟動_NOALBS.bat"), $batContent, $utf8NoBom)
+
+$stopBatContent = @"
+@echo off
+taskkill /F /IM noalbs.exe /T >nul 2>&1
+if errorlevel 1 (
+    echo NOALBS 未在執行中。
+) else (
+    echo NOALBS 已關閉。
+)
+timeout /t 2 >nul
+"@
+[System.IO.File]::WriteAllText((Join-Path $noalbsPath "關閉_NOALBS.bat"), $stopBatContent, $utf8NoBom)
 
 Write-Host ''
 Write-Host '=============================' -ForegroundColor Green
