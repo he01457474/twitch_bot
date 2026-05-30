@@ -14,5 +14,5 @@ if not exist "%SCRIPT%" (
   exit /b 1
 )
 
-powershell -ExecutionPolicy Bypass -NoProfile -Command "& ([scriptblock]::Create([System.IO.File]::ReadAllText('%SCRIPT%', [System.Text.Encoding]::UTF8)))"
+powershell -ExecutionPolicy Bypass -NoProfile -File "%SCRIPT%"
 pause
