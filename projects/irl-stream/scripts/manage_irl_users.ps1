@@ -152,10 +152,6 @@ OBS 其他建議：
 重新連線延遲：3 秒
 手機如果送 H265 / HEVC 但 OBS 黑畫面，請把手機編碼改成 H264 / AVC。
 
-管理員本機測試用：
-如果 OBS 跟中繼伺服器開在同一台電腦，OBS 可以改用下面這串，不經過路由器：
-srt://127.0.0.1`:$LocalSrtPort`?streamid=read:${TwitchId}:$($Entry.readUser):$($Entry.readKey)
-
 三、每次直播順序
 ----------------
 1. 管理員確認中繼伺服器已啟動
