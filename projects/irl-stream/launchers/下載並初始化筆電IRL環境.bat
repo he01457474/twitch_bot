@@ -10,6 +10,7 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
+powershell -NoProfile -Command "$b=[System.IO.File]::ReadAllBytes('%TMPSCRIPT%');if($b[0] -ne 0xEF -or $b[1] -ne 0xBB -or $b[2] -ne 0xBF){$bom=[byte[]](0xEF,0xBB,0xBF);[System.IO.File]::WriteAllBytes('%TMPSCRIPT%',$bom+$b)}"
 powershell -ExecutionPolicy Bypass -NoProfile -File "%TMPSCRIPT%"
 del "%TMPSCRIPT%" 2>nul
 pause

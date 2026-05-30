@@ -9,26 +9,25 @@ $extractRoot = Join-Path $env:TEMP ('flycat_twitch_bot_' + [Guid]::NewGuid().ToS
 
 Write-Host ''
 Write-Host '=============================' -ForegroundColor Cyan
-Write-Host '  下載並初始化筆電 IRL 環境  ' -ForegroundColor Cyan
+Write-Host '  FlyCat IRL Laptop Setup    ' -ForegroundColor Cyan
 Write-Host '=============================' -ForegroundColor Cyan
 Write-Host ''
-Write-Host '這個入口可以單獨放在下載資料夾執行。'
-Write-Host '只會下載 IRL 相關檔案，不會下載整個 Bot 專案。'
+Write-Host 'This downloads only the IRL relay files (not the full bot project).'
 Write-Host ''
 
-$rawPath = Read-Host '請輸入 IRL 資料夾的安裝位置（例如 D:\FlyCatIRL）'
+$rawPath = Read-Host 'Install path (e.g. D:\FlyCatIRL)'
 $targetRoot = $rawPath.Trim().Trim('"')
 if (-not $targetRoot) {
-    Write-Host '未輸入路徑，已取消。' -ForegroundColor DarkGray
+    Write-Host 'No path entered. Cancelled.' -ForegroundColor DarkGray
     exit 0
 }
 
 Write-Host ''
-Write-Host "安裝位置：$targetRoot" -ForegroundColor Yellow
-$rawAnswer = Read-Host '輸入 y 開始下載，其他按鍵取消'
+Write-Host "Install to: $targetRoot" -ForegroundColor Yellow
+$rawAnswer = Read-Host 'Type y to download, anything else to cancel'
 $answer = if ($null -eq $rawAnswer) { '' } else { $rawAnswer.Trim().ToLower() }
 if ($answer -ne 'y') {
-    Write-Host '已取消。' -ForegroundColor DarkGray
+    Write-Host 'Cancelled.' -ForegroundColor DarkGray
     exit 0
 }
 
@@ -42,24 +41,24 @@ try {
 
     New-Item -ItemType Directory -Path $extractRoot -Force | Out-Null
 
-    Write-Host '正在下載 IRL 檔案...' -ForegroundColor Cyan
+    Write-Host 'Downloading IRL files...' -ForegroundColor Cyan
     Invoke-WebRequest -Uri $repoUrl -OutFile $zipPath -UseBasicParsing -TimeoutSec 120
 
-    Write-Host '正在解壓縮...' -ForegroundColor Cyan
+    Write-Host 'Extracting...' -ForegroundColor Cyan
     Expand-Archive -LiteralPath $zipPath -DestinationPath $extractRoot -Force
 
     $repoDir = Get-ChildItem -LiteralPath $extractRoot -Directory | Select-Object -First 1
     if (-not $repoDir) {
-        throw '下載內容不完整，找不到專案資料夾。'
+        throw 'Download incomplete: repo folder not found.'
     }
 
     $irlSource = Join-Path $repoDir.FullName 'projects\irl-stream'
     if (-not (Test-Path -LiteralPath $irlSource)) {
-        throw "找不到 IRL 專案資料夾：$irlSource"
+        throw "IRL project folder not found in download: $irlSource"
     }
 
     if (Test-Path -LiteralPath $targetRoot) {
-        Write-Host "目標資料夾已存在，將保留 config 私有資料並更新其他檔案：$targetRoot" -ForegroundColor Yellow
+        Write-Host "Target folder exists. Updating files (config folder preserved): $targetRoot" -ForegroundColor Yellow
     } else {
         New-Item -ItemType Directory -Path $targetRoot -Force | Out-Null
     }
@@ -74,16 +73,16 @@ try {
     & robocopy @robocopyArgs | Out-Null
     $code = $LASTEXITCODE
     if ($code -ge 8) {
-        throw "robocopy 失敗，代碼：$code"
+        throw "robocopy failed with code: $code"
     }
 
     $launcher = Join-Path $targetRoot 'launchers\初始化筆電IRL環境.bat'
     if (-not (Test-Path -LiteralPath $launcher)) {
-        throw "找不到初始化入口：$launcher"
+        throw "Setup launcher not found: $launcher"
     }
 
     Write-Host ''
-    Write-Host '下載完成，正在開啟初始化腳本...' -ForegroundColor Green
+    Write-Host 'Download complete. Opening setup...' -ForegroundColor Green
     Start-Process -FilePath $launcher
 } finally {
     if (Test-Path -LiteralPath $zipPath) {
