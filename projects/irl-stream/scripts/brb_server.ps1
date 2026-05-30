@@ -8,7 +8,7 @@ function Read-Config {
     if (Test-Path $configPath) {
         return Get-Content $configPath -Raw | ConvertFrom-Json
     }
-    return [PSCustomObject]@{ channel = "sweet_0530"; volume = 0.8 }
+    return [PSCustomObject]@{ channel = "sweet_0530"; volume = 0.2 }
 }
 
 function Invoke-GQL($query) {

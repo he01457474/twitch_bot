@@ -119,7 +119,7 @@
 <div id="pause-icon">⏸</div>
 <div id="vol-wrap">
   <span id="vol-icon">🔊</span>
-  <input id="vol-slider" type="range" min="0" max="1" step="0.05" value="0.8">
+  <input id="vol-slider" type="range" min="0" max="1" step="0.05" value="0.2">
 </div>
 
 <script>
@@ -136,6 +136,7 @@
   let current = 0;
   let progRAF = null;
   let skipTimer = null;
+  let lastVol = 0.2;
 
   function shuffle(arr) {
     for (let i = arr.length - 1; i > 0; i--) {
@@ -150,12 +151,17 @@
     player.volume = v;
     player.muted  = (v === 0);
     slider.value  = v;
+    if (v > 0) lastVol = v;
     volIcon.textContent = v === 0 ? "🔇" : v < 0.5 ? "🔉" : "🔊";
   }
 
-  slider.addEventListener("input", () => setVolume(parseFloat(slider.value)));
+  slider.addEventListener("input", () => {
+    const v = parseFloat(slider.value);
+    setVolume(v);
+    if (v > 0) localStorage.setItem("brb-volume", v);
+  });
   volIcon.addEventListener("click", () => {
-    setVolume(player.volume > 0 ? 0 : parseFloat(slider.value) || 0.8);
+    setVolume(player.volume > 0 ? 0 : lastVol);
   });
 
   // ── 進度條 ────────────────────────────────────────
@@ -256,12 +262,17 @@
 
   // ── 初始化 ────────────────────────────────────────
   async function init() {
-    // 讀音量設定
-    try {
-      const cfg = await (await fetch("/api/config")).json();
-      setVolume(cfg.volume ?? 0.8);
-    } catch (e) {
-      setVolume(0.8);
+    // 讀音量：localStorage → 伺服器設定 → 預設 0.2
+    const saved = parseFloat(localStorage.getItem("brb-volume"));
+    if (!isNaN(saved) && saved > 0 && saved <= 1) {
+      setVolume(saved);
+    } else {
+      try {
+        const cfg = await (await fetch("/api/config")).json();
+        setVolume(cfg.volume ?? 0.2);
+      } catch (e) {
+        setVolume(0.2);
+      }
     }
 
     // 讀剪輯清單

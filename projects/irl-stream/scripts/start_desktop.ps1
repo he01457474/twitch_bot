@@ -87,6 +87,33 @@ function Start-BrbServer {
     Write-Host '  BRB 伺服器已啟動（http://localhost:8080）' -ForegroundColor Green
 }
 
+function Update-NoalbsStatsUrl {
+    param([string]$Exe, [string]$Ip)
+    if (-not $Exe) { return }
+    $cfgPath = Join-Path (Split-Path $Exe) 'config.json'
+    if (-not (Test-Path -LiteralPath $cfgPath)) { return }
+    try {
+        $cfg     = Get-Content $cfgPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $changed = $false
+        foreach ($srv in $cfg.switcher.streamServers) {
+            $url = $srv.streamServer.statsUrl
+            if ($url -match '^http://[^:]+:') {
+                $newUrl = $url -replace '^http://[^:]+:', "http://${Ip}:"
+                if ($url -ne $newUrl) {
+                    $srv.streamServer.statsUrl = $newUrl
+                    $changed = $true
+                }
+            }
+        }
+        if ($changed) {
+            $cfg | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $cfgPath -Encoding UTF8
+            Write-Host "  已更新 NOALBS statsUrl → $Ip" -ForegroundColor DarkGray
+        }
+    } catch {
+        Write-Host "  無法更新 NOALBS 設定：$($_.Exception.Message)" -ForegroundColor DarkGray
+    }
+}
+
 function Start-NoalbsProcess {
     param([pscustomobject]$Cfg)
     Write-Host '[3/3] NOALBS...'
@@ -105,6 +132,7 @@ function Start-NoalbsProcess {
     $Cfg.noalbsExe = $exe
     Save-DesktopConfig $Cfg
 
+    Update-NoalbsStatsUrl $exe $Cfg.laptopLocalIp
 
     if (Get-Process 'noalbs' -ErrorAction SilentlyContinue) {
         Write-Host '  NOALBS 已在執行' -ForegroundColor Green
@@ -113,6 +141,7 @@ function Start-NoalbsProcess {
 
     Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe)
     Write-Host '  NOALBS 已啟動' -ForegroundColor Green
+    Write-Host '  若聊天室指令無回應，請確認 .env 裡的 TWITCH_BOT_OAUTH 是否過期。' -ForegroundColor DarkGray
 }
 
 # ── 主流程 ────────────────────────────────────────────────────────
