@@ -20,7 +20,7 @@ Write-Host '=============================' -ForegroundColor Cyan
 Write-Host '      產生筆電 IRL 搬移包     ' -ForegroundColor Cyan
 Write-Host '=============================' -ForegroundColor Cyan
 Write-Host ''
-Write-Host '搬移包包含：所有 IRL 腳本與啟動檔、Dynu、白名單、密鑰設定。' -ForegroundColor Yellow
+Write-Host '搬移包包含：筆電端所需腳本與啟動檔、Dynu、白名單、密鑰設定。' -ForegroundColor Yellow
 Write-Host '請只放在自己的電腦或隨身碟，不要上傳公開網路。' -ForegroundColor Yellow
 
 if (-not (Confirm-Step '是否產生給 LAPTOP-6N12C053 使用的完整搬移包？')) {
@@ -45,14 +45,35 @@ $tempRoot = Join-Path $env:TEMP "irl-laptop-$([Guid]::NewGuid().ToString('N'))"
 try {
     New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
 
-    # ── 公開檔案：launchers、scripts、tools ──────────────────────────
-    $publicDirs = @('launchers', 'scripts', 'tools')
-    foreach ($dir in $publicDirs) {
-        $src = Join-Path $ProjectRoot $dir
-        $dst = Join-Path $tempRoot $dir
-        if (Test-Path -LiteralPath $src) {
-            Copy-Item -LiteralPath $src -Destination $dst -Recurse -Force
-        }
+    # ── launchers（排除桌電端工具）──────────────────────────────────
+    $launcherExclude = @('install_noalbs.bat', '啟動BRB伺服器.bat', '產生筆電IRL搬移包.bat')
+    $dstLaunchers = Join-Path $tempRoot 'launchers'
+    New-Item -ItemType Directory -Path $dstLaunchers -Force | Out-Null
+    Get-ChildItem -LiteralPath (Join-Path $ProjectRoot 'launchers') -File |
+        Where-Object { $launcherExclude -notcontains $_.Name } |
+        ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $dstLaunchers -Force }
+
+    # ── scripts（排除桌電端工具）────────────────────────────────────
+    $scriptExclude = @('install_noalbs_core.ps1', 'brb_server.ps1', 'export_laptop_relay_bundle.ps1')
+    $dstScripts = Join-Path $tempRoot 'scripts'
+    New-Item -ItemType Directory -Path $dstScripts -Force | Out-Null
+    Get-ChildItem -LiteralPath (Join-Path $ProjectRoot 'scripts') -File |
+        Where-Object { $scriptExclude -notcontains $_.Name } |
+        ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $dstScripts -Force }
+
+    # ── tools（排除 BRB，只留 mediamtx + obs-overlay）───────────────
+    $srcTools = Join-Path $ProjectRoot 'tools'
+    $dstTools = Join-Path $tempRoot 'tools'
+    if (Test-Path -LiteralPath $srcTools) {
+        $toolsFileExclude = @('brb-clips.html', 'brb-config.json')
+        $toolsDirExclude  = @('noalbs')
+        New-Item -ItemType Directory -Path $dstTools -Force | Out-Null
+        Get-ChildItem -LiteralPath $srcTools -File |
+            Where-Object { $toolsFileExclude -notcontains $_.Name } |
+            ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $dstTools -Force }
+        Get-ChildItem -LiteralPath $srcTools -Directory |
+            Where-Object { $toolsDirExclude -notcontains $_.Name -and $_.Name -notmatch '^NOALBS_' } |
+            ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $dstTools $_.Name) -Recurse -Force }
     }
 
     # ── 私有設定：config ─────────────────────────────────────────────
