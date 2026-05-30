@@ -170,7 +170,7 @@ function Start-NoalbsProcess {
         return
     }
 
-    $proc = Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) -PassThru
+    $proc = Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) -WindowStyle Hidden -PassThru
     Start-ExitWatcher $proc.Id
     Write-Host '  NOALBS 已啟動' -ForegroundColor Green
     Write-Host '  若聊天室指令無回應，請確認 .env 裡的 TWITCH_BOT_OAUTH 是否過期。' -ForegroundColor DarkGray
