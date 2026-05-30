@@ -43,7 +43,7 @@ function Save-DesktopConfig {
 
 function Find-NoalbsExe {
     param([string]$SavedPath)
-    if ($SavedPath -and (Test-Path -LiteralPath $SavedPath)) {
+    if ($SavedPath -and (Test-Path -LiteralPath $SavedPath -PathType Leaf)) {
         return (Get-Item -LiteralPath $SavedPath).FullName
     }
 
