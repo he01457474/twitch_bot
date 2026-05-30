@@ -1,5 +1,4 @@
-﻿[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 
 . (Join-Path $PSScriptRoot 'irl_settings.ps1')
 
@@ -44,7 +43,23 @@ function Save-DesktopConfig {
 
 function Find-NoalbsExe {
     param([string]$SavedPath)
-    if ($SavedPath -and (Test-Path -LiteralPath $SavedPath)) { return $SavedPath }
+    if ($SavedPath -and (Test-Path -LiteralPath $SavedPath)) {
+        return (Get-Item -LiteralPath $SavedPath).FullName
+    }
+
+    # 先找專案內 tools/noalbs 目錄
+    $projectToolsNoalbs = Join-Path (Split-Path $PSScriptRoot) 'tools\noalbs'
+    if (Test-Path $projectToolsNoalbs) {
+        $hit = Get-ChildItem $projectToolsNoalbs -Directory -ErrorAction SilentlyContinue |
+            ForEach-Object { Join-Path $_.FullName 'noalbs.exe' } |
+            Where-Object { Test-Path $_ } |
+            Select-Object -First 1
+        if (-not $hit) {
+            $hit = Join-Path $projectToolsNoalbs 'noalbs.exe'
+            if (-not (Test-Path $hit)) { $hit = $null }
+        }
+        if ($hit) { return (Get-Item -LiteralPath $hit).FullName }
+    }
 
     $roots = @(
         $env:USERPROFILE,
@@ -59,7 +74,7 @@ function Find-NoalbsExe {
             ForEach-Object { Join-Path $_.FullName 'noalbs.exe' } |
             Where-Object { Test-Path $_ } |
             Select-Object -First 1
-        if ($hit) { return $hit }
+        if ($hit) { return (Get-Item -LiteralPath $hit).FullName }
     }
     return ''
 }
@@ -106,7 +121,8 @@ function Update-NoalbsStatsUrl {
             }
         }
         if ($changed) {
-            $cfg | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $cfgPath -Encoding UTF8
+            $json = $cfg | ConvertTo-Json -Depth 10
+            [System.IO.File]::WriteAllText($cfgPath, $json, [System.Text.UTF8Encoding]::new($false))
             Write-Host "  已更新 NOALBS statsUrl → $Ip" -ForegroundColor DarkGray
         }
     } catch {
