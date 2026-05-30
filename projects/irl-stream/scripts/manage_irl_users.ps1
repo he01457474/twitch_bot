@@ -10,7 +10,8 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'irl_settings.ps1')
 
 $RelayHost = Get-IrlRelayHost
-$SrtPort = 5002
+$PublicSrtPort = 5002
+$LocalSrtPort = 8890
 
 $ProjectRoot = Get-IrlProjectRoot
 $ConfigDir = Get-IrlConfigDir
@@ -133,11 +134,11 @@ $TwitchId
 把下面兩行分別貼到 IRL Pro / Moblin 的 SRT 設定。
 
 URL / Host：
-srt://$RelayHost`:$SrtPort
+srt://$RelayHost`:$PublicSrtPort
 
 如果 App 沒有 URL 欄位，請拆開填：
 Host：$RelayHost
-Port：$SrtPort
+Port：$PublicSrtPort
 
 Stream ID / streamid：
 publish:${TwitchId}:$($Entry.publishUser):$($Entry.publishKey)
@@ -146,11 +147,16 @@ publish:${TwitchId}:$($Entry.publishUser):$($Entry.publishKey)
 ----------------------------
 OBS → IRL 場景 → 媒體來源 → 取消「本機檔案」→「輸入」貼下面整串：
 
-srt://$RelayHost`:$SrtPort`?streamid=read:${TwitchId}:$($Entry.readUser):$($Entry.readKey)
+srt://$RelayHost`:$PublicSrtPort`?streamid=read:${TwitchId}:$($Entry.readUser):$($Entry.readKey)
 
 OBS 其他建議：
 輸入格式：mpegts
 重新連線延遲：3 秒
+手機如果送 H265 / HEVC 但 OBS 黑畫面，請把手機編碼改成 H264 / AVC。
+
+管理員本機測試用：
+如果 OBS 跟中繼伺服器開在同一台電腦，OBS 可以改用下面這串，不經過路由器：
+srt://127.0.0.1`:$LocalSrtPort`?streamid=read:${TwitchId}:$($Entry.readUser):$($Entry.readKey)
 
 三、每次直播順序
 ----------------
@@ -173,7 +179,7 @@ function Write-MediaMtxConfig {
     $lines = New-Object System.Collections.Generic.List[string]
     $lines.Add('api: yes')
     $lines.Add('apiAddress: :9997')
-    $lines.Add('srtAddress: :5002')
+    $lines.Add("srtAddress: :$LocalSrtPort")
     $lines.Add('')
     $lines.Add('authInternalUsers:')
     $lines.Add('  - user: any')
@@ -266,6 +272,19 @@ function Export-UserSettings {
     Write-Host "給台主的設定已輸出：$file" -ForegroundColor Cyan
     Write-Host ''
     Write-Host '提醒：請把這份文字檔或剪貼簿內容給台主，台主照裡面填手機和 OBS。' -ForegroundColor Yellow
+}
+
+function Export-AllUserSettingsFiles {
+    param([pscustomObject]$State)
+
+    Ensure-Directories
+    foreach ($prop in Get-UserProperties $State) {
+        $id = $prop.Name
+        $entry = $prop.Value
+        $text = Get-UserSettingsText -TwitchId $id -Entry $entry
+        $file = Join-Path $ExportDir "$id-settings.txt"
+        Set-Content -LiteralPath $file -Value $text -Encoding UTF8
+    }
 }
 
 function Add-User {
@@ -372,7 +391,9 @@ function Remove-User {
 function Apply-Config {
     $state = Load-State
     Write-MediaMtxConfig $state
+    Export-AllUserSettingsFiles $state
     Write-Host "已套用白名單到 MediaMTX 設定：$MediaMtxConfig" -ForegroundColor Green
+    Write-Host "已同步更新台主設定文字檔：$ExportDir" -ForegroundColor Green
 }
 
 function Show-Menu {

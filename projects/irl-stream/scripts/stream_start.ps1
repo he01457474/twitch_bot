@@ -12,6 +12,8 @@ $dynuUpdateScript = Join-Path $PSScriptRoot "update_dynu_ddns.ps1"
 $dynuWatchdogScript = Join-Path $PSScriptRoot "dynu_ddns_watchdog.ps1"
 $dynuWatchdogPidFile = "$env:TEMP\dynu_ddns_watchdog.pid"
 $relayHost = Get-IrlRelayHost
+$publicSrtPort = 5002
+$localSrtPort = 8890
 
 function Test-HttpOk {
     param([string]$Url)
@@ -107,7 +109,9 @@ if (Test-Path $dynuWatchdogScript) {
 Write-Host ""
 Write-Host "中繼伺服器已啟動完成。" -ForegroundColor Cyan
 Write-Host "借用者的推流資料請用「管理IRL白名單.bat」新增台主後匯出。" -ForegroundColor Cyan
-Write-Host "目前對外網址：$relayHost" -ForegroundColor Cyan
+Write-Host "目前對外網址：srt://${relayHost}:$publicSrtPort" -ForegroundColor Cyan
+Write-Host "管理員本機 OBS 測試：srt://127.0.0.1:$localSrtPort?streamid=read:<Twitch ID>:<read user>:<read key>" -ForegroundColor Cyan
+Write-Host "目前網路轉發架構：數據機 UDP $publicSrtPort -> Deco UDP $publicSrtPort -> 本機 UDP $localSrtPort" -ForegroundColor DarkGray
 Write-Host "借用者的 NOALBS 監測網址是 http://${relayHost}:9997/v3/paths/get/<Twitch ID>。" -ForegroundColor Cyan
 Write-Host "SRTLA 之後會另外加 receiver；目前這個腳本先跑 SRT。" -ForegroundColor DarkGray
 Read-Host "按 Enter 關閉"

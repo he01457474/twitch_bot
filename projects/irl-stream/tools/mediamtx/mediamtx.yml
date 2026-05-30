@@ -1,6 +1,7 @@
 api: yes
 apiAddress: :9997
-srtAddress: :5002
+# 外部台主連 flycatirl.ddnsgeek.com:5002，路由器會轉到本機 8890。
+srtAddress: :8890
 
 authInternalUsers:
   - user: any

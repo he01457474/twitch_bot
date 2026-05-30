@@ -57,4 +57,30 @@ projects/irl-stream/config/relay_settings.json
 
 這些檔案不進 Git。
 
+## 目前網路轉發
+
+目前確認可用的架構是「外部固定用 5002，本機 MediaMTX 用 8890」：
+
+```text
+手機 5G / 外部台主
+→ flycatirl.ddnsgeek.com:5002
+→ H660WM 數據機 UDP 5002 轉到 Deco WAN IP:5002
+→ Deco UDP 5002 轉到本機 192.168.68.50:8890
+→ MediaMTX
+```
+
+管理員自己的 OBS 如果跟 MediaMTX 在同一台電腦，請用：
+
+```text
+srt://127.0.0.1:8890?streamid=read:<Twitch ID>:<read user>:<read key>
+```
+
+外部台主自己的 OBS 才用：
+
+```text
+srt://flycatirl.ddnsgeek.com:5002?streamid=read:<Twitch ID>:<read user>:<read key>
+```
+
+手機端 FPS 不是 MediaMTX 鎖住；目前看到 30 fps 是手機 App 送出的設定。要提高到 60 fps，請在 IRL Pro / Moblin 的 Video 設定改 60 fps，並優先使用 H264 / AVC。若 OBS 黑畫面或網路不穩，先退回 30 fps。
+
 SRTLA 之後會另外加 receiver；目前這個伺服器先跑純 SRT。
