@@ -5,8 +5,6 @@
     [string]$PidFile
 )
 
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-
 # 寫入自己的 PID 讓 stream_stop 能終止這個監控程序
 [System.IO.File]::WriteAllText($PidFile, [System.Diagnostics.Process]::GetCurrentProcess().Id.ToString())
 

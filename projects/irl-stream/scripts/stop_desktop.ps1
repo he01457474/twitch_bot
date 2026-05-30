@@ -1,6 +1,4 @@
-﻿[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-
-$BrbPidFile = "$env:TEMP\brb_server.pid"
+﻿$BrbPidFile = "$env:TEMP\brb_server.pid"
 
 Write-Host ''
 Write-Host '關閉桌電直播環境...' -ForegroundColor Cyan

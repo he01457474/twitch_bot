@@ -1,7 +1,6 @@
 ﻿param([string]$InstallDir = '')
 if ($InstallDir) { $InstallDir = $InstallDir.TrimEnd('\').TrimEnd('/') }
 
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
 
 $settingsScript = Join-Path $PSScriptRoot 'irl_settings.ps1'

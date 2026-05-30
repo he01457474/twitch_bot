@@ -1,6 +1,4 @@
-﻿[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-
-Write-Host ''
+﻿Write-Host ''
 Write-Host '關閉 IRL 中繼伺服器環境...' -ForegroundColor Cyan
 Write-Host ''
 

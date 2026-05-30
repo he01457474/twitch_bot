@@ -2,7 +2,6 @@
     [string]$PidFile = "$env:TEMP\dynu_ddns_watchdog.pid"
 )
 
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Continue'
 
 $PID | Set-Content -LiteralPath $PidFile -Encoding ASCII
