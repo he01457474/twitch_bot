@@ -1,4 +1,4 @@
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+﻿[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 Write-Host ''
 Write-Host '關閉 IRL 中繼伺服器環境...' -ForegroundColor Cyan
@@ -39,12 +39,15 @@ if ($mediamtx) {
     } catch {
         Write-Host '  以管理員身分終止 MediaMTX...' -ForegroundColor Yellow
         # 同時終止可能還活著的 watchdog，避免它重啟 MediaMTX
-        $wdCmd = if ($savedWatchdogPid) {
-            "Stop-Process -Id $savedWatchdogPid -Force -ErrorAction SilentlyContinue; "
-        } else { '' }
+        $wdCmd = ''
+        if ($savedWatchdogPid) {
+            $wdCmd = "Stop-Process -Id $savedWatchdogPid -Force -ErrorAction SilentlyContinue; "
+        }
         try {
+            $killCmd = "${wdCmd}Stop-Process -Name mediamtx -Force -ErrorAction SilentlyContinue"
+            $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($killCmd))
             Start-Process powershell -Verb RunAs -WindowStyle Hidden -Wait `
-                -ArgumentList "-NoProfile -ExecutionPolicy Bypass -Command `"${wdCmd}Stop-Process -Name mediamtx -Force -ErrorAction SilentlyContinue`"" `
+                -ArgumentList "-NoProfile -ExecutionPolicy Bypass -EncodedCommand $enc" `
                 -ErrorAction Stop
             Start-Sleep -Milliseconds 800
             if (Get-Process 'mediamtx' -ErrorAction SilentlyContinue) {
