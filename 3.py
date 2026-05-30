@@ -708,13 +708,18 @@ class Bot(commands.Bot):
                 # 🟢 建立一個非同步確認任務
                 async def _send_and_confirm(target_ch, message, confirm_log):
                     try:
-                        await self._send_api_announce(target_ch, message, color="orange")
-                        if donation_event_key:
-                            await self.mark_donation_sent(donation_event_key, "sent")
-                        if confirm_log:
-                            logging.info(f"{confirm_log} 已發送成功！")
+                        send_mode = await self._send_donation_chat_message(target_ch, message)
+                        if send_mode:
+                            if donation_event_key:
+                                await self.mark_donation_sent(donation_event_key, "sent")
+                            if confirm_log:
+                                logging.info(f"{confirm_log} 已透過 {send_mode} 發送成功！")
+                            else:
+                                logging.info(f"✅ 已透過 {send_mode} 成功發送至 [{target_ch}] 聊天室！")
                         else:
-                            logging.info(f"✅ 已成功發送至 [{target_ch}] 聊天室！")
+                            if donation_event_key:
+                                await self.mark_donation_sent(donation_event_key, "failed")
+                            logging.error(f"❌ 斗內發送至 [{target_ch}] 失敗")
                     except Exception as e:
                         if donation_event_key:
                             await self.mark_donation_sent(donation_event_key, "failed")
@@ -1227,7 +1232,39 @@ class Bot(commands.Bot):
         clean_cmd = cmd_name.replace("!", "").lower() if cmd_name else None
         return True, ch, clean_cmd
 
-    async def _send_api_announce(self, channel_name: str, message: str, color: str = "primary"):
+    async def _bot_can_announce_in_channel(self, channel_name: str) -> bool | None:
+        ch = (channel_name or "").lower()
+        bot_login = (getattr(self, "nick", "") or "").lower()
+        if not ch or not bot_login:
+            return False
+        if ch == bot_login:
+            return True
+        if ch in getattr(self, "_no_mod_channels", set()):
+            return False
+
+        cached_mods = self.mod_cache.get(ch)
+        if cached_mods is not None:
+            return bot_login in cached_mods if cached_mods else None
+
+        mods = [m.lower() for m in await self.fetch_channel_moderators(ch)]
+        if mods:
+            self.mod_cache[ch] = mods
+            return bot_login in mods
+        return None
+
+    async def _send_donation_chat_message(self, channel_name: str, message: str):
+        can_announce = await self._bot_can_announce_in_channel(channel_name)
+        if can_announce is not False:
+            if await self._send_api_announce(channel_name, message, color="orange", fallback=False):
+                return "公告"
+            if can_announce:
+                logging.warning(f"⚠️ 斗內公告發送失敗 [{channel_name}]，改用一般聊天訊息。")
+        else:
+            logging.debug(f"ℹ️ BOT 不是 {channel_name} 的 MOD，斗內訊息改用一般聊天訊息。")
+
+        return "聊天" if await self.send_chat_message(channel_name, message) else None
+
+    async def _send_api_announce(self, channel_name: str, message: str, color: str = "primary", fallback: bool = True):
         """
         🟢 官方公告 API 模組 (自動降級機制)
         """
@@ -1253,6 +1290,8 @@ class Bot(commands.Bot):
             fallback_needed = True
 
         if fallback_needed:
+            if not fallback:
+                return False
             ch = self.get_channel(channel_name)
             if ch:
                 try:
@@ -2056,8 +2095,14 @@ class Bot(commands.Bot):
         higher_exp_count = (await self.db.fetchone("SELECT COUNT(*) FROM user_stats WHERE channel=? AND (watch_minutes * 2 + message_count * 5) > ?", (ch, my_exp)))[0]
         total_rank = higher_exp_count + 1
 
-        if is_on: status_msg = f"🟢 | 🚪進入: {self.format_hhmm(in_ts)}"
-        else: status_msg = f"🔴 | 🕒離開: {'未知' if not out_ts else self.format_time_ago(out_ts)}"
+        entry_time = self.format_hhmm(in_ts)
+        leave_time = self.format_hhmm(out_ts) if out_ts else "--:--"
+        if is_on:
+            status_msg = f"🟢 | 🚪進入: {entry_time}"
+        elif out_ts and int(time.time()) - out_ts < 86400:
+            status_msg = f"🔴/首次{entry_time}/離開{leave_time} | 🕐最後離開: {self.format_time_ago(out_ts)}"
+        else:
+            status_msg = f"🔴 | 🕐最後離開: {self.format_time_ago(out_ts)}"
 
         # 🟢 判斷是不是查自己：查別人加【名字】，查自己不加
         is_self = (uid == str(ctx.author.id))
@@ -2630,12 +2675,19 @@ class Bot(commands.Bot):
 
         await ctx.reply("💥 已清空本場直播的工商指令。")
 
-    @commands.command(name='活躍榜', aliases=['top5', '活躍排行榜'])
+    @commands.command(name='活躍榜', aliases=['top', 'rank', 'ranking', '排行榜', '活躍排行榜'] + [f'top{i}' for i in range(1, 21)])
     @commands.cooldown(1, 10, commands.Bucket.channel)
     @safe_command
     async def cmd_top5_active(self, ctx, limit: str = "5"):
         if not has_permission(ctx): return
         ch = ctx.channel.name.lower()
+        invoked = (getattr(ctx, "invoked_with", "") or "").lower()
+        if not invoked:
+            content = getattr(getattr(ctx, "message", None), "content", "") or ""
+            invoked = content.split()[0].lstrip("!").lower() if content else ""
+        if limit == "5":
+            if m := re.fullmatch(r"top(\d{1,2})", invoked):
+                limit = m.group(1)
         try:
             n = max(1, min(int(limit), 20))
         except ValueError:

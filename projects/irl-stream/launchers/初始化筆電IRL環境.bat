@@ -8,8 +8,7 @@ if not exist "%SCRIPT%" (
   echo   %SCRIPT%
   echo.
   echo This launcher cannot run alone from Downloads.
-  echo Use download_and_initialize_laptop_relay.bat first, or run this from:
-  echo   projects\irl-stream\launchers\initialize_laptop_relay.bat
+  echo Use the standalone download launcher first, or run this file from the full project launchers folder.
   echo.
   pause
   exit /b 1

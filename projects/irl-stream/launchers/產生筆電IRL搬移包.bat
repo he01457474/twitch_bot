@@ -8,8 +8,7 @@ if not exist "%SCRIPT%" (
   echo   %SCRIPT%
   echo.
   echo This launcher cannot run alone from Downloads.
-  echo Run it from the full project folder:
-  echo   projects\irl-stream\launchers\export_laptop_relay_bundle.bat
+  echo Run this file from the full project launchers folder.
   echo.
   pause
   exit /b 1
