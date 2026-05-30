@@ -276,13 +276,16 @@ if ($existingExe) {
     Write-Host '下載完成' -ForegroundColor Green
 }
 
-# 寫入設定檔
-@"
+# 寫入設定檔（全部用無 BOM UTF-8，避免 Rust JSON parser 解析失敗）
+$utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+
+$envContent = @"
 TWITCH_BOT_USERNAME=$twitchId
 TWITCH_BOT_OAUTH=$twitchToken
-"@ | Set-Content -Path "$noalbsPath\.env" -Encoding UTF8
+"@
+[System.IO.File]::WriteAllText("$noalbsPath\.env", $envContent, $utf8NoBom)
 
-@"
+$configContent = @"
 {
   "user": { "id": null, "name": "$twitchId", "passwordHash": null },
   "switcher": {
@@ -325,13 +328,15 @@ TWITCH_BOT_OAUTH=$twitchToken
     "switchFromStartingSceneToLiveScene": false
   }
 }
-"@ | Set-Content -Path "$noalbsPath\config.json" -Encoding UTF8
+"@
+[System.IO.File]::WriteAllText("$noalbsPath\config.json", $configContent, $utf8NoBom)
 
-@"
+$batContent = @"
 @echo off
 cd /d "%~dp0"
 start "" noalbs.exe
-"@ | Set-Content -Path (Join-Path $noalbsPath "啟動_NOALBS.bat") -Encoding UTF8
+"@
+[System.IO.File]::WriteAllText((Join-Path $noalbsPath "啟動_NOALBS.bat"), $batContent, $utf8NoBom)
 
 Write-Host ''
 Write-Host '=============================' -ForegroundColor Green

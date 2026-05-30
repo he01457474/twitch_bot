@@ -279,6 +279,47 @@ function Export-UserSettings {
     Write-Host '提醒：請把這份文字檔或剪貼簿內容給台主，台主照裡面填手機和 OBS。' -ForegroundColor Yellow
 }
 
+function Export-UserBundle {
+    param(
+        [pscustomobject]$State,
+        [string]$TwitchId
+    )
+    $entry = Get-UserEntry $State $TwitchId
+    if (-not $entry) { Write-Host "找不到 $TwitchId。" -ForegroundColor Red; return }
+    if (-not $entry.enabled) {
+        Write-Host "$TwitchId 目前是停用狀態，仍會匯出資料方便備查。" -ForegroundColor Yellow
+    }
+
+    Ensure-Directories
+    $text = Get-UserSettingsText -TwitchId $TwitchId -Entry $entry
+    $settingsFile = Join-Path $ExportDir "$TwitchId-settings.txt"
+    Set-Content -LiteralPath $settingsFile -Value $text -Encoding UTF8
+
+    $installBat = Join-Path $ProjectRoot 'launchers\install_noalbs.bat'
+    $zipFile    = Join-Path $ExportDir "$TwitchId-irl-bundle.zip"
+    $tempDir    = Join-Path $env:TEMP "irl_bundle_$TwitchId"
+
+    if (Test-Path $zipFile) { Remove-Item $zipFile -Force }
+    if (Test-Path $tempDir) { Remove-Item $tempDir -Recurse -Force }
+    New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+
+    Copy-Item -LiteralPath $settingsFile -Destination (Join-Path $tempDir "$TwitchId-settings.txt")
+    if (Test-Path $installBat) {
+        Copy-Item -LiteralPath $installBat -Destination (Join-Path $tempDir 'install_noalbs.bat')
+    } else {
+        Write-Host '  [警告] 找不到 install_noalbs.bat，zip 內只含設定文字。' -ForegroundColor Yellow
+    }
+
+    Compress-Archive -Path "$tempDir\*" -DestinationPath $zipFile -Force
+    Remove-Item $tempDir -Recurse -Force
+
+    try { Set-Clipboard -Value $text; Write-Host '設定內容已複製到剪貼簿。' -ForegroundColor Green }
+    catch { Write-Host '剪貼簿不可用，已只輸出成檔案。' -ForegroundColor Yellow }
+    Write-Host "台主包已產生：$zipFile" -ForegroundColor Cyan
+    Write-Host '請把這個 zip 傳給台主，解壓縮後跑 install_noalbs.bat 即可完成設定。' -ForegroundColor Yellow
+    Start-Process explorer.exe $ExportDir
+}
+
 function Export-AllUserSettingsFiles {
     param([pscustomObject]$State)
 
@@ -308,7 +349,7 @@ function Add-User {
 
     Save-State $state
     Write-MediaMtxConfig $state
-    Export-UserSettings -State $state -TwitchId $id
+    Export-UserBundle -State $state -TwitchId $id
     Apply-RunningMediaMtx
 }
 
@@ -343,8 +384,8 @@ function Rotate-UserKeys {
     Update-UserTimestamp $entry
     Save-State $state
     Write-MediaMtxConfig $state
-    Export-UserSettings -State $state -TwitchId $id
     Write-Host "已重新產生 $id 的推流與拉流密鑰。" -ForegroundColor Green
+    Export-UserBundle -State $state -TwitchId $id
     Apply-RunningMediaMtx
 }
 
@@ -364,10 +405,10 @@ function List-Users {
     }
 }
 
-function Export-UserSettingsInteractive {
+function Export-UserBundleInteractive {
     $state = Load-State
-    $id = Read-TwitchId '要匯出的 Twitch ID'
-    Export-UserSettings -State $state -TwitchId $id
+    $id = Read-TwitchId '要匯出台主包的 Twitch ID'
+    Export-UserBundle -State $state -TwitchId $id
 }
 
 function Remove-User {
@@ -411,7 +452,7 @@ function Show-Menu {
     Write-Host '2. 停用台主'
     Write-Host '3. 重新產生密鑰'
     Write-Host '4. 查看目前名單'
-    Write-Host '5. 匯出給台主的設定'
+    Write-Host '5. 匯出台主包（zip）'
     Write-Host '6. 套用白名單到 MediaMTX 設定'
     Write-Host '7. 套用並重啟 MediaMTX'
     Write-Host '8. 刪除台主（完全移除）'
@@ -434,7 +475,7 @@ do {
         '2' { Disable-User }
         '3' { Rotate-UserKeys }
         '4' { List-Users }
-        '5' { Export-UserSettingsInteractive }
+        '5' { Export-UserBundleInteractive }
         '6' { Apply-Config }
         '7' { Apply-Config; Restart-MediaMtx }
         '8' { Remove-User }
