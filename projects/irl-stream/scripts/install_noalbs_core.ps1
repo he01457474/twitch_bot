@@ -333,8 +333,7 @@ $configContent = @"
 
 $batContent = @"
 @echo off
-cd /d "%~dp0"
-start "" noalbs.exe
+powershell -NoProfile -WindowStyle Hidden -Command "Start-Process 'noalbs.exe' -WorkingDirectory '%~dp0' -WindowStyle Hidden"
 "@
 [System.IO.File]::WriteAllText((Join-Path $noalbsPath "啟動_NOALBS.bat"), $batContent, $utf8NoBom)
 
