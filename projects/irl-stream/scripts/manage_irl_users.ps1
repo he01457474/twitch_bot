@@ -397,7 +397,8 @@ function List-Users {
     Write-Host '目前白名單：' -ForegroundColor Cyan
     foreach ($prop in $users) {
         $status = if ($prop.Value.enabled) { '啟用' } else { '停用' }
-        Write-Host ("  {0,-25} {1}  更新：{2}" -f $prop.Name, $status, $prop.Value.updatedAt)
+        $ts = try { [datetime]::Parse($prop.Value.updatedAt).ToString('yyyy-MM-dd HH:mm') } catch { $prop.Value.updatedAt }
+        Write-Host ("  {0,-25}  {1,-4}  更新：{2}" -f $prop.Name, $status, $ts)
     }
 }
 
