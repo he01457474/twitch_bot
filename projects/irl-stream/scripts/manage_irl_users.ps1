@@ -347,17 +347,14 @@ function Export-UserSettings {
 
     Ensure-Directories
     $text = Get-UserSettingsText -TwitchId $TwitchId -Entry $entry
-    $file = Join-Path $ExportDir "$TwitchId-settings.txt"
-    Set-Content -LiteralPath $file -Value $text -Encoding UTF8
     try {
         Set-Clipboard -Value $text
         Write-Host '設定內容已複製到剪貼簿。' -ForegroundColor Green
     } catch {
-        Write-Host '剪貼簿不可用，已只輸出成檔案。' -ForegroundColor Yellow
+        Write-Host '剪貼簿不可用；請改用「匯出台主包（zip）」。' -ForegroundColor Yellow
     }
-    Write-Host "給台主的設定已輸出：$file" -ForegroundColor Cyan
     Write-Host ''
-    Write-Host '提醒：請把這份文字檔或剪貼簿內容給台主，台主照裡面填手機和 OBS。' -ForegroundColor Yellow
+    Write-Host '提醒：台主設定不再另外輸出成外部 txt；要給台主請匯出台主包 zip。' -ForegroundColor Yellow
 }
 
 function Write-NoalbsInstaller {
@@ -385,18 +382,19 @@ function Export-UserBundle {
 
     Ensure-Directories
     $text = Get-UserSettingsText -TwitchId $TwitchId -Entry $entry
-    $settingsFile = Join-Path $ExportDir "$TwitchId-settings.txt"
-    Set-Content -LiteralPath $settingsFile -Value $text -Encoding UTF8
+    $settingsFileName = "$TwitchId-settings.txt"
+    $legacySettingsFile = Join-Path $ExportDir $settingsFileName
 
     $installBat = Join-Path $ProjectRoot 'launchers\install_noalbs.bat'
     $zipFile    = Join-Path $ExportDir "$TwitchId-irl-bundle.zip"
     $tempDir    = Join-Path $env:TEMP "irl_bundle_$TwitchId"
 
     if (Test-Path $zipFile) { Remove-Item $zipFile -Force }
+    if (Test-Path $legacySettingsFile) { Remove-Item $legacySettingsFile -Force }
     if (Test-Path $tempDir) { Remove-Item $tempDir -Recurse -Force }
     New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
 
-    Copy-Item -LiteralPath $settingsFile -Destination (Join-Path $tempDir "$TwitchId-settings.txt")
+    Set-Content -LiteralPath (Join-Path $tempDir $settingsFileName) -Value $text -Encoding UTF8
     if (Test-Path $installBat) {
         Copy-Item -LiteralPath $installBat -Destination (Join-Path $tempDir 'install_noalbs.bat')
     } else {
@@ -412,19 +410,6 @@ function Export-UserBundle {
     Write-Host "台主包已產生：$zipFile" -ForegroundColor Cyan
     Write-Host '請把這個 zip 傳給台主，解壓縮後跑 install_noalbs.bat 即可完成設定。' -ForegroundColor Yellow
     Start-Process explorer.exe $ExportDir
-}
-
-function Export-AllUserSettingsFiles {
-    param([pscustomObject]$State)
-
-    Ensure-Directories
-    foreach ($prop in Get-UserProperties $State) {
-        $id = $prop.Name
-        $entry = $prop.Value
-        $text = Get-UserSettingsText -TwitchId $id -Entry $entry
-        $file = Join-Path $ExportDir "$id-settings.txt"
-        Set-Content -LiteralPath $file -Value $text -Encoding UTF8
-    }
 }
 
 function Add-User {
@@ -536,9 +521,8 @@ function Remove-User {
 function Apply-Config {
     $state = Load-State
     Write-MediaMtxConfig $state
-    Export-AllUserSettingsFiles $state
     Write-Host "已套用白名單到 MediaMTX 設定：$MediaMtxConfig" -ForegroundColor Green
-    Write-Host "已同步更新台主設定文字檔：$ExportDir" -ForegroundColor Green
+    Write-Host '台主設定不再另外輸出成外部 txt；新增或匯出台主包時會放進 zip。' -ForegroundColor DarkGray
 }
 
 function Show-Menu {
