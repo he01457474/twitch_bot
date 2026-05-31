@@ -360,6 +360,18 @@ function Export-UserSettings {
     Write-Host '提醒：請把這份文字檔或剪貼簿內容給台主，台主照裡面填手機和 OBS。' -ForegroundColor Yellow
 }
 
+function Write-NoalbsInstaller {
+    param([string]$Path)
+
+    $content = @'
+@echo off
+powershell -ExecutionPolicy Bypass -NoProfile -Command "& { $url = 'https://raw.githubusercontent.com/he01457474/twitch_bot/master/projects/irl-stream/scripts/install_noalbs_core.ps1'; $f = Join-Path $env:TEMP 'install_noalbs_tmp.ps1'; try { $c = (Invoke-WebRequest $url -UseBasicParsing).Content; if ($c.StartsWith([char]0xFEFF)) { $c = $c.Substring(1) }; [System.IO.File]::WriteAllText($f, $c, (New-Object System.Text.UTF8Encoding $true)) } catch { Write-Host 'Download failed. Check your internet connection.' -ForegroundColor Red; Read-Host 'Press Enter to close'; exit 1 }; & $f -InstallDir '%~dp0'; Remove-Item $f -ErrorAction SilentlyContinue }"
+pause
+'@
+
+    [System.IO.File]::WriteAllText($Path, $content, [System.Text.UTF8Encoding]::new($false))
+}
+
 function Export-UserBundle {
     param(
         [pscustomobject]$State,
@@ -388,7 +400,8 @@ function Export-UserBundle {
     if (Test-Path $installBat) {
         Copy-Item -LiteralPath $installBat -Destination (Join-Path $tempDir 'install_noalbs.bat')
     } else {
-        Write-Host '  [警告] 找不到 install_noalbs.bat，zip 內只含設定文字。' -ForegroundColor Yellow
+        Write-NoalbsInstaller -Path (Join-Path $tempDir 'install_noalbs.bat')
+        Write-Host '  找不到專案內 install_noalbs.bat，已自動產生標準安裝檔。' -ForegroundColor Yellow
     }
 
     Compress-Archive -Path "$tempDir\*" -DestinationPath $zipFile -Force
