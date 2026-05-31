@@ -12,6 +12,12 @@ $relayHost = Get-IrlRelayHost
 $publicSrtPort = 5002
 $localSrtPort = 8890
 
+function Test-IsAdministrator {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
 function Test-HttpOk {
     param([string]$Url)
     try {
@@ -24,6 +30,9 @@ function Test-HttpOk {
 
 Write-Host "啟動 IRL 中繼伺服器環境..." -ForegroundColor Cyan
 Write-Host "這是管理員端腳本，只負責本機中繼伺服器，不會啟動借用者的 NOALBS。" -ForegroundColor DarkGray
+if (Test-IsAdministrator) {
+    Write-Host "[提醒] 目前是系統管理員權限。初始化和防火牆設定需要管理員；平常啟動伺服器建議用一般雙擊即可。" -ForegroundColor Yellow
+}
 
 # [1/2] MediaMTX 本機版
 Write-Host "[1/2] 檢查 MediaMTX..."
