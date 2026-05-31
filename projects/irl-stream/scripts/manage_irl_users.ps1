@@ -18,6 +18,7 @@ $ExportDir = Join-Path $ConfigDir 'exports'
 $MediaMtxDir = Join-Path $ProjectRoot 'tools\mediamtx'
 $MediaMtxExe = Join-Path $MediaMtxDir 'mediamtx.exe'
 $MediaMtxConfig = Join-Path $ConfigDir 'mediamtx.yml'
+$MediaMtxWatchdogPidFile = "$env:TEMP\mediamtx_watchdog.pid"
 
 function Ensure-Directories {
     New-Item -ItemType Directory -Path $ConfigDir -Force | Out-Null
@@ -253,22 +254,66 @@ function Write-MediaMtxConfig {
     [System.IO.File]::WriteAllText($MediaMtxConfig, ($lines -join "`r`n"), $utf8NoBom)
 }
 
+function Stop-MediaMtxWatchdog {
+    $savedPid = $null
+    if (Test-Path $MediaMtxWatchdogPidFile) {
+        $rawPid = Get-Content $MediaMtxWatchdogPidFile -ErrorAction SilentlyContinue
+        if ($rawPid -and $rawPid -match '^\d+$') {
+            $savedPid = [int]$rawPid
+            Stop-Process -Id $savedPid -Force -ErrorAction SilentlyContinue
+        }
+        Remove-Item $MediaMtxWatchdogPidFile -ErrorAction SilentlyContinue
+        Write-Host 'MediaMTX 監控已先關閉，避免重啟時又自動拉起舊設定。' -ForegroundColor DarkGray
+    }
+    return $savedPid
+}
+
+function Stop-MediaMtxForRestart {
+    $watchdogPid = Stop-MediaMtxWatchdog
+    $running = Get-Process 'mediamtx' -ErrorAction SilentlyContinue
+    if (-not $running) { return $true }
+
+    try {
+        Stop-Process -Name 'mediamtx' -Force -ErrorAction Stop
+        Start-Sleep -Seconds 1
+    } catch {
+        Write-Host '無法用目前權限停止 MediaMTX，準備要求管理員權限終止。' -ForegroundColor Yellow
+        $wdCmd = ''
+        if ($watchdogPid) {
+            $wdCmd = "Stop-Process -Id $watchdogPid -Force -ErrorAction SilentlyContinue; "
+        }
+        $killCmd = "${wdCmd}Stop-Process -Name mediamtx -Force -ErrorAction SilentlyContinue"
+        $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($killCmd))
+
+        try {
+            Start-Process powershell -Verb RunAs -WindowStyle Hidden -Wait `
+                -ArgumentList "-NoProfile -ExecutionPolicy Bypass -EncodedCommand $enc" `
+                -ErrorAction Stop
+            Start-Sleep -Milliseconds 800
+        } catch {
+            Write-Host '提權取消，MediaMTX 沒有停止；白名單已寫入，但目前執行中的伺服器還沒套用。' -ForegroundColor Red
+            Write-Host '請先用「關閉直播環境.bat」或工作管理員結束 mediamtx.exe，再重新啟動直播環境。' -ForegroundColor Yellow
+            return $false
+        }
+    }
+
+    if (Get-Process 'mediamtx' -ErrorAction SilentlyContinue) {
+        Write-Host 'MediaMTX 仍在執行；白名單已寫入，但目前執行中的伺服器還沒套用。' -ForegroundColor Red
+        Write-Host '請先用「關閉直播環境.bat」或工作管理員結束 mediamtx.exe，再重新啟動直播環境。' -ForegroundColor Yellow
+        return $false
+    }
+
+    return $true
+}
+
 function Restart-MediaMtx {
     if (-not (Test-Path $MediaMtxExe)) {
         Write-Host "找不到 MediaMTX：$MediaMtxExe" -ForegroundColor Red
         return
     }
 
-    $running = Get-Process 'mediamtx' -ErrorAction SilentlyContinue
-    if ($running) {
-        try {
-            Stop-Process -Name 'mediamtx' -Force -ErrorAction Stop
-            Start-Sleep -Seconds 1
-        } catch {
-            Write-Host '無法停止 MediaMTX（存取被拒）。' -ForegroundColor Red
-            Write-Host '提示：啟動和管理白名單請都用「以系統管理員身分執行」，或都用一般模式，不要混用。' -ForegroundColor Yellow
-            return
-        }
+    if (-not (Stop-MediaMtxForRestart)) {
+        return
     }
 
     Start-Process -FilePath $MediaMtxExe -ArgumentList "`"$MediaMtxConfig`"" -WorkingDirectory $MediaMtxDir -WindowStyle Hidden
