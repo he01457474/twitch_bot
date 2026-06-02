@@ -201,3 +201,34 @@ http://筆電內網IP:9997/v3/paths/get/<Twitch ID>
 ```
 
 `關閉直播環境.bat` 會先關 MediaMTX 監控，再關 Dynu DDNS 監控，最後關 MediaMTX。若 MediaMTX 是管理員權限啟動而一般權限關不掉，腳本會提示提權關閉或請到工作管理員手動結束。
+
+## 未來：SRTLA 聚合
+
+目前先維持純 SRT，不直接改成 SRTLA。MediaMTX 目前負責 SRT 中繼，不內建 SRTLA receiver；如果之後要做多網路聚合，需要在 MediaMTX 前面另外加一層 SRTLA receiver。
+
+預期架構：
+
+```text
+手機 IRL App（SRTLA）
+→ flycatirl.ddnsgeek.com:5002
+→ 筆電 SRTLA receiver
+→ 筆電 MediaMTX:8890
+→ 桌電 OBS / NOALBS
+```
+
+實作時要保留兩種模式：
+
+```text
+模式 1：純 SRT，現階段穩定使用
+模式 2：SRTLA 聚合，之後測試用
+```
+
+預估延遲：
+
+```text
+純 SRT：大約 1-3 秒
+SRTLA 聚合：大約 2-5 秒
+網路差或多路品質差很多：可能 5-10 秒以上
+```
+
+之後真的要做 SRTLA 時，要另外處理：SRTLA receiver 工具、啟動 / 關閉腳本、路由器 port、手機 App 設定、白名單 / 台主包是否要分 SRT 與 SRTLA 版本。
