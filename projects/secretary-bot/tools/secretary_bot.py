@@ -103,7 +103,6 @@ TERMS: dict[str, str] = {
     '換手率': '今天成交量占總股數的比例，越高代表交易越活絡。',
     '籌碼集中': '股票主要集中在少數大股東手中，通常代表大股東有信心持有。',
     '股價淨值比': '英文 PB，股價除以每股淨資產。小於 1 表示股價低於帳面價值。',
-    '殖利率': '股息除以股價，越高代表配息越豐厚。',
     '頭肩頂': 'K 線型態，出現後通常代表行情反轉向下。',
     'W 底': 'K 線型態，出現後通常代表行情反轉向上。',
     '儲能': '儲存電力的系統，搭配再生能源使用，相關台廠受惠。',
@@ -767,7 +766,6 @@ def build_report() -> tuple[discord.Embed, str]:
 
 # ── Bot ───────────────────────────────────────────────────────
 intents = discord.Intents.default()
-intents.message_content = True
 bot  = discord.Client(intents=intents)
 tree = app_commands.CommandTree(bot)
 
