@@ -134,31 +134,29 @@ SRTLA 之後會另外加 receiver；目前這個伺服器先跑純 SRT。
 
 桌電不需要另外分專案腳本；照平常開 OBS 和 NOALBS 即可。差別只有 OBS 拉流網址和 NOALBS 監測網址要改成筆電內網 IP。
 
-## 第一次搬到筆電
+## 之後更新筆電程式（常用）
 
-如果筆電上還沒有完整專案資料夾，先把下面這個檔案丟到筆電下載資料夾執行即可：
-
-```text
-projects/irl-stream/launchers/下載並初始化筆電IRL環境.bat
-```
-
-這個檔案可以單獨執行，會自動下載主 repo 到 `D:\FlyCatClaude Code`，再開啟筆電初始化流程。
-
-先在原本這台電腦雙擊：
+筆電已經在跑、只想把腳本更新成最新版時，在桌電這台雙擊：
 
 ```text
-projects/irl-stream/launchers/產生筆電IRL搬移包.bat
+projects/irl-stream/launchers/產生筆電程式更新包.bat
 ```
 
-它會把 Dynu、白名單、台主密鑰和 MediaMTX 實際設定打包成 zip。這個 zip 是私有資料，不要公開上傳。
+它只打包程式碼（scripts / launchers），**不含** config（白名單、密鑰、Dynu、通知設定），也不含 tools（mediamtx.exe）。產生的 zip 在 `config/exports/`。
 
-到筆電後，雙擊：
+把 zip 複製到筆電，解壓直接覆蓋筆電現有的 IRL 資料夾即可。只會更新腳本，config 與 tools 原封不動，白名單不會被動到，也不用再跑初始化。
+
+> 筆電第一次啟用管理員通知時，更新完雙擊 `launchers/設定管理員通知.bat` 設定一次即可。
+
+## 第一次全新搬到筆電（很少用到）
+
+如果是全新筆電、還沒有專案資料夾：先用程式更新包把 scripts / launchers 帶過去解壓，再雙擊：
 
 ```text
 projects/irl-stream/launchers/初始化筆電IRL環境.bat
 ```
 
-初始化腳本會逐步詢問後才執行下載、匯入設定、建立防火牆規則。它會自動下載 MediaMTX，匯入搬移包，並提示目前筆電內網 IP。
+初始化腳本會逐步詢問後才執行：下載 MediaMTX、建立防火牆規則、提示筆電內網 IP。白名單與密鑰請從原本電腦的 `config/` 手動複製過去，或重新用「管理IRL白名單.bat」建立。
 
 ## 路由器要改的地方
 

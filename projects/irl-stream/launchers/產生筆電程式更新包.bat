@@ -1,6 +1,6 @@
 @echo off
 set "PROJECT_DIR=%~dp0.."
-set "SCRIPT=%PROJECT_DIR%\scripts\export_laptop_relay_bundle.ps1"
+set "SCRIPT=%PROJECT_DIR%\scripts\export_laptop_code_update.ps1"
 
 if not exist "%SCRIPT%" (
   echo [ERROR] Missing export script:
