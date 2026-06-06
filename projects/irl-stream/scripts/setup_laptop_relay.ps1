@@ -71,7 +71,7 @@ function Import-PrivateConfig {
 
     New-Item -ItemType Directory -Path $ConfigDir -Force | Out-Null
 
-    $allowedFiles = @('dynu_ddns.json', 'relay_settings.json', 'relay_users.json', 'mediamtx.yml')
+    $allowedFiles = @('dynu_ddns.json', 'relay_settings.json', 'relay_users.json', 'mediamtx.yml', 'notification.json')
 
     $resolvedPath = (Resolve-Path -LiteralPath $ZipPath).Path
 

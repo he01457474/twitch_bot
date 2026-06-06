@@ -76,7 +76,7 @@ try {
     }
 
     # ── 私有設定：config ─────────────────────────────────────────────
-    $configFiles = @('dynu_ddns.json','relay_settings.json','relay_users.json','mediamtx.yml')
+    $configFiles = @('dynu_ddns.json','relay_settings.json','relay_users.json','mediamtx.yml','notification.json')
     $tempConfig  = Join-Path $tempRoot 'config'
     $copiedConfig = [System.Collections.Generic.List[string]]::new()
     foreach ($file in $configFiles) {
