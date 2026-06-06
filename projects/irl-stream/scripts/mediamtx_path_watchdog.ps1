@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$PidFile = "$env:TEMP\mediamtx_path_watchdog.pid"
 )
 

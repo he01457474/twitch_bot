@@ -26,7 +26,7 @@
   - `index.html`、`deploy.bat`、`3.py` 因既有部署流程暫時保留在工作目錄根層
   - 目前專案：餐廳工具 `projects/restaurant-bot/`、IRL / 直播環境 `projects/irl-stream/`、音訊工具 `projects/audio-tools/`、Twitch Bot 文件 `projects/twitch-bot/`
   - `__pycache__` 等快取目錄不納入 git，可直接刪除
-- 有新的偏好規則或權限設定，都寫回 AGENTS.md 和 CLAUDE.md（兩個檔案保持同步）
+- 有新的偏好規則或權限設定，都寫回 CLAUDE.md 和 AGENTS.md（兩個檔案保持同步）
 - 修改登入 / 重連相關功能時，必須同步處理「自動重連」和「手動登入」兩條流程，讓使用者可以直接用手動登入測試同一套行為
 - 對外給別人用的 GUI 工具要保留「一般版」和「除錯版」入口；一般版隱藏一般使用者用不到的測試工具，除錯版保留完整偵測、截圖、OCR 測試等工具
 - 餐廳機器人對外發佈以單一 `.exe` 為主，不把除錯版或額外 bat / README 一起交給一般使用者；打包版設定檔放在 exe 同目錄，方便使用者刪除重置
@@ -56,15 +56,6 @@
 - 筆電固定指 `LAPTOP-6N12C053`；之後使用者提到「筆電」時，除非另有說明，一律指這台。
 - 在筆電端執行自動化、下載工具、建立或覆蓋檔案、修改系統設定或防火牆規則前，必須先明確提示並等使用者確認後才繼續。
 - IRL 中繼伺服器若搬到筆電，目標機器預設為 `LAPTOP-6N12C053`。
-
-## 中文亂碼處理
-遇到工具輸出 GBK 亂碼時：
-1. 先以 CP936/GBK 解讀，轉成**繁體中文**呈現
-2. 無法轉繁體時，用中文呈現即可，不要把亂碼直接丟給用戶
-
-## 時間
-- 永遠使用台北時間（Asia/Taipei, UTC+8）
-- 涉及日期計算、時間戳記、檔案命名等操作前，先執行 `date` 確認系統時間
 
 ## PowerShell 腳本編碼
 - 包含中文的 `.ps1` 一律加 UTF-8 BOM（`EF BB BF`），否則 PS5 會以 GBK 讀取，破壞語法；缺 BOM 時 GBK 誤讀的位元組可能恰好等於 `{` `}` `"` 等語法字元，造成假性語法錯誤（如「Try 遺漏 Catch」），症狀難以從錯誤訊息直接判斷
@@ -125,4 +116,5 @@
 - 實際執行用的 MediaMTX 白名單設定放在 `projects/irl-stream/config/mediamtx.yml`，不提交 Git；`tools/mediamtx/mediamtx.yml` 只當無密鑰範本。
 - 新增、停用或重新產生 IRL 台主密鑰後，白名單工具會自動套用設定；若 MediaMTX 正在執行，會自動重啟。啟動直播環境時也會先自動套用白名單。
 - IRL 對外 DDNS 改由 Dynu 管理；本機私有設定放在 `projects/irl-stream/config/dynu_ddns.json` 和 `projects/irl-stream/config/relay_settings.json`，不提交 Git。
+- IRL 系統通知只通知管理員，不通知台主本人；管理員通知設定放在 `projects/irl-stream/config/notification.json`，狀態放在 `projects/irl-stream/config/notification_state.json`，都不提交 Git。通知內容不可包含台主推流 / 拉流密鑰。
 - SRTLA 聚合先列為未來事項，不要直接改掉現有純 SRT 架構；之後若要處理，保留純 SRT 與 SRTLA 測試模式兩套流程。MediaMTX 不當 SRTLA receiver，需另外加 receiver 後再轉給 MediaMTX。

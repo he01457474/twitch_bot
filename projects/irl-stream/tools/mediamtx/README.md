@@ -57,6 +57,33 @@ projects/irl-stream/config/relay_settings.json
 
 這些檔案不進 Git。
 
+## 管理員通知
+
+台主本人不用收到通知；通知只給管理員。第一次使用請在跑中繼伺服器的電腦雙擊：
+
+```text
+projects/irl-stream/launchers/設定管理員通知.bat
+```
+
+目前使用 Discord Webhook。設定會存在：
+
+```text
+projects/irl-stream/config/notification.json
+projects/irl-stream/config/notification_state.json
+```
+
+這些檔案不進 Git。通知內容只放狀態與 Twitch ID，不會把推流 / 拉流密鑰送到 Discord。
+
+會通知的事件：
+
+```text
+中繼伺服器啟動 / 關閉
+台主開始推流 / 停止推流
+MediaMTX 停止與自動重啟結果
+Dynu DDNS 更新失敗或 IP 改變
+白名單新增、停用、刪除、重產密鑰
+```
+
 ## 目前網路轉發
 
 目前確認可用的架構是「外部固定用 5002，本機 MediaMTX 用 8890」：

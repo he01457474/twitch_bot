@@ -5,6 +5,21 @@
 
 $ConfigDir = Get-IrlConfigDir
 $DynuConfig = Join-Path $ConfigDir 'dynu_ddns.json'
+$NotifyScript = Join-Path $PSScriptRoot 'send_irl_notification.ps1'
+
+function Send-AdminNotification {
+    param(
+        [string]$Title,
+        [string]$Message,
+        [string]$Level = 'Info',
+        [string]$Key = '',
+        [int]$CooldownMinutes = 5
+    )
+
+    if (Test-Path $NotifyScript) {
+        & $NotifyScript -Title $Title -Message $Message -Level $Level -Key $Key -CooldownMinutes $CooldownMinutes
+    }
+}
 
 if (-not (Test-Path $DynuConfig)) {
     Write-Host "尚未設定 Dynu DDNS，請先執行「設定DynuDDNS.bat」。" -ForegroundColor Yellow
@@ -68,6 +83,9 @@ fetch(url)
 
 if ($body -match '^(good|nochg)\b') {
     Write-Host "Dynu DDNS 已更新：$hostname（$body）" -ForegroundColor Green
+    if ($body -match '^good\b') {
+        Send-AdminNotification -Title 'Dynu DDNS 已更新 IP' -Message "$hostname：$body" -Level Success -Key 'dynu-ip-updated' -CooldownMinutes 1
+    }
     return
 }
 

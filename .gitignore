@@ -62,3 +62,9 @@ projects/irl-stream/docs/srt-relay-guide/
 projects/irl-stream/config/relay_users.json
 projects/irl-stream/config/mediamtx.yml
 projects/irl-stream/config/exports/
+
+# IRL Dynu DDNS 與管理員通知（私有設定/狀態）
+projects/irl-stream/config/dynu_ddns.json
+projects/irl-stream/config/relay_settings.json
+projects/irl-stream/config/notification.json
+projects/irl-stream/config/notification_state.json

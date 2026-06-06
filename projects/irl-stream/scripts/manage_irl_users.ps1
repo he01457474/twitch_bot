@@ -19,10 +19,25 @@ $MediaMtxDir = Join-Path $ProjectRoot 'tools\mediamtx'
 $MediaMtxExe = Join-Path $MediaMtxDir 'mediamtx.exe'
 $MediaMtxConfig = Join-Path $ConfigDir 'mediamtx.yml'
 $MediaMtxWatchdogPidFile = "$env:TEMP\mediamtx_watchdog.pid"
+$NotifyScript = Join-Path $PSScriptRoot 'send_irl_notification.ps1'
 
 function Ensure-Directories {
     New-Item -ItemType Directory -Path $ConfigDir -Force | Out-Null
     New-Item -ItemType Directory -Path $ExportDir -Force | Out-Null
+}
+
+function Send-AdminNotification {
+    param(
+        [string]$Title,
+        [string]$Message,
+        [string]$Level = 'Info',
+        [string]$Key = '',
+        [int]$CooldownMinutes = 5
+    )
+
+    if (Test-Path $NotifyScript) {
+        & $NotifyScript -Title $Title -Message $Message -Level $Level -Key $Key -CooldownMinutes $CooldownMinutes
+    }
 }
 
 function New-EmptyState {
@@ -309,16 +324,19 @@ function Stop-MediaMtxForRestart {
 function Restart-MediaMtx {
     if (-not (Test-Path $MediaMtxExe)) {
         Write-Host "找不到 MediaMTX：$MediaMtxExe" -ForegroundColor Red
+        Send-AdminNotification -Title '白名單套用失敗' -Message "找不到 MediaMTX：$MediaMtxExe" -Level Error -Key 'whitelist-apply-failed' -CooldownMinutes 5
         return
     }
 
     if (-not (Stop-MediaMtxForRestart)) {
+        Send-AdminNotification -Title '白名單套用失敗' -Message 'MediaMTX 沒有成功停止，新的白名單尚未套用到執行中的伺服器。' -Level Error -Key 'whitelist-apply-failed' -CooldownMinutes 5
         return
     }
 
     Start-Process -FilePath $MediaMtxExe -ArgumentList "`"$MediaMtxConfig`"" -WorkingDirectory $MediaMtxDir -WindowStyle Hidden
     Start-Sleep -Seconds 2
     Write-Host 'MediaMTX 已用最新白名單重新啟動。' -ForegroundColor Green
+    Send-AdminNotification -Title 'MediaMTX 已套用白名單重啟' -Message '白名單設定已寫入並重新啟動 MediaMTX。' -Level Success -Key 'whitelist-applied' -CooldownMinutes 1
 }
 
 function Apply-RunningMediaMtx {
@@ -418,10 +436,12 @@ function Add-User {
     $existing = Get-UserEntry $state $id
 
     if ($existing) {
+        $action = '重新啟用'
         $existing.enabled = $true
         Update-UserTimestamp $existing
         Write-Host "已重新啟用 $id，原本密鑰保留。" -ForegroundColor Green
     } else {
+        $action = '新增'
         Set-UserEntry $state $id (New-UserEntry $id)
         Write-Host "已新增 $id。" -ForegroundColor Green
     }
@@ -429,6 +449,7 @@ function Add-User {
     Save-State $state
     Write-MediaMtxConfig $state
     Export-UserBundle -State $state -TwitchId $id
+    Send-AdminNotification -Title "白名單$action台主" -Message "Twitch ID：$id" -Level Success -Key "whitelist-$action-$id" -CooldownMinutes 0
     Apply-RunningMediaMtx
 }
 
@@ -447,6 +468,7 @@ function Disable-User {
     Save-State $state
     Write-MediaMtxConfig $state
     Write-Host "已停用 $id。" -ForegroundColor Green
+    Send-AdminNotification -Title '白名單停用台主' -Message "Twitch ID：$id" -Level Warning -Key "whitelist-disable-$id" -CooldownMinutes 0
     Apply-RunningMediaMtx
 }
 
@@ -467,6 +489,7 @@ function Rotate-UserKeys {
     Write-MediaMtxConfig $state
     Write-Host "已重新產生 $id 的推流與拉流密鑰。" -ForegroundColor Green
     Export-UserBundle -State $state -TwitchId $id
+    Send-AdminNotification -Title '白名單重產密鑰' -Message "Twitch ID：$id" -Level Warning -Key "whitelist-rotate-$id" -CooldownMinutes 0
     Apply-RunningMediaMtx
 }
 
@@ -515,6 +538,7 @@ function Remove-User {
     Save-State $state
     Write-MediaMtxConfig $state
     Write-Host "已刪除 $id。" -ForegroundColor Green
+    Send-AdminNotification -Title '白名單刪除台主' -Message "Twitch ID：$id" -Level Warning -Key "whitelist-remove-$id" -CooldownMinutes 0
     Apply-RunningMediaMtx
 }
 
