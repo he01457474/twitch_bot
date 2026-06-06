@@ -55,6 +55,17 @@ if (Test-Path $pathWatchdogPidFile) {
     Write-Host '台主推流監控未在執行' -ForegroundColor DarkGray
 }
 
+# Discord 指令監聽
+$discordBotPidFile = "$env:TEMP\irl_discord_bot.pid"
+if (Test-Path $discordBotPidFile) {
+    $dbPid = Get-Content $discordBotPidFile -ErrorAction SilentlyContinue
+    if ($dbPid -and $dbPid -match '^\d+$') { Stop-Process -Id ([int]$dbPid) -Force -ErrorAction SilentlyContinue }
+    Remove-Item $discordBotPidFile -ErrorAction SilentlyContinue
+    Write-Host 'Discord 指令監聽已關閉' -ForegroundColor Green
+} else {
+    Write-Host 'Discord 指令監聽未在執行' -ForegroundColor DarkGray
+}
+
 # MediaMTX
 $mediamtx = Get-Process 'mediamtx' -ErrorAction SilentlyContinue
 if ($mediamtx) {

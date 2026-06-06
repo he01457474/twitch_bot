@@ -140,6 +140,35 @@ if (Test-Path $pathWatchdogScript) {
     Write-Host "台主推流監控已啟動（開始 / 停止推流通知管理員）" -ForegroundColor Green
 }
 
+# Discord 指令監聽（背景，收到 /狀態 就查狀態）
+$discordBotScript = Join-Path $PSScriptRoot "irl_discord_bot.py"
+$discordEnvFile = Join-Path $ProjectRoot ".env"
+$discordBotPidFile = "$env:TEMP\irl_discord_bot.pid"
+$discordToken = ''
+$discordPython = 'pythonw'
+if (Test-Path $discordEnvFile) {
+    foreach ($line in (Get-Content -LiteralPath $discordEnvFile -Encoding UTF8)) {
+        if ($line -match '^\s*IRL_DISCORD_TOKEN\s*=\s*(.+)$') { $discordToken = $matches[1].Trim() }
+        elseif ($line -match '^\s*IRL_PYTHON_PATH\s*=\s*(.+)$') { $discordPython = $matches[1].Trim() }
+    }
+}
+if ((Test-Path $discordBotScript) -and $discordToken) {
+    if (Test-Path $discordBotPidFile) {
+        $oldPid = Get-Content $discordBotPidFile -ErrorAction SilentlyContinue
+        if ($oldPid -and $oldPid -match '^\d+$') { Stop-Process -Id ([int]$oldPid) -Force -ErrorAction SilentlyContinue }
+        Remove-Item $discordBotPidFile -ErrorAction SilentlyContinue
+    }
+    try {
+        Start-Process -FilePath $discordPython -ArgumentList "`"$discordBotScript`"" -WorkingDirectory $PSScriptRoot -WindowStyle Hidden
+        Write-Host "Discord 指令監聽已啟動（在 Discord 打 /狀態 查狀態）" -ForegroundColor Green
+    } catch {
+        Write-Host "[警告] Discord 指令監聽啟動失敗：$($_.Exception.Message)" -ForegroundColor Yellow
+        Write-Host "請確認筆電已安裝 Python 與 discord.py。" -ForegroundColor DarkGray
+    }
+} elseif (Test-Path $discordBotScript) {
+    Write-Host "Discord 指令監聽未設定（.env 沒有 IRL_DISCORD_TOKEN），略過。可用「設定Discord指令.bat」設定。" -ForegroundColor DarkGray
+}
+
 Send-AdminNotification -Title 'IRL 中繼伺服器已啟動' -Message "對外網址：srt://${relayHost}:$publicSrtPort`n本機 SRT：:$localSrtPort" -Level Success -Key 'relay-started' -CooldownMinutes 1
 
 Write-Host ""
