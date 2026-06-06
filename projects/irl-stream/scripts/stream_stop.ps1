@@ -2,6 +2,22 @@
 Write-Host '關閉 IRL 中繼伺服器環境...' -ForegroundColor Cyan
 Write-Host ''
 
+$notifyScript = Join-Path $PSScriptRoot 'send_irl_notification.ps1'
+
+function Send-AdminNotification {
+    param(
+        [string]$Title,
+        [string]$Message,
+        [string]$Level = 'Info',
+        [string]$Key = '',
+        [int]$CooldownMinutes = 5
+    )
+
+    if (Test-Path $notifyScript) {
+        & $notifyScript -Title $Title -Message $Message -Level $Level -Key $Key -CooldownMinutes $CooldownMinutes
+    }
+}
+
 # MediaMTX watchdog：先讀 PID，不急著刪檔，後面提權時還需要
 $watchdogPidFile = "$env:TEMP\mediamtx_watchdog.pid"
 $savedWatchdogPid = $null
@@ -26,6 +42,17 @@ if (Test-Path $dynuWatchdogPidFile) {
     Write-Host 'Dynu DDNS 監控已關閉' -ForegroundColor Green
 } else {
     Write-Host 'Dynu DDNS 監控未在執行' -ForegroundColor DarkGray
+}
+
+# 台主推流 watchdog
+$pathWatchdogPidFile = "$env:TEMP\mediamtx_path_watchdog.pid"
+if (Test-Path $pathWatchdogPidFile) {
+    $pPid = Get-Content $pathWatchdogPidFile -ErrorAction SilentlyContinue
+    if ($pPid -and $pPid -match '^\d+$') { Stop-Process -Id ([int]$pPid) -Force -ErrorAction SilentlyContinue }
+    Remove-Item $pathWatchdogPidFile -ErrorAction SilentlyContinue
+    Write-Host '台主推流監控已關閉' -ForegroundColor Green
+} else {
+    Write-Host '台主推流監控未在執行' -ForegroundColor DarkGray
 }
 
 # MediaMTX
@@ -65,4 +92,5 @@ Write-Host ''
 Write-Host 'Dynu DDNS 會在下次啟動直播環境時重新啟動背景更新。' -ForegroundColor DarkGray
 Write-Host ''
 Write-Host '中繼伺服器環境已關閉完成。' -ForegroundColor Cyan
+Send-AdminNotification -Title 'IRL 中繼伺服器已關閉' -Message 'MediaMTX / Dynu / 台主推流監控已執行關閉流程。' -Level Info -Key 'relay-stopped' -CooldownMinutes 1
 Start-Sleep -Seconds 3

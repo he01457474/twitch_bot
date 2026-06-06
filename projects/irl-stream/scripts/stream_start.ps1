@@ -8,6 +8,9 @@ $whitelistScript = Join-Path $PSScriptRoot "manage_irl_users.ps1"
 $dynuUpdateScript = Join-Path $PSScriptRoot "update_dynu_ddns.ps1"
 $dynuWatchdogScript = Join-Path $PSScriptRoot "dynu_ddns_watchdog.ps1"
 $dynuWatchdogPidFile = "$env:TEMP\dynu_ddns_watchdog.pid"
+$pathWatchdogScript = Join-Path $PSScriptRoot "mediamtx_path_watchdog.ps1"
+$pathWatchdogPidFile = "$env:TEMP\mediamtx_path_watchdog.pid"
+$notifyScript = Join-Path $PSScriptRoot "send_irl_notification.ps1"
 $relayHost = Get-IrlRelayHost
 $publicSrtPort = 5002
 $localSrtPort = 8890
@@ -25,6 +28,20 @@ function Test-HttpOk {
         return $true
     } catch {
         return $false
+    }
+}
+
+function Send-AdminNotification {
+    param(
+        [string]$Title,
+        [string]$Message,
+        [string]$Level = 'Info',
+        [string]$Key = '',
+        [int]$CooldownMinutes = 5
+    )
+
+    if (Test-Path $notifyScript) {
+        & $notifyScript -Title $Title -Message $Message -Level $Level -Key $Key -CooldownMinutes $CooldownMinutes
     }
 }
 
@@ -97,6 +114,7 @@ if (Test-Path $dynuUpdateScript) {
     } catch {
         Write-Host "[警告] Dynu 更新失敗：$($_.Exception.Message)" -ForegroundColor Yellow
         Write-Host "中繼伺服器仍會繼續啟動；請稍後檢查「設定DynuDDNS.bat」。" -ForegroundColor DarkGray
+        Send-AdminNotification -Title 'Dynu DDNS 更新失敗' -Message $_.Exception.Message -Level Error -Key 'dynu-update-failed' -CooldownMinutes 10
     }
 } else {
     Write-Host "[警告] 找不到 Dynu 更新腳本：$dynuUpdateScript" -ForegroundColor Yellow
@@ -111,6 +129,18 @@ if (Test-Path $dynuWatchdogScript) {
     Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$dynuWatchdogScript`" -PidFile `"$dynuWatchdogPidFile`"" -WindowStyle Hidden
     Write-Host "Dynu DDNS 監控已啟動（每 5 分鐘自動更新）" -ForegroundColor Green
 }
+
+if (Test-Path $pathWatchdogScript) {
+    if (Test-Path $pathWatchdogPidFile) {
+        $oldPid = Get-Content $pathWatchdogPidFile -ErrorAction SilentlyContinue
+        if ($oldPid -and $oldPid -match '^\d+$') { Stop-Process -Id ([int]$oldPid) -Force -ErrorAction SilentlyContinue }
+        Remove-Item $pathWatchdogPidFile -ErrorAction SilentlyContinue
+    }
+    Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$pathWatchdogScript`" -PidFile `"$pathWatchdogPidFile`"" -WindowStyle Hidden
+    Write-Host "台主推流監控已啟動（開始 / 停止推流通知管理員）" -ForegroundColor Green
+}
+
+Send-AdminNotification -Title 'IRL 中繼伺服器已啟動' -Message "對外網址：srt://${relayHost}:$publicSrtPort`n本機 SRT：:$localSrtPort" -Level Success -Key 'relay-started' -CooldownMinutes 1
 
 Write-Host ""
 Write-Host "中繼伺服器已啟動完成。" -ForegroundColor Cyan
