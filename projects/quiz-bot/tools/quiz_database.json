@@ -1082,8 +1082,8 @@
     {
       "phash": 0,
       "question": "哪一個英文字母往左或右反轉都長的一樣？",
-      "answer_idx": 1,
-      "answer_text": "E",
+      "answer_idx": 4,
+      "answer_text": "A",
       "options": [
         "E",
         "G",
@@ -1095,8 +1095,8 @@
     {
       "phash": 0,
       "question": "遊戲中，怪物等級的顏色顯示，哪一種沒有？",
-      "answer_idx": 3,
-      "answer_text": "橘色",
+      "answer_idx": 4,
+      "answer_text": "藍色",
       "options": [
         "紫色",
         "紅色",
@@ -1147,8 +1147,8 @@
     {
       "phash": 0,
       "question": "以下哪一個不屬於遊戲中的「合成」技能？",
-      "answer_idx": 1,
-      "answer_text": "鞋匠",
+      "answer_idx": 2,
+      "answer_text": "挖洞",
       "options": [
         "鞋匠",
         "挖洞",
@@ -1251,8 +1251,8 @@
     {
       "phash": 0,
       "question": "以下哪一各武功不是師承傅君婥？",
-      "answer_idx": 4,
-      "answer_text": "急行術",
+      "answer_idx": 1,
+      "answer_text": "心如止水",
       "options": [
         "心如止水",
         "後天真氣",
@@ -1263,22 +1263,9 @@
     },
     {
       "phash": 0,
-      "question": "遊戲中，等級經驗值百分比，有到小數點後幾位？",
-      "answer_idx": 2,
-      "answer_text": "2",
-      "options": [
-        "1",
-        "2",
-        "3",
-        "4"
-      ],
-      "source": "巴哈姆特題庫"
-    },
-    {
-      "phash": 0,
       "question": "遊戲中，給靈獸為食能量藥水，靈獸能量最多可到幾星？",
-      "answer_idx": 2,
-      "answer_text": "12星",
+      "answer_idx": 1,
+      "answer_text": "10星",
       "options": [
         "10星",
         "12星",
@@ -1299,6 +1286,110 @@
         "達美樂"
       ],
       "source": "巴哈姆特題庫"
+    },
+    {
+      "phash": 13690661393240162304,
+      "question": "俠四 202e 年奧運預計在何地舉行",
+      "answer_idx": 1,
+      "answer_text": "上海",
+      "options": [
+        "上海",
+        "倫敦",
+        "美國一洛杉磯",
+        "布里斯本"
+      ],
+      "source": "手動"
+    },
+    {
+      "phash": 35604387691286015,
+      "question": "T 但願人長久，千里共嬋娟」是哪位元作家的作品？",
+      "answer_idx": 1,
+      "answer_text": "蘇軾",
+      "options": [
+        "蘇軾",
+        "蘇轍",
+        "蘇洵",
+        "蘇小妹"
+      ],
+      "source": "待校正"
+    },
+    {
+      "phash": 34968867822947583,
+      "question": "美國著名小説「老人與海」的作者是？",
+      "answer_idx": 3,
+      "answer_text": "海明威",
+      "options": [
+        "海知威",
+        "海森威",
+        "海明威",
+        "海東威"
+      ],
+      "source": "待校正"
+    },
+    {
+      "phash": 16914889042353407,
+      "question": "泰勒斯認為萬物之源是",
+      "answer_idx": 1,
+      "answer_text": "水",
+      "options": [
+        "水",
+        "火",
+        "風",
+        "原子"
+      ],
+      "source": "待校正"
+    },
+    {
+      "phash": 35575798241746175,
+      "question": "临香港規定市區的士(Taxi），車身要漆上什麼顏色?",
+      "answer_idx": 3,
+      "answer_text": "紅色",
+      "options": [
+        "黃色",
+        "黑色",
+        "紅色",
+        "緑色"
+      ],
+      "source": "待校正合併 100%"
+    },
+    {
+      "phash": 71914657539480319,
+      "question": "遊戲中怪物比玩家高出五級以上的時候，怪物名稱會顯示什麼顏色?",
+      "answer_idx": 3,
+      "answer_text": "紅色",
+      "options": [
+        "黃色",
+        "橘色",
+        "紅色",
+        "紫色"
+      ],
+      "source": "待校正合併 100%"
+    },
+    {
+      "phash": 35602187059526911,
+      "question": "黃易大俠四選電視劇\"鹿鼎記\"1984年的版本，男主角由誰主演",
+      "answer_idx": 1,
+      "answer_text": "梁朝偉",
+      "options": [
+        "梁朝偉",
+        "陳小春",
+        "張衛健",
+        "黃曉明"
+      ],
+      "source": "手動"
+    },
+    {
+      "phash": 17517419367943935,
+      "question": "F 飞泰山在森林中，是抓著何物蕩來蕩去？",
+      "answer_idx": null,
+      "answer_text": "",
+      "options": [
+        "長尾猴尾巴",
+        "樹枝",
+        "藤蔓",
+        "童軍繩"
+      ],
+      "source": "待校正"
     }
   ]
 }

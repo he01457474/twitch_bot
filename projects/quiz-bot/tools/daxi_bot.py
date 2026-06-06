@@ -11,6 +11,7 @@ import ctypes
 import re
 import io
 import subprocess
+import tempfile
 import datetime
 import time
 import hashlib
@@ -32,14 +33,18 @@ except Exception:
 
 if getattr(sys, "frozen", False):
     _APP_DIR = os.path.dirname(sys.executable)
+    _PROJECT_DIR = _APP_DIR
 else:
     _APP_DIR = os.path.dirname(os.path.abspath(__file__))
+    _PROJECT_DIR = os.path.dirname(_APP_DIR)
 
 QUIZ4_DB_FILE     = os.path.join(_APP_DIR, "quiz_database.json")
 SIDESTAND_DB_FILE = os.path.join(_APP_DIR, "sidestand_database.json")
 CFG_FILE          = os.path.join(_APP_DIR, "daxi_config.json")
 COORD_TEMPLATE_FILE = os.path.join(_APP_DIR, "coord_digit_templates.json")
 MAP_REF_DIR       = os.path.join(_APP_DIR, "map_refs")
+OCR_CACHE_DIR     = os.path.join(_APP_DIR, "ocr_cache")
+CAPTURE_DIR       = os.path.join(_PROJECT_DIR, "correction_captures")
 
 GAME_TITLE_KEYWORDS = ["黃易", "雙龍", "風起", "群俠"]
 GAME_TITLE_MIN_MATCHES = 2
@@ -60,6 +65,10 @@ DEFAULT_CONFIG = {
     "popup_brightness_threshold": 80,
     "popup_edge_threshold": 35,
     "popup_recognition_cooldown": 2.0,
+    "popup_same_signature_threshold": 0.01,
+    "monitor_idle_interval": 0.70,
+    "monitor_active_interval": 0.35,
+    "ocr_engine": "windows",  # windows / paddle / auto
     "question_region":  {"left": 0.17, "top": 0.12, "right": 0.74, "bottom": 0.27},
     "options_region":   {"left": 0.17, "top": 0.27, "right": 0.74, "bottom": 0.34},
     "popup_full_region":{"left": 0.15, "top": 0.09, "right": 0.76, "bottom": 0.36},
@@ -67,7 +76,11 @@ DEFAULT_CONFIG = {
     "coord_region":     {"left": 0.881, "top": 0.0017, "right": 0.9767, "bottom": 0.0345},
     "quiz_map_keywords": [],   # 留空 = 不篩選；填入關鍵字才啟用地圖過濾
     "map_check_interval": 3,   # 地圖名稱重新 OCR 的間隔秒數
+    "map_idle_check_interval": 8,
     "map_image_match_threshold": 0.78,
+    "map_leave_grace_seconds": 5,
+    "map_leave_stop_misses": 2,
+    "auto_stop_on_map_leave": 1,
     "coord_check_interval": 2.0,
     "coord_template_threshold": 0.34,
     "coord_auto_learn": 1,
@@ -86,10 +99,17 @@ DEFAULT_CONFIG = {
     "gemini_api_key": "",
     "gemini_model": "gemini-2.0-flash",
     "api_key": "",
+    "allow_paid_api_fallback": 0,
     "api_cooldown": 10,
     "api_rate_limit_backoff": 300,
+    "quiz4_match_threshold": 0.78,
     "match_threshold": 0.72,
-    "auto_add_duplicate_threshold": 0.80,
+    "image_question_match_threshold": 0.88,
+    "trust_ocr_text_for_pending": 0,
+    "auto_add_duplicate_threshold": 0.68,
+    "pending_merge_threshold": 0.68,
+    "save_pending_captures": 1,
+    "save_capture_regions": 1,
     "window_width": 460,
     "window_height": 460,
 }
@@ -179,6 +199,89 @@ async def run():
         return
     print(json.dumps({"text": "", "lines": []}, ensure_ascii=False), end='')
 asyncio.run(run())
+"""
+
+_PADDLE_OCR_SCRIPT = r"""
+import sys, json, tempfile, os
+sys.stdout.reconfigure(encoding='utf-8')
+
+def flatten_result(obj, out):
+    if obj is None:
+        return
+    if isinstance(obj, dict):
+        texts = obj.get("rec_texts") or obj.get("texts")
+        scores = obj.get("rec_scores") or obj.get("scores") or []
+        if isinstance(texts, list):
+            for i, text in enumerate(texts):
+                if text:
+                    score = scores[i] if i < len(scores) else 1.0
+                    out.append({"text": str(text), "score": float(score)})
+            return
+        for key in ("text", "label", "transcription"):
+            if obj.get(key):
+                out.append({"text": str(obj[key]), "score": float(obj.get("score", 1.0))})
+                return
+        for value in obj.values():
+            flatten_result(value, out)
+        return
+    if isinstance(obj, (list, tuple)):
+        if len(obj) >= 2 and isinstance(obj[1], (list, tuple)) and obj[1] and isinstance(obj[1][0], str):
+            score = obj[1][1] if len(obj[1]) > 1 else 1.0
+            out.append({"text": obj[1][0], "score": float(score)})
+            return
+        for value in obj:
+            flatten_result(value, out)
+
+def make_engine():
+    from paddleocr import PaddleOCR
+    attempts = [
+        dict(
+            lang="ch",
+            text_detection_model_name="PP-OCRv5_mobile_det",
+            text_recognition_model_name="PP-OCRv5_mobile_rec",
+            use_doc_orientation_classify=False,
+            use_doc_unwarping=False,
+            use_textline_orientation=False,
+        ),
+        dict(lang="ch", use_doc_orientation_classify=False, use_doc_unwarping=False, use_textline_orientation=False),
+        dict(lang="ch", use_angle_cls=False, show_log=False),
+        dict(lang="ch"),
+    ]
+    last = None
+    for kwargs in attempts:
+        try:
+            return PaddleOCR(**kwargs)
+        except TypeError as e:
+            last = e
+    if last:
+        raise last
+    return PaddleOCR(lang="ch")
+
+def run():
+    data = sys.stdin.buffer.read()
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+    try:
+        tmp.write(data)
+        tmp.close()
+        engine = make_engine()
+        if hasattr(engine, "ocr"):
+            try:
+                result = engine.ocr(tmp.name, cls=False)
+            except TypeError:
+                result = engine.ocr(tmp.name)
+        else:
+            result = engine.predict(tmp.name)
+        items = []
+        flatten_result(result, items)
+        text = "\n".join(item["text"] for item in items if item.get("text"))
+        print(json.dumps({"text": text, "items": items}, ensure_ascii=False), end="")
+    finally:
+        try:
+            os.unlink(tmp.name)
+        except Exception:
+            pass
+
+run()
 """
 
 # ── 截圖 / Hash / OCR ──────────────────────────────────────────────────────────
@@ -313,7 +416,150 @@ def _prepare_ocr_image(pil_img):
         img = img.resize((img.width * scale, img.height * scale), Image.Resampling.LANCZOS)
     return img
 
+def _bright_text_mask(pil_img, min_value=145, max_delta=105):
+    img = pil_img.convert("RGB")
+    out = Image.new("L", img.size, 0)
+    src = img.load()
+    dst = out.load()
+    for y in range(img.height):
+        for x in range(img.width):
+            r, g, b = src[x, y]
+            mx, mn = max(r, g, b), min(r, g, b)
+            if mx >= min_value and mx - mn <= max_delta:
+                dst[x, y] = 255
+    return out
+
+def _text_signature_bits(pil_img, size=(128, 48)):
+    small = pil_img.convert("RGB").resize(size, Image.Resampling.BILINEAR)
+    mask = _bright_text_mask(small, min_value=115, max_delta=170)
+    return "".join("1" if p > 0 else "0" for p in mask.getdata())
+
+def _signature_distance(a, b):
+    if not a or not b or len(a) != len(b):
+        return 1.0
+    return sum(x != y for x, y in zip(a, b)) / len(a)
+
+def _trim_to_mask(pil_img, mask, pad=2, min_pixels=8):
+    bbox = mask.getbbox()
+    if not bbox:
+        return pil_img
+    if sum(1 for p in mask.getdata() if p > 0) < min_pixels:
+        return pil_img
+    x1, y1, x2, y2 = bbox
+    x1 = max(0, x1 - pad)
+    y1 = max(0, y1 - pad)
+    x2 = min(pil_img.width, x2 + pad)
+    y2 = min(pil_img.height, y2 + pad)
+    if x2 - x1 < 4 or y2 - y1 < 4:
+        return pil_img
+    return pil_img.crop((x1, y1, x2, y2))
+
+def _prepare_text_region_ocr_image(pil_img, min_value=145):
+    mask = _bright_text_mask(pil_img, min_value=min_value)
+    trimmed = _trim_to_mask(pil_img, mask, pad=2)
+    text_img = ImageOps.autocontrast(trimmed.convert("RGB"))
+    text_img = ImageEnhance.Contrast(text_img).enhance(1.8)
+    text_img = ImageEnhance.Sharpness(text_img).enhance(1.6)
+    max_side = max(text_img.width, text_img.height)
+    scale = 4 if max_side < 220 else 3 if max_side < 500 else 2
+    text_img = text_img.resize((text_img.width * scale, text_img.height * scale), Image.Resampling.LANCZOS)
+    return ImageOps.expand(text_img, border=(14, 10), fill=(0, 0, 0))
+
+def _prepare_question_ocr_images(pil_img):
+    variants = []
+
+    def add(img):
+        if img.width < 4 or img.height < 4:
+            return
+        sig = (img.size, compute_phash(img))
+        if any(old_sig == sig for old_sig, _ in variants):
+            return
+        variants.append((sig, img.convert("RGB")))
+
+    add(_prepare_ocr_image(pil_img))
+
+    gray = ImageOps.autocontrast(pil_img.convert("L"))
+    gray = ImageEnhance.Contrast(gray).enhance(2.0)
+    gray = ImageEnhance.Sharpness(gray).enhance(1.8)
+    scale = max(3, min(6, int(96 / max(1, gray.height)) + 1))
+    gray = gray.resize((gray.width * scale, gray.height * scale), Image.Resampling.LANCZOS)
+    add(ImageOps.expand(gray.convert("RGB"), border=(18, 12), fill=(0, 0, 0)))
+
+    for min_value in (115, 135):
+        mask = _bright_text_mask(pil_img, min_value=min_value, max_delta=150)
+        trimmed = _trim_to_mask(pil_img, mask, pad=3, min_pixels=6)
+        tmask = _bright_text_mask(trimmed, min_value=min_value, max_delta=150)
+        high = Image.new("RGB", trimmed.size, (0, 0, 0))
+        src = trimmed.convert("RGB").load()
+        dst = high.load()
+        mpx = tmask.load()
+        for y in range(trimmed.height):
+            for x in range(trimmed.width):
+                if mpx[x, y] > 0:
+                    r, g, b = src[x, y]
+                    mx = max(r, g, b)
+                    dst[x, y] = (mx, mx, mx)
+        scale = max(4, min(8, int(110 / max(1, high.height)) + 1))
+        high = high.resize((high.width * scale, high.height * scale), Image.Resampling.LANCZOS)
+        add(ImageOps.expand(high, border=(22, 14), fill=(0, 0, 0)))
+
+    add(_prepare_text_region_ocr_image(pil_img, min_value=120))
+    return [img for _, img in variants]
+
+def _prepare_paddle_question_ocr_images(pil_img):
+    variants = []
+
+    def add(img):
+        if img.width < 4 or img.height < 4:
+            return
+        sig = (img.size, compute_phash(img))
+        if any(old_sig == sig for old_sig, _ in variants):
+            return
+        variants.append((sig, img.convert("RGB")))
+
+    for min_value in (135, 120, 115):
+        mask = _bright_text_mask(pil_img, min_value=min_value, max_delta=150)
+        trimmed = _trim_to_mask(pil_img, mask, pad=3, min_pixels=6)
+        tmask = _bright_text_mask(trimmed, min_value=min_value, max_delta=150)
+        high = Image.new("RGB", trimmed.size, (0, 0, 0))
+        src = trimmed.convert("RGB").load()
+        dst = high.load()
+        mpx = tmask.load()
+        for y in range(trimmed.height):
+            for x in range(trimmed.width):
+                if mpx[x, y] > 0:
+                    r, g, b = src[x, y]
+                    mx = max(r, g, b)
+                    dst[x, y] = (mx, mx, mx)
+        scale = max(4, min(8, int(110 / max(1, high.height)) + 1))
+        high = high.resize((high.width * scale, high.height * scale), Image.Resampling.LANCZOS)
+        add(ImageOps.expand(high, border=(22, 14), fill=(0, 0, 0)))
+
+    add(_prepare_text_region_ocr_image(pil_img, min_value=120))
+    add(_prepare_ocr_image(pil_img))
+    return [img for _, img in variants]
+
+def ocr_map_name_image(pil_img, on_detail=None):
+    texts = []
+    for prepared in (
+        _prepare_text_region_ocr_image(pil_img, min_value=135),
+        _prepare_ocr_image(_trim_to_mask(pil_img, _bright_text_mask(pil_img, min_value=135), pad=2)),
+    ):
+        text = ocr_prepared_image(prepared, on_detail=on_detail).strip()
+        clean = clean_map_name_text(text)
+        if clean and clean not in texts:
+            texts.append(clean)
+    if not texts:
+        return ""
+    cjk_texts = [t for t in texts if re.search(r"[\u4e00-\u9fff\u3400-\u4dbf]", t)]
+    best = max(cjk_texts or texts, key=len)
+    if len(best) < 2 and not re.search(r"[\u4e00-\u9fff\u3400-\u4dbf]", best):
+        return ""
+    return best
+
 def _prepare_coord_ocr_image(pil_img):
+    mask = _bright_text_mask(pil_img, min_value=135, max_delta=85)
+    pil_img = _trim_to_mask(pil_img, mask, pad=2, min_pixels=10)
     img = pil_img.convert("L")
     img = ImageOps.autocontrast(img)
     img = ImageEnhance.Contrast(img).enhance(2.2)
@@ -322,7 +568,101 @@ def _prepare_coord_ocr_image(pil_img):
     img = ImageOps.expand(img.convert("RGB"), border=(24, 18), fill=(0, 0, 0))
     return img
 
-def ocr_prepared_image(pil_img, on_detail=None):
+_OCR_ENGINE = "auto"
+_PADDLE_OCR_AVAILABLE = None
+_PADDLE_OCR_WARNED = False
+_PADDLE_OCR_ENGINE = None
+_OCR_TEXT_CACHE = {}
+
+def set_ocr_engine(engine):
+    global _OCR_ENGINE
+    engine = str(engine or "auto").strip().lower()
+    _OCR_ENGINE = engine if engine in ("auto", "paddle", "windows") else "auto"
+
+def ocr_engine_label():
+    if _OCR_ENGINE == "auto":
+        if _PADDLE_OCR_AVAILABLE is True:
+            return "auto（PaddleOCR）"
+        if _PADDLE_OCR_AVAILABLE is False:
+            return "auto（Windows OCR 備援）"
+    return _OCR_ENGINE
+
+def _prepare_paddle_env():
+    os.makedirs(OCR_CACHE_DIR, exist_ok=True)
+    updates = {
+        "HOME": OCR_CACHE_DIR,
+        "USERPROFILE": OCR_CACHE_DIR,
+        "PADDLE_HOME": os.path.join(OCR_CACHE_DIR, "paddle"),
+        "PADDLEOCR_HOME": os.path.join(OCR_CACHE_DIR, "paddleocr"),
+        "XDG_CACHE_HOME": OCR_CACHE_DIR,
+        "HF_HOME": os.path.join(OCR_CACHE_DIR, "huggingface"),
+        "MODELSCOPE_CACHE": os.path.join(OCR_CACHE_DIR, "modelscope"),
+        "FLAGS_use_mkldnn": "0",
+        "PADDLE_PDX_ENABLE_MKLDNN_BYDEFAULT": "0",
+        "PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK": "True",
+    }
+    for key, value in updates.items():
+        os.environ[key] = value
+
+def _flatten_paddle_result(obj, out):
+    if obj is None:
+        return
+    if isinstance(obj, dict):
+        texts = obj.get("rec_texts") or obj.get("texts")
+        scores = obj.get("rec_scores") or obj.get("scores") or []
+        if isinstance(texts, list):
+            for i, text in enumerate(texts):
+                if text:
+                    score = scores[i] if i < len(scores) else 1.0
+                    out.append({"text": str(text), "score": float(score)})
+            return
+        for key in ("text", "label", "transcription"):
+            if obj.get(key):
+                out.append({"text": str(obj[key]), "score": float(obj.get("score", 1.0))})
+                return
+        for value in obj.values():
+            _flatten_paddle_result(value, out)
+        return
+    if isinstance(obj, (list, tuple)):
+        if len(obj) >= 2 and isinstance(obj[1], (list, tuple)) and obj[1] and isinstance(obj[1][0], str):
+            score = obj[1][1] if len(obj[1]) > 1 else 1.0
+            out.append({"text": obj[1][0], "score": float(score)})
+            return
+        for value in obj:
+            _flatten_paddle_result(value, out)
+
+def _get_paddle_engine():
+    global _PADDLE_OCR_ENGINE
+    if _PADDLE_OCR_ENGINE is not None:
+        return _PADDLE_OCR_ENGINE
+    _prepare_paddle_env()
+    from paddleocr import PaddleOCR
+    attempts = [
+        dict(
+            lang="ch",
+            text_detection_model_name="PP-OCRv5_mobile_det",
+            text_recognition_model_name="PP-OCRv5_mobile_rec",
+            use_doc_orientation_classify=False,
+            use_doc_unwarping=False,
+            use_textline_orientation=False,
+        ),
+        dict(lang="ch", use_doc_orientation_classify=False, use_doc_unwarping=False, use_textline_orientation=False),
+        dict(lang="ch", use_angle_cls=False, show_log=False),
+        dict(lang="ch"),
+    ]
+    last = None
+    for kwargs in attempts:
+        try:
+            _PADDLE_OCR_ENGINE = PaddleOCR(**kwargs)
+            return _PADDLE_OCR_ENGINE
+        except TypeError as e:
+            last = e
+    if last:
+        raise last
+    _PADDLE_OCR_ENGINE = PaddleOCR(lang="ch")
+    return _PADDLE_OCR_ENGINE
+
+def _run_windows_ocr(pil_img, on_detail=None):
     try:
         buf = io.BytesIO()
         pil_img.convert("RGB").save(buf, format="PNG")
@@ -340,6 +680,58 @@ def ocr_prepared_image(pil_img, on_detail=None):
     except Exception as e:
         if on_detail: on_detail(f"OCR 例外：{type(e).__name__}: {e}")
         return ""
+
+def _run_paddle_ocr(pil_img, on_detail=None):
+    global _PADDLE_OCR_AVAILABLE, _PADDLE_OCR_WARNED
+    if _PADDLE_OCR_AVAILABLE is False:
+        return ""
+    try:
+        engine = _get_paddle_engine()
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+        try:
+            pil_img.convert("RGB").save(tmp, format="PNG")
+            tmp.close()
+            if hasattr(engine, "ocr"):
+                try:
+                    result = engine.ocr(tmp.name, cls=False)
+                except TypeError:
+                    result = engine.ocr(tmp.name)
+            else:
+                result = engine.predict(tmp.name)
+        finally:
+            try:
+                os.unlink(tmp.name)
+            except Exception:
+                pass
+        items = []
+        _flatten_paddle_result(result, items)
+        text = "\n".join(item["text"] for item in items if item.get("text")).strip()
+        _PADDLE_OCR_AVAILABLE = True
+        return text
+    except Exception as e:
+        _PADDLE_OCR_AVAILABLE = False
+        if on_detail and not _PADDLE_OCR_WARNED:
+            on_detail(f"PaddleOCR 例外，已改用 Windows OCR：{type(e).__name__}: {e}")
+            _PADDLE_OCR_WARNED = True
+        return ""
+
+def ocr_prepared_image(pil_img, on_detail=None):
+    cache_key = (_OCR_ENGINE, pil_img.size, compute_phash(pil_img))
+    if cache_key in _OCR_TEXT_CACHE:
+        return _OCR_TEXT_CACHE[cache_key]
+    engine = _OCR_ENGINE
+    if engine in ("auto", "paddle"):
+        text = _run_paddle_ocr(pil_img, on_detail=on_detail)
+        if text or engine == "paddle":
+            _OCR_TEXT_CACHE[cache_key] = text
+            if len(_OCR_TEXT_CACHE) > 128:
+                _OCR_TEXT_CACHE.pop(next(iter(_OCR_TEXT_CACHE)))
+            return text
+    text = _run_windows_ocr(pil_img, on_detail=on_detail)
+    _OCR_TEXT_CACHE[cache_key] = text
+    if len(_OCR_TEXT_CACHE) > 128:
+        _OCR_TEXT_CACHE.pop(next(iter(_OCR_TEXT_CACHE)))
+    return text
 
 def ocr_coordinate_image(pil_img, on_detail=None):
     texts = []
@@ -367,6 +759,8 @@ def _coord_binary_image(pil_img, size=None):
     return out
 
 def _segment_coord_digits(pil_img):
+    mask = _bright_text_mask(pil_img, min_value=135, max_delta=85)
+    pil_img = _trim_to_mask(pil_img, mask, pad=1, min_pixels=10)
     bw = _coord_binary_image(pil_img)
     w, h = bw.size
     data = bw.load()
@@ -433,6 +827,8 @@ def _segment_coord_digits(pil_img):
     return segments
 
 def _coord_template_bits(pil_img, size=(12, 18)):
+    mask = _bright_text_mask(pil_img, min_value=135, max_delta=85)
+    pil_img = _trim_to_mask(pil_img, mask, pad=1, min_pixels=2)
     bw = _coord_binary_image(pil_img, size=size)
     return "".join("1" if p > 0 else "0" for p in bw.getdata())
 
@@ -507,23 +903,7 @@ def read_coord_by_templates(coord_img, threshold=0.34):
     return None, f"模板結果太短：{raw}"
 
 def ocr_image(pil_img, on_detail=None):
-    try:
-        buf = io.BytesIO()
-        _prepare_ocr_image(pil_img).save(buf, format="PNG")
-        proc = subprocess.run(
-            [sys.executable, "-c", _OCR_SCRIPT],
-            input=buf.getvalue(), capture_output=True, timeout=10,
-        )
-        if proc.returncode != 0 and on_detail:
-            err = proc.stderr.decode("utf-8", errors="replace").strip()
-            on_detail(f"OCR 程序錯誤（returncode={proc.returncode}）：{err[:120]}")
-        elif not proc.stdout.strip() and proc.stderr.strip() and on_detail:
-            err = proc.stderr.decode("utf-8", errors="replace").strip()
-            on_detail(f"OCR 無結果，stderr：{err[:120]}")
-        return proc.stdout.decode("utf-8", errors="replace").strip()
-    except Exception as e:
-        if on_detail: on_detail(f"OCR 例外：{type(e).__name__}: {e}")
-        return ""
+    return ocr_prepared_image(_prepare_ocr_image(pil_img), on_detail=on_detail)
 
 _OCR_DETAIL_AVAILABLE = None
 
@@ -553,31 +933,202 @@ def ocr_image_details(pil_img, on_detail=None):
         if on_detail: on_detail(f"OCR 座標例外：{type(e).__name__}: {e}")
         return {"text": "", "lines": []}
 
+def _question_candidate_score(text):
+    clean = clean_question_candidate(text)
+    norm = normalize_question_text(clean)
+    if not norm:
+        return 0.0
+    cjk_count = len(re.findall(r"[\u4e00-\u9fff\u3400-\u4dbf]", norm))
+    digit_count = len(re.findall(r"\d", norm))
+    operator_count = len(re.findall(r"[+\-*/=><]", norm))
+    score = min(40, len(norm)) + cjk_count * 1.5 + digit_count * 0.5 + operator_count * 1.0
+    if _QUESTION_CUE_RE.search(clean):
+        score += 8
+    if "？" in clean or "?" in clean:
+        score += 6
+    if re.search(r"(以下|下列|哪|何|請問|是否|是不是)", clean):
+        score += 5
+    if len(norm) < 4:
+        score -= 20
+    if _looks_like_nameplate_text(clean):
+        score -= 35
+    if _is_question_title_line(clean):
+        score -= 35
+    if len(_OPT_MARKER_RE.findall(clean)) >= 2 or len(_OPT_INLINE_RE.findall(clean)) >= 2:
+        score -= 25
+    if re.search(r"(剩\s*[餘余]?時間|倒\s*數|\d{1,3}\s*秒)", clean):
+        score -= 15
+    symbol_count = len(re.findall(r"[^\w\u4e00-\u9fff\u3400-\u4dbf\s+\-*/=><？?，,。.:：]", clean))
+    if symbol_count > max(2, len(clean) // 5):
+        score -= symbol_count * 2
+    return max(0.0, score)
+
+def ocr_question_image(pil_img, on_detail=None, high_precision=False):
+    candidates = []
+    prepared_images = (
+        _prepare_paddle_question_ocr_images(pil_img)
+        if _OCR_ENGINE in ("auto", "paddle") and _PADDLE_OCR_AVAILABLE is not False
+        else _prepare_question_ocr_images(pil_img)
+    )
+    fast_threshold = 35 if _OCR_ENGINE in ("auto", "paddle") and _PADDLE_OCR_AVAILABLE is not False else 50
+    for idx, prepared in enumerate(prepared_images, start=1):
+        raw = ocr_prepared_image(prepared, on_detail=on_detail)
+        clean = clean_question_candidate(raw)
+        score = _question_candidate_score(clean)
+        if clean and score >= 12:
+            if not high_precision and idx == 1 and score >= fast_threshold:
+                return clean
+            candidates.append((score, len(normalize_question_text(clean)), idx, clean))
+            if not high_precision and score >= fast_threshold:
+                break
+    if not candidates:
+        return ""
+    candidates.sort(reverse=True)
+    best_score, _, best_idx, best_text = candidates[0]
+    if on_detail and best_idx > 1:
+        on_detail(f"題目 OCR 使用第 {best_idx} 種清晰化版本（分數 {best_score:.0f}）")
+    return best_text
+
 def _clean_ocr_text(t):
     cjk = r'一-鿿㐀-䶿'
     t = re.sub(rf'(?<=[{cjk}])[ \t]+(?=[{cjk}])', '', t or "")
     t = re.sub(rf'(?<=[{cjk}])[ \t]+(?=[，。！？；：、,.?!])', '', t)
     t = re.sub(rf'(?<=[，。！？；：、,.?!])[ \t]+(?=[{cjk}])', '', t)
-    t = re.sub(r'剩[餘余]時間.*', '', t)
-    t = re.sub(r'[ \t]*\d+[ \t]*秒?\s*$', '', t.strip())
     return t.strip()
 
+_NAMEPLATE_TITLE_PATTERN = (
+    r"初出茅廬|小有名氣|聲名鵲起|聲聞天下|聲聞天|名揚四海|名揚天下|威震天下|天下無雙|"
+    r"一代宗師|登峰造極|出神入化|爐火純青|武林高手|江湖豪傑|俠名遠播"
+)
+_NAMEPLATE_SUFFIX_RE = re.compile(rf"(?:{_NAMEPLATE_TITLE_PATTERN})$")
+_NAMEPLATE_PREFIX_RE = re.compile(rf"^(?:{_NAMEPLATE_TITLE_PATTERN})")
+_NAMEPLATE_INLINE_RE = re.compile(rf"(?:{_NAMEPLATE_TITLE_PATTERN})")
+_QUESTION_CUE_PREFIX_RE = re.compile(
+    r"(以下|下列|請問|試問|問|哪一|哪個|哪種|何者|何種|什麼|甚麼|為何|為什麼|是否|是不是|"
+    r"哪|何|誰|幾|多少|何時|何地|哪裡|哪裏)"
+)
+
+def _strip_nameplate_suffix(text):
+    text = (text or "").strip()
+    rough = re.sub(r"[^0-9A-Za-z+\-*/=><\u4e00-\u9fff\u3400-\u4dbf]+", "", text)
+    if len(rough) < 8:
+        return text
+    return _NAMEPLATE_SUFFIX_RE.sub("", text).strip()
+
+def _strip_nameplate_prefix(text):
+    text = (text or "").strip()
+    text = _NAMEPLATE_PREFIX_RE.sub("", text).strip()
+    cue = _QUESTION_CUE_PREFIX_RE.search(text)
+    if cue and 0 < cue.start() <= 12:
+        return text[cue.start():].strip()
+    return text
+
+def _strip_nameplate_inline(text):
+    text = (text or "").strip()
+    rough = re.sub(r"[^0-9A-Za-z+\-*/=><\u4e00-\u9fff\u3400-\u4dbf]+", "", text)
+    if len(rough) < 8:
+        return text
+    return _NAMEPLATE_INLINE_RE.sub("", text).strip()
+
+def _rough_questionish_score(text):
+    text = (text or "").strip()
+    rough = re.sub(r"[^0-9A-Za-z+\-*/=><\u4e00-\u9fff\u3400-\u4dbf？?]+", "", text)
+    if not rough:
+        return 0
+    cjk_count = len(re.findall(r"[\u4e00-\u9fff\u3400-\u4dbf]", rough))
+    score = min(35, len(rough)) + cjk_count
+    if _QUESTION_CUE_PREFIX_RE.search(text):
+        score += 12
+    if "？" in text or "?" in text:
+        score += 8
+    if re.search(r"\d\s*[+\-*/=><]\s*\d|\d{2,}", rough):
+        score += 8
+    if _NAMEPLATE_SUFFIX_RE.search(text):
+        score -= 10
+    if _NAMEPLATE_PREFIX_RE.search(text):
+        score -= 6
+    return score
+
+def strip_countdown_text(text):
+    text = _clean_ocr_text(text or "")
+    countdown = re.search(
+        r"(剩\s*[餘余]?\s*(?:時\s*間)?|倒\s*數)\s*[\s:：·・。.,，、\-—是]*\d{1,3}\s*秒?",
+        text,
+    )
+    if countdown:
+        before = _strip_nameplate_suffix(text[:countdown.start()])
+        after = _strip_nameplate_prefix(text[countdown.end():])
+        if before and after:
+            before_score = _rough_questionish_score(before)
+            after_score = _rough_questionish_score(after)
+            if before_score >= 12 and after_score >= 12:
+                return before + after
+            return before if before_score >= after_score else after
+        return before or after
+    text = re.sub(r"剩\s*[餘余]?\s*(?:時\s*間)?\s*[\s:：·・。.,，、\-—是]*\d{1,3}\s*秒?", "", text)
+    text = re.sub(r"倒\s*數\s*[:：]?\s*\d{1,3}\s*秒?", "", text)
+    text = re.sub(r"(?:剩|餘|余|時|間){1,4}\s*[:：]?\s*\d{1,3}\s*秒?", "", text)
+    text = re.sub(r"(?<![+\-*/×÷=＝])\b\d{1,3}\s*秒\b(?![+\-*/×÷=＝])", "", text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+def normalize_math_symbols(text):
+    return (text or "").translate(str.maketrans({
+        "＋": "+", "﹢": "+", "－": "-", "﹣": "-",
+        "×": "*", "＊": "*", "╳": "*",
+        "÷": "/", "／": "/", "＝": "=",
+    }))
+
+def fix_numeric_ocr_confusions(text):
+    text = normalize_math_symbols(text or "")
+    confusable = {
+        "O": "0", "o": "0", "Ｏ": "0",
+        "I": "1", "l": "1", "Ｉ": "1",
+        "S": "5", "s": "5", "Ｓ": "5",
+        "Z": "2", "z": "2", "Ｚ": "2",
+        "B": "8", "Ｂ": "8",
+        "E": "0", "e": "0", "Ｅ": "0",
+    }
+    math_chars = set("0123456789+-*/=><")
+    token_re = re.compile(r"[0-9A-Za-zＯＩＳＺＢＥｏｌｓｚｅ+\-*/=><]+")
+
+    def repl(m):
+        seg = m.group(0)
+        digit_count = len(re.findall(r"\d", seg))
+        has_operator = any(ch in "+-*/=><" for ch in seg)
+        if digit_count == 0 or (digit_count < 2 and not has_operator):
+            return seg
+
+        chars = list(seg)
+        for i, ch in enumerate(chars):
+            if ch not in confusable:
+                continue
+            prev_ch = chars[i - 1] if i > 0 else ""
+            next_ch = chars[i + 1] if i + 1 < len(chars) else ""
+            if prev_ch in math_chars or next_ch in math_chars:
+                chars[i] = confusable[ch]
+        return "".join(chars)
+
+    return token_re.sub(repl, text)
+
 _OPT_MARKER_RE = re.compile(
-    r'^[\(（;；]?\s*'
-    r'([1-4１-４]|[Ⅰ-Ⅳ]|[①-④]|IV|[IiLl]{1,3})'
-    r'\s*[\.、:：)）]?\s*'
+    r'^[\(（;；]?\s*(?:'
+    r'([1-4１-４]|[Ⅰ-Ⅳ]|[①-④])\s*(?:[\.、:：)）]|\s+)'
+    r'|(IV|[IiLl]{1,3})\s*[\.、:：)）]'
+    r')\s*'
 )
 _OPT_INLINE_RE = re.compile(
-    r'[\(（;；]?\s*'
-    r'([1-4１-４]|[Ⅰ-Ⅳ]|[①-④]|IV|[IiLl]{1,3})'
-    r'\s*[\.、:：)）]\s*'
+    r'[\(（;；]?\s*(?:'
+    r'([1-4１-４]|[Ⅰ-Ⅳ]|[①-④])\s*(?:[\.、:：)）]|\s+)'
+    r'|(IV|[IiLl]{1,3})\s*[\.、:：)）]'
+    r')\s*'
 )
 
 def _option_marker_num(text):
     m = _OPT_MARKER_RE.match((text or "").strip())
     if not m:
         return None
-    raw = m.group(1)
+    raw = m.group(1) or m.group(2)
     table = {
         "1": 1, "１": 1, "①": 1, "Ⅰ": 1,
         "2": 2, "２": 2, "②": 2, "Ⅱ": 2,
@@ -593,10 +1144,14 @@ def _option_marker_num(text):
     return n if 1 <= n <= 3 else None
 
 def _strip_option_marker(text):
-    return _OPT_MARKER_RE.sub("", text or "", count=1).strip()
+    text = strip_countdown_text(text or "")
+    if re.match(r"^\s*[\(（;；]?\s*[1-4１-４]\s*[\.．](?=\d)", text):
+        return text.strip()
+    return _OPT_MARKER_RE.sub("", text, count=1).strip()
 
 def _strip_after_first_option_marker(text):
-    m = _OPT_INLINE_RE.search(text or "")
+    text = strip_countdown_text(text or "")
+    m = _OPT_INLINE_RE.search(text)
     return (text[:m.start()] if m else text).strip()
 
 def _split_embedded_question(text):
@@ -675,6 +1230,22 @@ def normalize_map_keywords(keywords):
         normalized.append(clean_keyword)
     return normalized
 
+def match_map_keyword(clean_text, clean_keywords):
+    clean_text = clean_map_name_text(clean_text)
+    best_kw = ""
+    best_score = 0.0
+    for keyword in clean_keywords or []:
+        if not keyword:
+            continue
+        if keyword in clean_text or clean_text in keyword:
+            score = min(len(clean_text), len(keyword)) / max(1, max(len(clean_text), len(keyword)))
+            score = max(score, 0.98 if keyword == clean_text else score)
+        else:
+            score = SequenceMatcher(None, clean_text, keyword).ratio()
+        if score > best_score:
+            best_kw, best_score = keyword, score
+    return best_kw, best_score
+
 _QUESTION_CONFUSABLES = str.maketrans({
     "？": "", "?": "", "，": "", ",": "", "。": "", ".": "",
     "：": "", ":": "", "；": "", ";": "", "、": "",
@@ -684,12 +1255,62 @@ _QUESTION_CONFUSABLES = str.maketrans({
 })
 
 def normalize_question_text(text):
-    text = _clean_ocr_text(text or "")
-    text = re.sub(r"剩[餘余]時間.*", "", text)
+    text = strip_countdown_text(text or "")
+    text = fix_numeric_ocr_confusions(text)
     text = re.sub(r"[\(（]?\s*[1-4１-４]\s*[\)）\.、:：].*", "", text)
     text = text.translate(_QUESTION_CONFUSABLES)
     text = re.sub(r"\s+", "", text)
-    text = re.sub(r"[^0-9A-Za-z\u4e00-\u9fff\u3400-\u4dbf]+", "", text)
+    text = re.sub(r"[^0-9A-Za-z+\-*/=><\u4e00-\u9fff\u3400-\u4dbf]+", "", text)
+    return text.strip()
+
+def _is_question_title_line(text):
+    line = re.sub(r"\s+", "", _clean_ocr_text(text or ""))
+    if not line:
+        return True
+    title_patterns = [
+        r"(黃|壽|寿)?易.*(大|太)?俠.*四選一",
+        r"(大|太)?俠.*活動.*輔助",
+        r"四選一題?",
+        r"選邊站",
+        r"機智擂台",
+    ]
+    return len(line) <= 18 and any(re.search(pat, line) for pat in title_patterns)
+
+_QUESTION_CUE_RE = re.compile(
+    r"(以下|下列|請問|試問|問|哪一|哪個|哪種|何者|何種|什麼|甚麼|為何|為什麼|是否|是不是|"
+    r"哪|何|誰|幾|多少|何時|何地|哪裡|哪裏)"
+)
+
+def _looks_like_question_prefix_noise(prefix):
+    norm = normalize_question_text(prefix)
+    if not norm:
+        return True
+    if len(norm) <= 8:
+        return True
+    cjk_count = len(re.findall(r"[\u4e00-\u9fff\u3400-\u4dbf]", norm))
+    digit_count = len(re.findall(r"\d", norm))
+    return len(norm) <= 14 and digit_count >= 1 and cjk_count <= 8
+
+def clean_question_candidate(text):
+    text = strip_countdown_text(text or "")
+    text = _strip_nameplate_inline(_strip_nameplate_prefix(_strip_nameplate_suffix(text)))
+    text = fix_numeric_ocr_confusions(text)
+    text = re.sub(r"^\s*(?:(?:黃|壽|寿)?易.*?(?:大|太)?俠.*?四選一|四選一題?|選邊站|機智擂台)\s*[:：、，。\-—]*\s*", "", text)
+    lines = [line.strip() for line in re.split(r"[\r\n]+", text) if line.strip()]
+    lines = [line for line in lines if not _is_question_title_line(line)]
+    if lines:
+        question_lines = [line for line in lines if "？" in line or "?" in line]
+        if question_lines:
+            text = question_lines[-1]
+        else:
+            text = max(lines, key=lambda line: len(normalize_question_text(line)))
+    text = re.sub(r"^\s*(?:題\s*)?\d{1,2}\s*[\.\.、:：\)）]\s*", "", text)
+    cue = _QUESTION_CUE_RE.search(text)
+    if cue and 0 < cue.start() <= 18:
+        if _looks_like_question_prefix_noise(text[:cue.start()]):
+            text = text[cue.start():]
+    text = re.sub(r"^\s*(?:題\s*)?\d{1,2}\s*", "", text)
+    text = re.sub(r"^[\s:：、，。]+", "", text)
     return text.strip()
 
 def question_similarity(a, b):
@@ -702,7 +1323,206 @@ def question_similarity(a, b):
     if a_norm in b_norm or b_norm in a_norm:
         contained = min(len(a_norm), len(b_norm)) / max(len(a_norm), len(b_norm))
         norm_score = max(norm_score, contained)
+    min_len = min(len(a_norm), len(b_norm))
+    if min_len >= 8:
+        prev = [0] * (len(b_norm) + 1)
+        for ca in a_norm:
+            cur = [0]
+            for j, cb in enumerate(b_norm, start=1):
+                cur.append(prev[j - 1] + 1 if ca == cb else max(prev[j], cur[-1]))
+            prev = cur
+        lcs = prev[-1]
+        coverage = lcs / max(1, min_len)
+        balanced = (2 * lcs) / max(1, len(a_norm) + len(b_norm))
+        if coverage >= 0.86:
+            norm_score = max(norm_score, balanced, coverage * 0.90)
     return max(raw_score, norm_score)
+
+def _looks_like_nameplate_text(text):
+    clean = strip_countdown_text(text or "")
+    norm = normalize_question_text(clean)
+    if not norm:
+        return True
+    has_question_cue = bool(_QUESTION_CUE_RE.search(clean) or "？" in clean or "?" in clean)
+    has_math = bool(re.search(r"\d\s*[+\-*/=><]\s*\d|\d{2,}", norm))
+    if has_question_cue or has_math:
+        return False
+
+    lines = [line.strip() for line in re.split(r"[\r\n]+", clean) if line.strip()]
+    line_norms = [normalize_question_text(line) for line in lines]
+    if len(lines) >= 2 and all(0 < len(n) <= 8 for n in line_norms):
+        return True
+
+    cjk_count = len(re.findall(r"[\u4e00-\u9fff\u3400-\u4dbf]", norm))
+    if len(norm) <= 6:
+        return True
+    if len(norm) <= 12:
+        sentence_markers = r"(是|為|在|有|與|和|或|的|之|指|稱|屬|包含|不是|正確|錯誤)"
+        if cjk_count < 5 or not re.search(sentence_markers, clean):
+            return True
+    return False
+
+def normalize_option_text(text):
+    text = fix_numeric_ocr_confusions(_strip_option_marker(_clean_ocr_text(text or "")))
+    text = re.sub(r"\s+", "", text)
+    text = re.sub(r"[^0-9A-Za-z+\-*/=><_\u4e00-\u9fff\u3400-\u4dbf]+", "", text)
+    return text.strip()
+
+def clean_option_candidate(text, expected_num=None):
+    text = strip_countdown_text(text or "")
+    text = fix_numeric_ocr_confusions(_clean_ocr_text(text))
+    lines = [line.strip() for line in re.split(r"[\r\n]+", text) if line.strip()]
+    lines = [line for line in lines if not _is_question_title_line(line)]
+    if lines:
+        if expected_num:
+            marked = [
+                line for line in lines
+                if _option_marker_num(line) == expected_num
+            ]
+            text = marked[0] if marked else max(lines, key=lambda line: len(normalize_option_text(line)))
+        else:
+            text = max(lines, key=lambda line: len(normalize_option_text(line)))
+    text = _strip_option_marker(text)
+    opt, _ = _split_embedded_question(text)
+    opt = re.sub(r"^[\s:：、，。;；]+", "", opt)
+    opt = re.sub(r"[\s;；,，？！。]+$", "", opt).strip()
+    return opt
+
+def _option_candidate_score(option, question=""):
+    clean = clean_option_candidate(option)
+    norm = normalize_option_text(clean)
+    if not norm:
+        return 0.0
+    score = min(28, len(norm)) * 1.2
+    score += len(re.findall(r"[\u4e00-\u9fff\u3400-\u4dbf]", norm)) * 1.0
+    score += len(re.findall(r"\d", norm)) * 0.5
+    score += len(re.findall(r"[+\-*/=><]", norm)) * 1.2
+    if len(norm) <= 2:
+        score -= 5
+    if len(norm) > 32:
+        score -= (len(norm) - 32) * 1.0
+    if _is_question_title_line(clean):
+        score -= 25
+    if len(_OPT_MARKER_RE.findall(clean)) >= 2 or len(_OPT_INLINE_RE.findall(clean)) >= 2:
+        score -= 18
+    if re.search(r"(剩\s*[餘余]?時間|倒\s*數|\d{1,3}\s*秒)", clean):
+        score -= 18
+    q_norm = normalize_question_text(question)
+    if q_norm and len(norm) >= 7:
+        sim = SequenceMatcher(None, norm, q_norm).ratio()
+        if norm in q_norm or q_norm in norm or sim >= 0.78:
+            score -= 45
+    return max(0.0, score)
+
+def ocr_option_image(pil_img, expected_num=None, question="", on_detail=None):
+    candidates = []
+    prepared_images = [
+        _prepare_text_region_ocr_image(pil_img, min_value=120),
+        _prepare_ocr_image(pil_img),
+    ]
+    seen = set()
+    for idx, prepared in enumerate(prepared_images, start=1):
+        sig = (prepared.size, compute_phash(prepared))
+        if sig in seen:
+            continue
+        seen.add(sig)
+        raw = ocr_prepared_image(prepared, on_detail=on_detail)
+        clean = clean_option_candidate(raw, expected_num=expected_num)
+        score = _option_candidate_score(clean, question=question)
+        if clean and score >= 4:
+            candidates.append((score, len(normalize_option_text(clean)), idx, clean))
+    if not candidates:
+        return ""
+    candidates.sort(reverse=True)
+    return candidates[0][3]
+
+def _ocr_options_by_cells(options_img, question="", on_detail=None):
+    if options_img is None:
+        return []
+    w, h = options_img.size
+    if w < 80 or h < 24:
+        return []
+    cells = {
+        1: (0.00, 0.00, 0.52, 0.58),
+        2: (0.45, 0.00, 1.00, 0.58),
+        3: (0.00, 0.42, 0.52, 1.00),
+        4: (0.45, 0.42, 1.00, 1.00),
+    }
+    options = []
+    for num in range(1, 5):
+        l, t, r, b = cells[num]
+        crop = options_img.crop((
+            max(0, int(w * l)),
+            max(0, int(h * t)),
+            min(w, int(w * r)),
+            min(h, int(h * b)),
+        ))
+        options.append(ocr_option_image(crop, expected_num=num, question=question, on_detail=on_detail))
+    if on_detail and quiz_option_count(options) >= 3:
+        on_detail("四選一選項已使用分格辨識，提高順序與文字穩定度")
+    return options
+
+def _choose_best_quiz_options(question, *option_sets):
+    best = ["", "", "", ""]
+    best_scores = [0.0, 0.0, 0.0, 0.0]
+    seen = set()
+    for options in option_sets:
+        for idx, opt in enumerate((options or [])[:4]):
+            clean = clean_option_candidate(opt, expected_num=idx + 1)
+            norm = normalize_option_text(clean)
+            if not clean or not norm:
+                continue
+            score = _option_candidate_score(clean, question=question)
+            if score <= 0:
+                continue
+            current_norm = normalize_option_text(best[idx])
+            duplicate_elsewhere = norm in seen and norm != current_norm
+            if duplicate_elsewhere:
+                score -= 8
+            if score > best_scores[idx] or (score >= best_scores[idx] * 0.9 and len(norm) > len(current_norm)):
+                if current_norm in seen:
+                    seen.discard(current_norm)
+                best[idx] = clean
+                best_scores[idx] = score
+                seen.add(norm)
+    return _filter_quiz_options(question, best)
+
+def _filter_quiz_options(question, options):
+    """Remove OCR spillover where the question line is captured as an option."""
+    q_norm = normalize_question_text(question)
+    cleaned = []
+    seen = set()
+    for opt in options[:4]:
+        opt_text = _strip_option_marker(_clean_ocr_text(opt))
+        opt_text = re.sub(r"[\s;,\uFF1B\uFF0C\uFF1F\uFF01\u3002]+$", "", opt_text).strip()
+        opt_norm = normalize_option_text(opt_text)
+        if not opt_text or not opt_norm:
+            cleaned.append("")
+            continue
+
+        is_question_like = False
+        if q_norm and len(opt_norm) >= 7:
+            sim = SequenceMatcher(None, opt_norm, q_norm).ratio()
+            contained = opt_norm in q_norm or q_norm in opt_norm
+            is_question_like = contained or sim >= 0.78
+
+        if is_question_like or opt_norm in seen:
+            cleaned.append("")
+            continue
+
+        seen.add(opt_norm)
+        cleaned.append(opt_text)
+    return cleaned
+
+def quiz_option_count(options):
+    seen = set()
+    count = 0
+    for opt in options[:4]:
+        opt_norm = normalize_option_text(opt)
+        if opt_norm and opt_norm not in seen:
+            seen.add(opt_norm)
+            count += 1
+    return count
 
 def _option_rows_from_text(text, left=0, top=0):
     text = _clean_ocr_text(text)
@@ -762,28 +1582,33 @@ def _option_rows_from_ocr_line(line):
         "top": float(line.get("top", 0)),
     }]
 
-def _ocr_parse_quiz_by_layout(full_img, question_img=None, on_detail=None):
-    data = ocr_image_details(full_img, on_detail=on_detail)
-    lines = data.get("lines", [])
-    if not data.get("text") and not lines:
-        return "", []
-
+def _ocr_parse_quiz_by_layout(full_img, question_img=None, options_img=None, on_detail=None):
     q_text = ""
     if question_img is not None:
         q_data = ocr_image_details(question_img, on_detail=on_detail)
-        q_text = _clean_ocr_text(q_data.get("text", ""))
+        q_text = clean_question_candidate(q_data.get("text", ""))
+        if q_text and _question_candidate_score(q_text) < 12:
+            q_text = ""
+        if not q_text:
+            q_text = ocr_question_image(question_img, on_detail=on_detail)
         q_option_rows = []
         for line in q_data.get("lines", []):
             q_option_rows.extend(_option_rows_from_ocr_line(line))
         if len(q_option_rows) >= 2:
             q_text = _strip_after_first_option_marker(q_text)
 
+    option_source = options_img or full_img
+    data = ocr_image_details(option_source, on_detail=on_detail)
+    lines = data.get("lines", [])
+    if not data.get("text") and not lines:
+        return q_text, []
+
     option_rows = []
     for line in lines:
         option_rows.extend(_option_rows_from_ocr_line(line))
 
     if not option_rows:
-        return "", []
+        return q_text, []
 
     slots = {}
     for row in sorted(option_rows, key=lambda r: (r["num"], r["top"], r["left"])):
@@ -792,7 +1617,7 @@ def _ocr_parse_quiz_by_layout(full_img, question_img=None, on_detail=None):
             q_text = embedded_q
         if opt_text:
             slots.setdefault(row["num"], opt_text)
-    options = [slots.get(k, "") for k in range(1, 5)]
+    options = _filter_quiz_options(q_text, [slots.get(k, "") for k in range(1, 5)])
     while options and not options[-1]:
         options.pop()
 
@@ -804,21 +1629,28 @@ def _ocr_parse_quiz_by_layout(full_img, question_img=None, on_detail=None):
             if float(line.get("bottom", line.get("top", 0))) < first_top - 2
             and not _option_marker_num(line.get("text", ""))
         ]
-        q_text = _clean_ocr_text("".join(q_lines))
+        q_text = clean_question_candidate("".join(q_lines))
 
-    return q_text, options[:4]
+    return clean_question_candidate(q_text), options[:4]
 
-def ocr_parse_quiz(full_img, question_img=None, on_detail=None):
+def ocr_parse_quiz(full_img, question_img=None, options_img=None, on_detail=None):
     """OCR 彈窗圖，分離題目和選項。
     question_img：若提供，獨立辨識題目（避免 2 欄選項佈局干擾讀取順序）。
     回傳 (question_str, [opt1, opt2, opt3, opt4])。"""
-    q_by_layout, opts_by_layout = _ocr_parse_quiz_by_layout(full_img, question_img=question_img, on_detail=on_detail)
-    if q_by_layout and len([o for o in opts_by_layout if o.strip()]) >= 2:
+    strict_question_region = question_img is not None
+    high_precision_quiz4 = options_img is not None
+    if _OCR_ENGINE == "windows":
+        q_by_layout, opts_by_layout = _ocr_parse_quiz_by_layout(
+            full_img, question_img=question_img, options_img=options_img, on_detail=on_detail)
+    else:
+        q_by_layout, opts_by_layout = "", []
+    if (
+        not high_precision_quiz4
+        and _OCR_ENGINE == "windows"
+        and q_by_layout
+        and len([o for o in opts_by_layout if o.strip()]) >= 2
+    ):
         return q_by_layout, opts_by_layout
-
-    text = ocr_image(full_img, on_detail=on_detail)
-    if not text:
-        return "", []
 
     cjk = r'一-鿿㐀-䶿'
     def _norm(t):
@@ -827,26 +1659,46 @@ def ocr_parse_quiz(full_img, question_img=None, on_detail=None):
         t = re.sub(rf'(?<=[，。！？；：、,.])[ \t]+(?=[{cjk}])', '', t)
         return t
 
-    text = _norm(text)
-    text = re.sub(r'剩[餘余]時間.*', '', text)
-    text = re.sub(r'[ \t]*\d+[ \t]*秒?\s*$', '', text.strip())
-
     _OPT = re.compile(
         r'[\(（;；]?\s*'
         r'(?:[1-4１-４]|[Ⅰ-Ⅳ]|[①-④]|IV|[IiLl]{1,3})'
         r'\s*[\.、:：)）]'
     )
 
+    def _question_from_text(raw):
+        cand = _norm((raw or "").strip())
+        cand = strip_countdown_text(cand)
+        if not cand:
+            return ""
+        marker = _OPT.search(cand)
+        if marker:
+            cand = cand[:marker.start()].strip()
+        qm = max(cand.rfind('？'), cand.rfind('?'))
+        if qm >= 0:
+            start = max(cand.rfind('\n', 0, qm), cand.rfind('\r', 0, qm)) + 1
+            cand = cand[start:qm+1].strip()
+        return clean_question_candidate(cand)
+
     # 獨立辨識題目（用題目區域裁切圖，避免 2 欄選項讀取順序干擾）
-    q_text = ""
-    if question_img is not None:
-        raw = ocr_image(question_img, on_detail=on_detail)
-        if raw:
-            cand = _norm(raw.strip())
-            cand = re.sub(r'剩[餘余]時間.*', '', cand).strip()
-            # 若含 2 個以上選項標記，代表框選範圍涵蓋到選項區，放棄此結果
-            if len(_OPT.findall(cand)) < 2:
-                q_text = cand
+    q_text = q_by_layout
+    if question_img is not None and _question_candidate_score(q_text) < 45:
+        cand = ocr_question_image(question_img, on_detail=on_detail, high_precision=high_precision_quiz4)
+        # 若含 2 個以上選項標記，代表框選範圍涵蓋到選項區，放棄此結果
+        if cand and len(_OPT.findall(cand)) < 2 and _question_candidate_score(cand) >= _question_candidate_score(q_text):
+            q_text = cand
+
+    if not q_text and not strict_question_region:
+        raw_full = ocr_image(full_img, on_detail=on_detail)
+        q_text = _question_from_text(raw_full)
+
+    option_source = options_img or full_img
+    cell_options = _ocr_options_by_cells(option_source, q_text, on_detail=on_detail) if high_precision_quiz4 else []
+    text = ocr_image(option_source, on_detail=on_detail)
+    if not text:
+        return q_text, _choose_best_quiz_options(q_text, opts_by_layout, cell_options)
+
+    text = _norm(text)
+    text = strip_countdown_text(text)
 
     # 找所有選項標記位置，依序提取標記之間的文字（不受 OCR 讀取順序影響）
     def _marker_to_num(m):
@@ -887,14 +1739,14 @@ def ocr_parse_quiz(full_img, question_img=None, on_detail=None):
                     if k not in slots:
                         slots[k] = opt; break
 
-        options = [slots.get(k, '') for k in range(1, 5)]
+        options = _filter_quiz_options(q_text, [slots.get(k, '') for k in range(1, 5)])
         while options and not options[-1]:
             options.pop()
 
         if not q_text:
             before = text[:markers[0].start()].strip()
             if len(before) > 4:
-                q_text = before
+                q_text = clean_question_candidate(before)
             else:
                 qm = max(text.rfind('？'), text.rfind('?'))
                 if qm >= 0:
@@ -905,9 +1757,10 @@ def ocr_parse_quiz(full_img, question_img=None, on_detail=None):
                             seg_start = nl + 1
                     q_cand = _OPT.sub('', text[seg_start:qm+1]).strip()
                     if q_cand:
-                        q_text = q_cand
+                        q_text = clean_question_candidate(q_cand)
 
-        return q_text, options[:4]
+        q_text = clean_question_candidate(q_text)
+        return q_text, _choose_best_quiz_options(q_text, opts_by_layout, options, cell_options)[:4]
 
     # fallback：找第一個後面跟著另一個標記的位置切分
     m = None
@@ -916,12 +1769,17 @@ def ocr_parse_quiz(full_img, question_img=None, on_detail=None):
             m = candidate
             break
     if not m:
-        return q_text or text.strip(), []
+        fallback_q = q_text if strict_question_region else (q_text or text.strip())
+        fallback_q = clean_question_candidate(fallback_q)
+        if _question_candidate_score(fallback_q) < 12:
+            fallback_q = ""
+        return fallback_q, _choose_best_quiz_options(fallback_q, opts_by_layout, cell_options)
     if not q_text:
         q_text = text[:m.start()].strip()
     parts = _OPT.split(text[m.start():])
     options = [re.sub(r'[\s;；,，]+$', '', p).strip() for p in parts if p.strip()][:4]
-    return q_text, options
+    q_text = clean_question_candidate(q_text)
+    return q_text, _choose_best_quiz_options(q_text, opts_by_layout, options, cell_options)
 
 def claude_read_popup(pil_img, api_key, on_detail=None):
     """回傳 (question_str, options_list) — 四選一用。"""
@@ -1046,6 +1904,70 @@ def gemini_read_question(pil_img, api_key, model="gemini-2.0-flash", on_detail=N
         if on_detail: on_detail(f"Gemini(question) 錯誤：{type(e).__name__}: {str(e)[:120]}")
         return ""
 
+def _safe_filename_part(text, max_len=36):
+    text = normalize_question_text(text or "") or "unknown"
+    text = re.sub(r"[^0-9A-Za-z\u4e00-\u9fff\u3400-\u4dbf]+", "_", text)
+    text = text.strip("_") or "unknown"
+    return text[:max_len]
+
+def _attach_capture(entry, capture_path):
+    if not capture_path:
+        return
+    entry["capture_path"] = capture_path
+    captures = entry.get("captures")
+    if not isinstance(captures, list):
+        captures = []
+    if capture_path not in captures:
+        captures.append(capture_path)
+    entry["captures"] = captures[-8:]
+
+def _is_ocr_failed_placeholder(question):
+    text = str(question or "")
+    return text.startswith("[OCR失敗]") or text.startswith("[待校正]")
+
+_CAPTURE_REGION_CACHE = {}
+
+def _capture_region_path(capture_path, region="question"):
+    if not capture_path:
+        return ""
+    if region == "question" and capture_path.endswith("_popup.png"):
+        return capture_path[:-10] + "_question.png"
+    if region == "options" and capture_path.endswith("_popup.png"):
+        return capture_path[:-10] + "_options.png"
+    return ""
+
+def _load_capture_region(capture_path, region="question"):
+    path = _capture_region_path(capture_path, region)
+    if not path or not os.path.exists(path):
+        return None
+    key = (path, region)
+    cached = _CAPTURE_REGION_CACHE.get(key)
+    if cached is not None:
+        return cached
+    try:
+        img = Image.open(path).convert("RGB")
+    except Exception:
+        return None
+    _CAPTURE_REGION_CACHE[key] = img
+    if len(_CAPTURE_REGION_CACHE) > 96:
+        _CAPTURE_REGION_CACHE.pop(next(iter(_CAPTURE_REGION_CACHE)))
+    return img
+
+def _entry_capture_paths(entry):
+    paths = []
+    if entry.get("capture_path"):
+        paths.append(entry.get("capture_path"))
+    captures = entry.get("captures")
+    if isinstance(captures, list):
+        paths.extend(captures)
+    deduped = []
+    seen = set()
+    for path in paths:
+        if path and path not in seen:
+            seen.add(path)
+            deduped.append(path)
+    return deduped[-8:]
+
 # ── 題庫 ───────────────────────────────────────────────────────────────────────
 
 class Quiz4Database:
@@ -1076,7 +1998,7 @@ class Quiz4Database:
 
     def lookup(self, phash=None, question=None, threshold=0.85):
         if phash:
-            for e in self.entries:
+            for e in self.confirmed_entries():
                 if e.get("phash") and phash_distance(phash, e["phash"]) < 5:
                     return e
         if question:
@@ -1087,7 +2009,7 @@ class Quiz4Database:
 
     def find_similar(self, question, threshold=0.80):
         best, best_score = None, 0.0
-        for e in self.entries:
+        for e in self.confirmed_entries():
             s = question_similarity(question, e.get("question", ""))
             if s > best_score:
                 best_score = s; best = e
@@ -1095,16 +2017,94 @@ class Quiz4Database:
             return best, round(best_score, 3)
         return None
 
-    def upsert(self, phash, question, answer_idx, answer_text, options):
-        for e in self.entries:
-            if e.get("question") == question or question_similarity(question, e.get("question", "")) >= 0.92:
-                e.update(phash=phash, answer_idx=answer_idx,
-                         answer_text=answer_text, options=options)
-                self._save(); return
-        self.entries.append(dict(phash=phash, question=question,
-                                 answer_idx=answer_idx, answer_text=answer_text,
-                                 options=options, source="手動"))
+    def find_by_question_image(self, question_img, threshold=0.88):
+        best, best_score = None, 0.0
+        for e in self.confirmed_entries():
+            for capture_path in _entry_capture_paths(e):
+                ref = _load_capture_region(capture_path, "question")
+                if ref is None:
+                    continue
+                s = image_similarity(question_img, ref, size=(220, 64))
+                if s > best_score:
+                    best_score = s
+                    best = e
+        if best and best_score >= threshold:
+            return dict(best, image_similarity=round(best_score, 3))
+        return None
+
+    def is_confirmed(self, entry):
+        return bool(entry.get("answer_idx")) and quiz_option_count(entry.get("options", [])) >= 4
+
+    def confirmed_entries(self):
+        return [e for e in self.entries if self.is_confirmed(e)]
+
+    def pending_entries(self):
+        return [e for e in self.entries if not self.is_confirmed(e)]
+
+    def pending_indices(self):
+        return [i for i, e in enumerate(self.entries) if not self.is_confirmed(e)]
+
+    def confirmed_indices(self):
+        return [i for i, e in enumerate(self.entries) if self.is_confirmed(e)]
+
+    def find_pending_similar(self, question, threshold=0.68):
+        best, best_score = None, 0.0
+        for e in self.pending_entries():
+            s = question_similarity(question, e.get("question", ""))
+            if s > best_score:
+                best_score = s; best = e
+        if best and best_score >= threshold:
+            return best, round(best_score, 3)
+        return None
+
+    def merge_pending(self, phash, question, options, threshold=0.68, capture_path=None):
+        if _is_ocr_failed_placeholder(question):
+            return False
+        found = self.find_pending_similar(question, threshold=threshold)
+        if not found:
+            return False
+        entry, score = found
+        old_count = quiz_option_count(entry.get("options", []))
+        new_count = quiz_option_count(options)
+        if phash:
+            entry["phash"] = phash
+        if len(normalize_question_text(question)) > len(normalize_question_text(entry.get("question", ""))):
+            entry["question"] = question
+        if new_count > old_count:
+            entry["options"] = options
+        entry["source"] = f"待校正合併 {score:.0%}"
+        _attach_capture(entry, capture_path)
         self._save()
+        return True
+
+    def upsert(self, phash, question, answer_idx, answer_text, options, capture_path=None):
+        for e in self.entries:
+            merge_threshold = 0.92 if self.is_confirmed(e) else 0.68
+            if e.get("question") == question or question_similarity(question, e.get("question", "")) >= merge_threshold:
+                e.update(phash=phash, question=question, answer_idx=answer_idx,
+                         answer_text=answer_text, options=options, source="手動")
+                _attach_capture(e, capture_path)
+                self._save(); return
+        entry = dict(phash=phash, question=question,
+                     answer_idx=answer_idx, answer_text=answer_text,
+                     options=options, source="手動")
+        _attach_capture(entry, capture_path)
+        self.entries.append(entry)
+        self._save()
+
+    def add_pending(self, phash, question, options, threshold=0.68, capture_path=None):
+        if self.merge_pending(phash, question, options, threshold=threshold, capture_path=capture_path):
+            return "merged"
+        found = None if _is_ocr_failed_placeholder(question) else self.find_similar(question, threshold=threshold)
+        if found and self.is_confirmed(found[0]):
+            return "answered"
+        entry = dict(phash=phash, question=question,
+                     answer_idx=None, answer_text="",
+                     options=options, source="待校正")
+        _attach_capture(entry, capture_path)
+        self.entries.append(entry)
+        self._save()
+        return "added"
 
     def delete(self, idx):
         if 0 <= idx < len(self.entries):
@@ -1134,7 +2134,7 @@ class SidestandDatabase:
 
     def lookup(self, question, threshold=0.72):
         best, best_score = None, 0.0
-        for e in self.entries:
+        for e in self.confirmed_entries():
             s = question_similarity(question, e["question"])
             if s > best_score:
                 best_score = s; best = e
@@ -1142,13 +2142,80 @@ class SidestandDatabase:
             return dict(best, similarity=round(best_score, 3))
         return None
 
+    def find_by_question_image(self, question_img, threshold=0.88):
+        best, best_score = None, 0.0
+        for e in self.confirmed_entries():
+            for capture_path in _entry_capture_paths(e):
+                ref = _load_capture_region(capture_path, "question")
+                if ref is None:
+                    continue
+                s = image_similarity(question_img, ref, size=(220, 64))
+                if s > best_score:
+                    best_score = s
+                    best = e
+        if best and best_score >= threshold:
+            return dict(best, image_similarity=round(best_score, 3))
+        return None
+
+    def confirmed_entries(self):
+        return [e for e in self.entries if e.get("answer") in ("O", "X")]
+
+    def pending_entries(self):
+        return [e for e in self.entries if e.get("answer") not in ("O", "X")]
+
+    def confirmed_indices(self):
+        return [i for i, e in enumerate(self.entries) if e.get("answer") in ("O", "X")]
+
+    def pending_indices(self):
+        return [i for i, e in enumerate(self.entries) if e.get("answer") not in ("O", "X")]
+
+    def find_pending_similar(self, question, threshold=0.68):
+        best, best_score = None, 0.0
+        for e in self.pending_entries():
+            s = question_similarity(question, e.get("question", ""))
+            if s > best_score:
+                best_score = s; best = e
+        if best and best_score >= threshold:
+            return best, round(best_score, 3)
+        return None
+
     def add(self, question, answer):
-        existing = self.lookup(question, threshold=0.80)
+        existing = self.lookup(question, threshold=0.68 if answer is None else 0.80)
         if existing:
             return False
         self.entries.append({"question": question, "answer": answer})
         self._save()
         return True
+
+    def upsert(self, question, answer, old_question=None, capture_path=None):
+        for e in self.entries:
+            same_old = old_question and e.get("question") == old_question
+            same_new = e.get("question") == question
+            similar = question_similarity(question, e.get("question", "")) >= 0.80
+            if same_old or same_new or similar:
+                e["question"] = question
+                e["answer"] = answer
+                _attach_capture(e, capture_path)
+                self._save()
+                return
+        entry = {"question": question, "answer": answer}
+        _attach_capture(entry, capture_path)
+        self.entries.append(entry)
+        self._save()
+
+    def add_pending(self, question, threshold=0.68, capture_path=None):
+        if not _is_ocr_failed_placeholder(question) and self.lookup(question, threshold=threshold):
+            return "answered"
+        existing = None if _is_ocr_failed_placeholder(question) else self.find_pending_similar(question, threshold=threshold)
+        if existing:
+            _attach_capture(existing, capture_path)
+            self._save()
+            return "merged"
+        entry = {"question": question, "answer": None}
+        _attach_capture(entry, capture_path)
+        self.entries.append(entry)
+        self._save()
+        return "added"
 
     def delete(self, idx):
         if 0 <= idx < len(self.entries):
@@ -1165,6 +2232,7 @@ class GameDetector:
         self._stop          = threading.Event()
         self._popup_on      = False
         self._last_ph       = None
+        self._last_sig_bits = None
         self._last_recognition_time = 0.0
         self._last_api_ph   = None
         self._last_api_time = 0.0
@@ -1176,13 +2244,18 @@ class GameDetector:
         self._map_check_time  = 0.0
         self._last_map_text   = ""
         self._map_confirmed_at = 0.0   # 最後一次確認活動場景的時間戳
+        self._map_miss_count  = 0
+        self._idle_map_check_time = 0.0
         self._last_coord_region = None
         self._last_auto_learn_digits = set()
+        self._last_capture_key = None
+        self._force_next_recognition = False
 
     def set_mode(self, mode):
         self.mode             = mode
         self._popup_on        = False
         self._last_ph         = None
+        self._last_sig_bits   = None
         self._last_recognition_time = 0.0
         self._last_api_ph     = None
         self._last_api_time   = 0.0
@@ -1192,6 +2265,16 @@ class GameDetector:
         self._map_check_time  = 0.0
         self._last_map_text   = ""
         self._map_confirmed_at = 0.0
+        self._map_miss_count  = 0
+        self._idle_map_check_time = 0.0
+        self._last_capture_key = None
+        self._force_next_recognition = False
+
+    def force_next_recognition(self):
+        self._force_next_recognition = True
+        self._last_recognition_time = 0.0
+        self._last_sig_bits = None
+        self._last_ph = None
 
     def find_window(self):
         result = []
@@ -1209,6 +2292,16 @@ class GameDetector:
         x2 = int(r.get("right", 1) * w); y2 = int(r.get("bottom", 1) * h)
         return img.crop((x1, y1, x2, y2))
 
+    def _quiz_signature_image(self, q_img, opt_img):
+        qw, qh = q_img.size
+        ow, oh = opt_img.size
+        sw = max(1, qw, ow)
+        sh = max(1, qh + oh)
+        sig = Image.new("RGB", (sw, sh), (0, 0, 0))
+        sig.paste(q_img.convert("RGB"), (0, 0))
+        sig.paste(opt_img.convert("RGB"), (0, qh))
+        return sig
+
     def sample_brightness(self, img, w, h):
         cx = int(self.config.get("popup_check_x", 0.45) * w)
         cy = int(self.config.get("popup_check_y", 0.10) * h)
@@ -1223,11 +2316,16 @@ class GameDetector:
         cw, ch = crop.size
         if cw <= 0 or ch < 4:
             return 0.0
+        sample_w = max(16, min(cw, cw // 3))
+        sample_h = max(8, min(ch, ch // 3))
+        if sample_w != cw or sample_h != ch:
+            crop = crop.resize((sample_w, sample_h), Image.Resampling.BILINEAR)
+            cw, ch = crop.size
+        pixels = list(crop.getdata())
         row_means = []
         for y in range(ch):
-            row = crop.crop((0, y, cw, y + 1))
-            pixels = list(row.getdata())
-            row_means.append(sum(pixels) / max(1, len(pixels)))
+            start = y * cw
+            row_means.append(sum(pixels[start:start + cw]) / max(1, cw))
         edges = [abs(row_means[i] - row_means[i - 1]) for i in range(1, len(row_means))]
         if not edges:
             return 0.0
@@ -1245,6 +2343,7 @@ class GameDetector:
         """定期 OCR 右上地圖名稱，有關鍵字才允許進入辨識流程。"""
         keywords = self.config.get("quiz_map_keywords", [])
         if not keywords:
+            self._map_miss_count = 0
             return True  # 未設定關鍵字 → 不篩選
         now = time.time()
         if now - self._map_check_time < self.config.get("map_check_interval", 3):
@@ -1252,6 +2351,9 @@ class GameDetector:
         self._map_check_time = now
         map_img = self._crop(img, w, h, "map_name_region")
         clean_keywords = normalize_map_keywords(keywords)
+        clean_text = ocr_map_name_image(map_img, on_detail=self._on_detail)
+        text_keyword, text_score = match_map_keyword(clean_text, clean_keywords)
+        text_matched = bool(text_keyword) and text_score >= 0.80
         best_keyword = ""
         best_similarity = 0.0
         has_reference = False
@@ -1265,38 +2367,52 @@ class GameDetector:
                 best_keyword, best_similarity = keyword, sim
         if has_reference:
             threshold = float(self.config.get("map_image_match_threshold", 0.78))
-            matched = best_similarity >= threshold
-            in_grace = (now - self._map_confirmed_at) < 20.0
+            image_matched = best_similarity >= threshold
+            matched = text_matched or image_matched
+            grace = max(0.0, float(self.config.get("map_leave_grace_seconds", 5)))
+            in_grace = self._map_confirmed_at > 0 and (now - self._map_confirmed_at) < grace
             if matched:
                 self._map_confirmed_at = now
-            status_text = f"圖片:{best_keyword or '未知'} {best_similarity:.0%}"
+                self._map_miss_count = 0
+            elif not in_grace:
+                self._map_miss_count += 1
+            status_text = f"文字:{text_keyword or clean_text or '空'} {text_score:.0%} 圖片:{best_keyword or '未知'} {best_similarity:.0%}"
             if status_text != self._last_map_text:
                 self._last_map_text = status_text
-                if matched:
+                if text_matched:
+                    self._on_detail(f"地圖文字：{clean_text}（命中 {text_keyword}，啟動辨識；圖片 {best_similarity:.0%} 只當參考）")
+                elif image_matched:
                     self._on_detail(f"地圖圖片：{best_keyword}（相似度 {best_similarity:.0%}，啟動辨識）")
                 elif in_grace:
-                    self._on_detail(f"地圖圖片：相似度 {best_similarity:.0%}（保護期，維持辨識）")
+                    self._on_detail(f"地圖：文字 {text_score:.0%} / 圖片 {best_similarity:.0%}（保護期，維持辨識）")
                 else:
-                    self._on_detail(f"地圖圖片：相似度 {best_similarity:.0%}（未達門檻，略過）")
+                    self._on_detail(f"地圖：文字 {text_score:.0%} / 圖片 {best_similarity:.0%}（未命中，略過）")
             self._map_ok = matched or in_grace
             return self._map_ok
 
-        text = ocr_image(map_img).strip()
-        if not text:
-            return self._map_ok  # OCR 失敗 → 保持上一次判斷
-        clean_text = clean_map_name_text(text)
-        matched = any(kw and kw in clean_text for kw in clean_keywords)
-        in_grace = (now - self._map_confirmed_at) < 20.0  # 確認後保護 20 秒
+        if not clean_text:
+            grace = max(0.0, float(self.config.get("map_leave_grace_seconds", 5)))
+            in_grace = self._map_confirmed_at > 0 and (now - self._map_confirmed_at) < grace
+            if not in_grace:
+                self._map_ok = False
+                self._map_miss_count += 1
+            return self._map_ok
+        matched = text_matched
+        grace = max(0.0, float(self.config.get("map_leave_grace_seconds", 5)))
+        in_grace = self._map_confirmed_at > 0 and (now - self._map_confirmed_at) < grace
         if matched:
             self._map_confirmed_at = now
+            self._map_miss_count = 0
+        elif not in_grace:
+            self._map_miss_count += 1
         if clean_text != self._last_map_text:
             self._last_map_text = clean_text
             if matched:
-                self._on_detail(f"地圖：{clean_text[:30]}（活動場景，啟動辨識）")
+                self._on_detail(f"地圖文字：{clean_text[:30]}（命中 {text_keyword or '關鍵字'}，啟動辨識）")
             elif in_grace:
-                self._on_detail(f"地圖：{clean_text[:30]}（保護期，維持辨識）")
+                self._on_detail(f"地圖文字：{clean_text[:30]}（保護期，維持辨識）")
             else:
-                self._on_detail(f"地圖：{clean_text[:30] or text[:30]}（非活動場景，略過）")
+                self._on_detail(f"地圖文字：{clean_text[:30]}（未命中關鍵字，略過）")
         self._map_ok = matched or in_grace
         return self._map_ok
 
@@ -1333,12 +2449,10 @@ class GameDetector:
         coord_img = img.crop((x1, y1, x2, y2))
 
         cw, ch = coord_img.size
-        coord, raw = read_coord_by_templates(
+        tmpl_coord, tmpl_raw = read_coord_by_templates(
             coord_img,
             threshold=float(self.config.get("coord_template_threshold", 0.34)),
         )
-        if coord:
-            return coord, raw
 
         text = ocr_coordinate_image(coord_img).strip()
         coord = parse_game_coordinates(text)
@@ -1379,7 +2493,9 @@ class GameDetector:
             coord = (x_val, y_val)
             self._maybe_auto_learn_coord_templates(coord_img, coord)
             return coord, f"x={x_text} y={y_text}"
-        return None, text
+        if tmpl_coord:
+            return tmpl_coord, tmpl_raw
+        return None, text or tmpl_raw
 
     def _maybe_auto_learn_coord_templates(self, coord_img, coord):
         if not self.config.get("coord_auto_learn", 1):
@@ -1436,41 +2552,145 @@ class GameDetector:
             return [" ".join(words[i*q:(i+1)*q]) for i in range(4)]
         return (lines + ["","","",""])[:4]
 
-    def process_frame(self, img, w, h, on_status):
-        if not self._check_map_name(img, w, h):
-            if self._popup_on:
-                self._popup_on      = False
-                self._last_ph       = None
-                self._last_recognition_time = 0.0
-                self._last_api_ph   = None
-                self._last_api_time = 0.0
-                self._popup_api_used = False
-            on_status("非活動場景，等待中…")
-            return None
+    def _save_pending_capture(self, mode, ph, full_img, q_img, opt_img=None,
+                              question="", options=None, reason="pending"):
+        if not self.config.get("save_pending_captures", 1):
+            return ""
+        options = options or []
+        key = (
+            mode,
+            reason,
+            ph,
+            normalize_question_text(question),
+            tuple(normalize_option_text(o) for o in options[:4]),
+        )
+        if key == self._last_capture_key:
+            return ""
+        self._last_capture_key = key
+        try:
+            now = datetime.datetime.now()
+            day_dir = os.path.join(CAPTURE_DIR, now.strftime("%Y%m%d"))
+            os.makedirs(day_dir, exist_ok=True)
+            text_part = _safe_filename_part(question or reason)
+            short_hash = hashlib.sha1(
+                json.dumps(key, ensure_ascii=False, default=str).encode("utf-8", errors="ignore")
+            ).hexdigest()[:8]
+            base = f"{now.strftime('%H%M%S')}_{mode}_{reason}_{short_hash}_{text_part}"
+            popup_path = os.path.join(day_dir, base + "_popup.png")
+            full_img.convert("RGB").save(popup_path)
 
+            region_paths = {}
+            if self.config.get("save_capture_regions", 1):
+                q_path = os.path.join(day_dir, base + "_question.png")
+                q_img.convert("RGB").save(q_path)
+                region_paths["question"] = q_path
+                if opt_img is not None:
+                    o_path = os.path.join(day_dir, base + "_options.png")
+                    opt_img.convert("RGB").save(o_path)
+                    region_paths["options"] = o_path
+
+            meta = {
+                "mode": mode,
+                "reason": reason,
+                "created_at": now.isoformat(timespec="seconds"),
+                "question": question,
+                "options": options[:4],
+                "phash": ph,
+                "popup_path": popup_path,
+                "regions": region_paths,
+            }
+            meta_path = os.path.join(day_dir, base + "_meta.json")
+            with open(meta_path, "w", encoding="utf-8") as f:
+                json.dump(meta, f, indent=2, ensure_ascii=False)
+                f.write("\n")
+            self._on_detail(f"已保存待校正截圖：{os.path.basename(popup_path)}")
+            return popup_path
+        except Exception as e:
+            self._on_detail(f"保存待校正截圖失敗：{type(e).__name__}: {e}")
+            return ""
+
+    def _reset_popup_state(self):
+        self._popup_on      = False
+        self._last_ph       = None
+        self._last_sig_bits = None
+        self._last_recognition_time = 0.0
+        self._last_api_ph   = None
+        self._last_api_time = 0.0
+        self._popup_api_used = False
+
+    def _handle_map_block(self, on_status):
+        keywords = self.config.get("quiz_map_keywords", [])
+        auto_stop = bool(float(self.config.get("auto_stop_on_map_leave", 1)))
+        stop_misses = max(1, int(float(self.config.get("map_leave_stop_misses", 2))))
+        if keywords and auto_stop and self._map_miss_count >= stop_misses:
+            on_status("已離開活動場景，停止監測")
+            self.stop()
+        else:
+            on_status("非活動場景，等待中…")
+
+    def _maybe_idle_map_check(self, img, w, h, on_status):
+        if not self.config.get("quiz_map_keywords", []):
+            return
+        now = time.time()
+        interval = max(
+            float(self.config.get("map_check_interval", 3)),
+            float(self.config.get("map_idle_check_interval", 8)),
+        )
+        if now - self._idle_map_check_time < interval:
+            return
+        self._idle_map_check_time = now
+        if not self._check_map_name(img, w, h):
+            self._handle_map_block(on_status)
+
+    def _loop_wait_interval(self):
+        key = "monitor_active_interval" if self._popup_on else "monitor_idle_interval"
+        default = 0.35 if self._popup_on else 0.70
+        try:
+            value = float(self.config.get(key, default))
+        except Exception:
+            value = default
+        return max(0.15, min(value, 2.0))
+
+    def process_frame(self, img, w, h, on_status):
         visible = self.is_popup_visible(img, w, h)
         if not visible:
+            self._maybe_idle_map_check(img, w, h, on_status)
             if self._popup_on:
-                self._popup_on      = False
-                self._last_ph       = None
-                self._last_recognition_time = 0.0
-                self._last_api_ph   = None
-                self._last_api_time = 0.0
-                self._popup_api_used = False
+                self._reset_popup_state()
                 on_status("等待題目…")
             return None
+
+        if not self._check_map_name(img, w, h):
+            if self._popup_on:
+                self._reset_popup_state()
+            self._handle_map_block(on_status)
+            return None
+
         if not self._popup_on:
             self._popup_on = True
 
         q_img = self._crop(img, w, h, "question_region")
-        ph    = compute_phash(q_img)
+        opt_img = self._crop(img, w, h, "options_region")
+        sig_img = self._quiz_signature_image(q_img, opt_img)
+        ph = compute_phash(sig_img)
         if ph == 0 or ph == (1 << 64) - 1: return None
+        sig_bits = _text_signature_bits(sig_img)
         now = time.time()
         cooldown = float(self.config.get("popup_recognition_cooldown", 2.0))
-        if self._last_recognition_time and now - self._last_recognition_time < cooldown:
+        force_recognition = self._force_next_recognition
+        if force_recognition:
+            self._force_next_recognition = False
+        if not force_recognition and self._last_recognition_time and now - self._last_recognition_time < cooldown:
             return None
-        if self._last_ph is not None and phash_distance(ph, self._last_ph) < 4: return None
+        same_threshold = float(self.config.get("popup_same_signature_threshold", 0.01))
+        if (
+            not force_recognition
+            and self._last_sig_bits is not None
+            and _signature_distance(sig_bits, self._last_sig_bits) < same_threshold
+        ):
+            return None
         self._last_ph = ph
+        self._last_sig_bits = sig_bits
         self._last_recognition_time = now
         on_status("偵測到題目…")
 
@@ -1480,19 +2700,31 @@ class GameDetector:
             return self._process_sidestand(img, w, h, q_img, ph, on_status)
 
     def _process_quiz4(self, img, w, h, q_img, ph, on_status):
-        entry = self.db4.lookup(ph)
-        if entry:
-            on_status(f"題庫命中")
-            return dict(entry, source="題庫", phash=ph)
-
         full  = self._crop(img, w, h, "popup_full_region")
         q_img = self._crop(img, w, h, "question_region")
+        opt_img = self._crop(img, w, h, "options_region")
+
+        image_entry = self.db4.find_by_question_image(
+            q_img,
+            threshold=float(self.config.get("image_question_match_threshold", 0.88)),
+        )
+        if image_entry:
+            score = image_entry.get("image_similarity", 0)
+            on_status(f"截圖題庫命中（{score:.0%}）")
+            return dict(
+                image_entry,
+                options=image_entry.get("options", []),
+                source=f"截圖題庫 {score:.0%}",
+                phash=ph,
+            )
+
         on_status("OCR 辨識中…")
-        q_text, options = ocr_parse_quiz(full, question_img=q_img, on_detail=self._on_detail)
+        q_text, options = ocr_parse_quiz(full, question_img=q_img, options_img=opt_img, on_detail=self._on_detail)
 
         gemini_key = self.config.get("gemini_api_key", "").strip()
         api_key    = self.config.get("api_key", "").strip()
-        if (not q_text or len([o for o in options if o.strip()]) < 2) and (gemini_key or api_key) and self._can_call_api(ph):
+        allow_api = bool(float(self.config.get("allow_paid_api_fallback", 0)))
+        if allow_api and (not q_text or len([o for o in options if o.strip()]) < 2) and (gemini_key or api_key) and self._can_call_api(ph):
             if gemini_key and not q_text and self._gemini_available():
                 on_status("Gemini API 辨識中…")
                 q_text, options = gemini_read_popup(
@@ -1507,29 +2739,86 @@ class GameDetector:
                 q_text, options = claude_read_popup(full, api_key, on_detail=self._on_detail)
             self._record_api_call(ph)
         if not q_text:
-            on_status("辨識失敗"); return None
+            capture_path = self._save_pending_capture(
+                "quiz4", ph, full, q_img, opt_img,
+                question="", options=options, reason="ocr_failed",
+            )
+            fallback_q = f"[OCR失敗] 四選一待校正 {ph & 0xffffffff:08x}"
+            on_status("題目辨識失敗，已存待校正截圖")
+            return {
+                "question": fallback_q,
+                "answer_idx": None,
+                "answer_text": "",
+                "options": options,
+                "source": "辨識失敗截圖",
+                "phash": ph,
+                "capture_path": capture_path,
+                "ocr_failed": True,
+            }
         # 公告 / 結果畫面沒有選項，要求至少 2 個才視為有效題目
         if len([o for o in options if o.strip()]) < 2:
-            on_status("非題目畫面（選項不足），跳過"); return None
+            capture_path = self._save_pending_capture(
+                "quiz4", ph, full, q_img, opt_img,
+                question=q_text, options=options, reason="options_incomplete",
+            )
+            pending_q = (
+                q_text if self.config.get("trust_ocr_text_for_pending", 0)
+                else f"[待校正] 四選一選項不足 {ph & 0xffffffff:08x}"
+            )
+            on_status("選項不足，已存待校正截圖")
+            return {
+                "question": pending_q,
+                "answer_idx": None,
+                "answer_text": "",
+                "options": options,
+                "source": "選項不足截圖",
+                "phash": ph,
+                "capture_path": capture_path,
+                "ocr_failed": True,
+                "recognized": q_text,
+            }
 
-        entry = self.db4.lookup(question=q_text)
+        entry = self.db4.lookup(
+            question=q_text,
+            threshold=float(self.config.get("quiz4_match_threshold", 0.78)),
+        )
         if entry:
             on_status("題庫命中（文字）")
             return dict(entry, options=options or entry.get("options",[]), source="題庫", phash=ph)
 
         on_status("題庫未找到")
-        return {"question": q_text, "answer_idx": None, "answer_text": "",
-                "options": options, "source": "未知", "phash": ph}
+        capture_path = self._save_pending_capture(
+            "quiz4", ph, full, q_img, opt_img,
+            question=q_text, options=options, reason="unknown",
+        )
+        pending_q = (
+            q_text if self.config.get("trust_ocr_text_for_pending", 0)
+            else f"[待校正] 四選一 {ph & 0xffffffff:08x}"
+        )
+        return {"question": pending_q, "answer_idx": None, "answer_text": "",
+                "options": options, "source": "待校正截圖", "phash": ph,
+                "capture_path": capture_path, "recognized": q_text}
 
     def _process_sidestand(self, img, w, h, q_img, ph, on_status):
         full  = self._crop(img, w, h, "popup_full_region")
         q_img = self._crop(img, w, h, "question_region")
+
+        image_entry = self.dbs.find_by_question_image(
+            q_img,
+            threshold=float(self.config.get("image_question_match_threshold", 0.88)),
+        )
+        if image_entry:
+            score = image_entry.get("image_similarity", 0)
+            on_status(f"截圖題庫命中（{score:.0%}）")
+            return dict(image_entry, phash=ph, recognized="", source=f"截圖題庫 {score:.0%}")
+
         on_status("OCR 辨識中…")
         q_text, _ = ocr_parse_quiz(full, question_img=q_img, on_detail=self._on_detail)
 
         gemini_key = self.config.get("gemini_api_key", "").strip()
         api_key    = self.config.get("api_key", "").strip()
-        if not q_text and (gemini_key or api_key) and self._can_call_api(ph):
+        allow_api = bool(float(self.config.get("allow_paid_api_fallback", 0)))
+        if allow_api and not q_text and (gemini_key or api_key) and self._can_call_api(ph):
             if gemini_key and not q_text and self._gemini_available():
                 on_status("Gemini API 辨識中…")
                 q_text = gemini_read_question(
@@ -1544,7 +2833,20 @@ class GameDetector:
                 q_text = claude_read_question(full, api_key, on_detail=self._on_detail)
             self._record_api_call(ph)
         if not q_text:
-            on_status("辨識失敗"); return None
+            capture_path = self._save_pending_capture(
+                "sidestand", ph, full, q_img, None,
+                question="", options=[], reason="ocr_failed",
+            )
+            fallback_q = f"[OCR失敗] 選邊站待校正 {ph & 0xffffffff:08x}"
+            on_status("題目辨識失敗，已存待校正截圖")
+            return {
+                "question": fallback_q,
+                "answer": None,
+                "phash": ph,
+                "recognized": "",
+                "capture_path": capture_path,
+                "ocr_failed": True,
+            }
         # 選邊站題目不一定是疑問句；只要彈窗判定成立，就交給題庫相似度處理。
 
         threshold = self.config.get("match_threshold", 0.72)
@@ -1554,9 +2856,18 @@ class GameDetector:
             return dict(entry, phash=ph, recognized=q_text)
 
         on_status("題庫未找到此題")
-        return {"question": q_text, "answer": None, "phash": ph, "recognized": q_text}
+        capture_path = self._save_pending_capture(
+            "sidestand", ph, full, q_img, None,
+            question=q_text, options=[], reason="unknown",
+        )
+        pending_q = (
+            q_text if self.config.get("trust_ocr_text_for_pending", 0)
+            else f"[待校正] 選邊站 {ph & 0xffffffff:08x}"
+        )
+        return {"question": pending_q, "answer": None, "phash": ph, "recognized": q_text,
+                "capture_path": capture_path}
 
-    def run(self, on_result, on_status, on_error, on_popup_gone=None, hwnd=None, title=""):
+    def run(self, on_result, on_status, on_error, on_popup_gone=None, on_stopped=None, hwnd=None, title=""):
         self._stop.clear()
         if hwnd is None:
             windows = self.find_window()
@@ -1565,19 +2876,23 @@ class GameDetector:
             hwnd, title = windows[0]
         self.hwnd = hwnd
         on_status(f"已連接：{title}")
-        while not self._stop.is_set():
-            try:
-                if not (win32gui.IsWindow(self.hwnd) and win32gui.IsWindowVisible(self.hwnd)):
-                    on_error("遊戲視窗已關閉"); return
-                img, w, h  = capture_window(self.hwnd)
-                was_on     = self._popup_on
-                result     = self.process_frame(img, w, h, on_status)
-                if result: on_result(result)
-                if was_on and not self._popup_on and on_popup_gone:
-                    on_popup_gone()
-            except Exception as e:
-                on_status(f"錯誤：{e}")
-            self._stop.wait(0.5)
+        try:
+            while not self._stop.is_set():
+                try:
+                    if not (win32gui.IsWindow(self.hwnd) and win32gui.IsWindowVisible(self.hwnd)):
+                        on_error("遊戲視窗已關閉"); return
+                    img, w, h  = capture_window(self.hwnd)
+                    was_on     = self._popup_on
+                    result     = self.process_frame(img, w, h, on_status)
+                    if result: on_result(result)
+                    if was_on and not self._popup_on and on_popup_gone:
+                        on_popup_gone()
+                except Exception as e:
+                    on_status(f"錯誤：{e}")
+                self._stop.wait(self._loop_wait_interval())
+        finally:
+            if on_stopped:
+                on_stopped()
 
     def stop(self):
         self._stop.set()
@@ -1605,6 +2920,7 @@ class DaxiApp:
         self.root.minsize(420, 360)
 
         self.config   = self._load_config()
+        set_ocr_engine(self.config.get("ocr_engine", "windows"))
         self.db4      = Quiz4Database(QUIZ4_DB_FILE)
         self.dbs      = SidestandDatabase(SIDESTAND_DB_FILE)
         self.detector = GameDetector(self.config, self.db4, self.dbs)
@@ -1618,14 +2934,51 @@ class DaxiApp:
         self._current = None
         self._pinned  = False
         self._mode    = tk.StringVar(value="quiz4")
+        self._last_status_msg = ""
+        self._last_status_time = 0.0
+        self._last_result_key = None
+        self._last_result_time = 0.0
+        self._last_notif_key = None
+        self._last_notif_time = 0.0
+        self._notif_pending = []
+        self._notif_drain_scheduled = False
+        self._notif_max_lines = 160
+        self._detail_seen = {}
+        self._refresh_jobs = set()
+        self._window_size_poll_job = None
+        self._last_polled_window_size = None
+        self._ocr_preload_started = False
+        self._tab_frames = {}
+        self._built_tabs = set()
 
         self._apply_saved_window_size()
         self._build_ui()
-        self.root.bind("<Configure>", self._remember_window_size)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.after(50, lambda: (self.root.lift(), self.root.focus_force()))
+        self._window_size_poll_job = self.root.after(1500, self._poll_window_size)
+        if self.config.get("ocr_engine", "windows") in ("auto", "paddle"):
+            self.root.after(1200, self._start_ocr_preload)
 
     # ── 設定 ──
+
+    def _start_ocr_preload(self):
+        if self._ocr_preload_started:
+            return
+        self._ocr_preload_started = True
+        threading.Thread(target=self._preload_ocr_model, daemon=True).start()
+
+    def _preload_ocr_model(self):
+        try:
+            self.root.after(0, self._add_notif, "PaddleOCR 模型背景載入中，第一次會比較久", "dim")
+            _get_paddle_engine()
+            global _PADDLE_OCR_AVAILABLE
+            _PADDLE_OCR_AVAILABLE = True
+            self.root.after(0, self._add_notif, "PaddleOCR 模型已載入，後續辨識會比較快", "ok")
+        except Exception as e:
+            global _PADDLE_OCR_WARNED
+            _PADDLE_OCR_AVAILABLE = False
+            _PADDLE_OCR_WARNED = True
+            self.root.after(0, self._add_notif, f"PaddleOCR 載入失敗，改用 Windows OCR：{type(e).__name__}: {e}", "warn")
 
     def _load_config(self):
         cfg = dict(DEFAULT_CONFIG)
@@ -1635,6 +2988,8 @@ class DaxiApp:
                     cfg.update(json.load(f))
             except Exception:
                 pass
+        if cfg.get("ocr_engine") == "auto":
+            cfg["ocr_engine"] = "windows"
         return cfg
 
     def _save_config(self):
@@ -1654,16 +3009,31 @@ class DaxiApp:
         height = max(360, min(height, 1000))
         self.root.geometry(f"{width}x{height}")
 
-    def _remember_window_size(self, event=None):
-        if event is not None and event.widget is not self.root:
-            return
+    def _remember_window_size(self):
+        self._store_window_size()
+
+    def _store_window_size(self):
         self.config["window_width"] = self.root.winfo_width()
         self.config["window_height"] = self.root.winfo_height()
+
+    def _poll_window_size(self):
+        try:
+            size = (self.root.winfo_width(), self.root.winfo_height())
+            if size != self._last_polled_window_size:
+                self._last_polled_window_size = size
+                self.config["window_width"], self.config["window_height"] = size
+        finally:
+            self._window_size_poll_job = self.root.after(1500, self._poll_window_size)
 
     def _on_close(self):
         self.detector.stop()
         self._coord_stop.set()
         self._nav_stop.set()
+        if self._window_size_poll_job:
+            try:
+                self.root.after_cancel(self._window_size_poll_job)
+            except Exception:
+                pass
         self._remember_window_size()
         try:
             self._save_config()
@@ -1685,24 +3055,51 @@ class DaxiApp:
         style.configure("TNotebook.Tab", background=BG2, foreground=TEXT_NORM, padding=[6,3])
         style.map("TNotebook.Tab",       background=[("selected", BG)])
 
-        nb = ttk.Notebook(self.root)
-        nb.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
+        self._main_tabs = ttk.Notebook(self.root)
+        self._main_tabs.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
 
-        f_main = tk.Frame(nb, bg=BG,  padx=6, pady=3)
-        f_db4  = tk.Frame(nb, bg=BG2)
-        f_dbs  = tk.Frame(nb, bg=BG2)
-        f_cfg  = tk.Frame(nb, bg=BG2)
+        tab_defs = [
+            ("main", " 答題 ", BG),
+            ("db4", " 四選一題庫 ", BG2),
+            ("pending4", " 四選一待校正 ", BG2),
+            ("dbs", " 選邊站題庫 ", BG2),
+            ("pending_side", " 選邊站待校正 ", BG2),
+            ("cfg", " 設定 ", BG2),
+        ]
+        for key, title, bg in tab_defs:
+            frame = tk.Frame(self._main_tabs, bg=bg, padx=6 if key == "main" else 0, pady=3 if key == "main" else 0)
+            self._tab_frames[key] = frame
+            self._main_tabs.add(frame, text=title)
 
-        nb.add(f_main, text=" 答題 ")
-        nb.add(f_db4,  text=" 四選一題庫 ")
-        nb.add(f_dbs,  text=" 選邊站題庫 ")
-        nb.add(f_cfg,  text=" 設定 ")
+        self._build_tab("main")
+        self._main_tabs.bind("<<NotebookTabChanged>>", self._on_main_tab_changed)
 
-        self._build_main(f_main)
-        self._build_db4(f_db4)
-        self._build_dbs(f_dbs)
-        cfg_body = self._make_scrollable_frame(f_cfg, height=340)
-        self._build_cfg(cfg_body)
+    def _build_tab(self, key):
+        if key in self._built_tabs:
+            return
+        frame = self._tab_frames.get(key)
+        if frame is None:
+            return
+        if key == "main":
+            self._build_main(frame)
+        elif key == "db4":
+            self._build_db4(frame)
+        elif key == "pending4":
+            self._build_pending4(frame)
+        elif key == "dbs":
+            self._build_dbs(frame)
+        elif key == "pending_side":
+            self._build_pending_dbs(frame)
+        elif key == "cfg":
+            self._build_cfg(frame)
+        self._built_tabs.add(key)
+
+    def _on_main_tab_changed(self, event=None):
+        selected = self._main_tabs.select()
+        for key, frame in self._tab_frames.items():
+            if str(frame) == selected:
+                self._build_tab(key)
+                return
 
     def _make_scrollable_frame(self, parent, height=340):
         canvas = tk.Canvas(parent, bg=BG2, highlightthickness=0, height=height)
@@ -1894,7 +3291,7 @@ class DaxiApp:
             notif_frame, bg="#0A0A14", fg=TEXT_DIM,
             height=4, width=1,
             font=("Microsoft JhengHei UI", 8),
-            relief=tk.FLAT, state=tk.DISABLED, wrap=tk.WORD,
+            relief=tk.FLAT, state=tk.DISABLED, wrap=tk.NONE,
             cursor="arrow",
         )
         notif_sb = ttk.Scrollbar(notif_frame, orient="vertical",
@@ -2003,10 +3400,32 @@ class DaxiApp:
         btn_row.pack(fill=tk.X)
         ttk.Button(btn_row, text="刪除選取", command=self._delete_db4).pack(side=tk.LEFT, padx=6, pady=4)
         ttk.Button(btn_row, text="重新整理", command=self._refresh_db4).pack(side=tk.LEFT)
-        tk.Label(btn_row, text="（雙擊列可修改答案）", bg=BG2, fg=TEXT_DIM,
+        tk.Label(btn_row, text="（雙擊列可修改題目 / O/X）", bg=BG2, fg=TEXT_DIM,
                  font=("Microsoft JhengHei UI", 8)).pack(side=tk.LEFT, padx=8)
         self.db4_tree.bind("<Double-Button-1>", self._edit_db4_entry)
         self._refresh_db4()
+
+    def _build_pending4(self, f):
+        cols = ("question","state","source")
+        self.pending4_tree = ttk.Treeview(f, columns=cols, show="headings", height=12)
+        self.pending4_tree.heading("question", text="題目")
+        self.pending4_tree.heading("state",    text="狀態")
+        self.pending4_tree.heading("source",   text="來源")
+        self.pending4_tree.column("question",  width=260)
+        self.pending4_tree.column("state",     width=120)
+        self.pending4_tree.column("source",    width=90)
+        vsb = ttk.Scrollbar(f, orient="vertical", command=self.pending4_tree.yview)
+        self.pending4_tree.configure(yscrollcommand=vsb.set)
+        self.pending4_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        vsb.pack(side=tk.RIGHT, fill=tk.Y)
+        btn_row = tk.Frame(f, bg=BG2)
+        btn_row.pack(fill=tk.X)
+        ttk.Button(btn_row, text="刪除選取", command=self._delete_pending4).pack(side=tk.LEFT, padx=6, pady=4)
+        ttk.Button(btn_row, text="重新整理", command=self._refresh_pending4).pack(side=tk.LEFT)
+        tk.Label(btn_row, text="（雙擊校正，選好答案後自動移入正式題庫）", bg=BG2, fg=TEXT_DIM,
+                 font=("Microsoft JhengHei UI", 8)).pack(side=tk.LEFT, padx=8)
+        self.pending4_tree.bind("<Double-Button-1>", self._edit_pending4_entry)
+        self._refresh_pending4()
 
     def _build_dbs(self, f):
         cols = ("question","answer")
@@ -2028,6 +3447,26 @@ class DaxiApp:
         self.dbs_tree.bind("<Double-Button-1>", self._edit_dbs_entry)
         self._refresh_dbs()
 
+    def _build_pending_dbs(self, f):
+        cols = ("question","state")
+        self.pending_dbs_tree = ttk.Treeview(f, columns=cols, show="headings", height=12)
+        self.pending_dbs_tree.heading("question", text="題目")
+        self.pending_dbs_tree.heading("state",   text="狀態")
+        self.pending_dbs_tree.column("question", width=360)
+        self.pending_dbs_tree.column("state",    width=90, anchor="center")
+        vsb = ttk.Scrollbar(f, orient="vertical", command=self.pending_dbs_tree.yview)
+        self.pending_dbs_tree.configure(yscrollcommand=vsb.set)
+        self.pending_dbs_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        vsb.pack(side=tk.RIGHT, fill=tk.Y)
+        btn_row = tk.Frame(f, bg=BG2)
+        btn_row.pack(fill=tk.X)
+        ttk.Button(btn_row, text="刪除選取", command=self._delete_pending_dbs).pack(side=tk.LEFT, padx=6, pady=4)
+        ttk.Button(btn_row, text="重新整理", command=self._refresh_pending_dbs).pack(side=tk.LEFT)
+        tk.Label(btn_row, text="（雙擊校正題目 / O/X，處理後自動移入正式題庫）", bg=BG2, fg=TEXT_DIM,
+                 font=("Microsoft JhengHei UI", 8)).pack(side=tk.LEFT, padx=8)
+        self.pending_dbs_tree.bind("<Double-Button-1>", self._edit_pending_dbs_entry)
+        self._refresh_pending_dbs()
+
     def _build_cfg(self, f):
         self._cfg_vars = {}
 
@@ -2044,76 +3483,7 @@ class DaxiApp:
                 tk.Label(r, text=desc, bg=BG2, fg=TEXT_DIM,
                          font=("Microsoft JhengHei UI",8)).pack(side=tk.LEFT)
 
-        tk.Label(f, text="Google Gemini API Key（優先使用）", bg=BG2, fg=ACCENT,
-                 font=("Microsoft JhengHei UI",10,"bold")).pack(anchor="w")
-        gm_row = tk.Frame(f, bg=BG2); gm_row.pack(fill=tk.X, pady=2)
-        tk.Label(gm_row, text="GEMINI_API_KEY", bg=BG2, fg=TEXT_NORM,
-                 font=("Microsoft JhengHei UI",9), width=22, anchor="w").pack(side=tk.LEFT)
-        gm_var = tk.StringVar(value=self.config.get("gemini_api_key",""))
-        self._cfg_vars["gemini_api_key"] = gm_var
-        gm_entry = tk.Entry(gm_row, textvariable=gm_var, width=28, show="*",
-                            bg="#22223A", fg=TEXT_NORM, insertbackground=TEXT_NORM, relief=tk.FLAT)
-        gm_entry.pack(side=tk.LEFT, padx=4)
-        def _toggle_gm(btn=None, entry=gm_entry):
-            entry.configure(show="" if entry.cget("show")=="*" else "*")
-            if btn: btn.configure(text="隱藏" if entry.cget("show")==""  else "顯示")
-        gm_show = tk.Button(gm_row, text="顯示", bg=BG2, fg=TEXT_DIM, relief=tk.FLAT, padx=4,
-                            font=("Microsoft JhengHei UI",8), command=lambda: _toggle_gm(gm_show))
-        gm_show.pack(side=tk.LEFT)
-        model_row = tk.Frame(f, bg=BG2); model_row.pack(fill=tk.X, pady=1)
-        tk.Label(model_row, text="  Gemini 模型", bg=BG2, fg=TEXT_NORM,
-                 font=("Microsoft JhengHei UI",9), width=22, anchor="w").pack(side=tk.LEFT)
-        gm_model_var = tk.StringVar(value=self.config.get("gemini_model","gemini-2.0-flash"))
-        self._cfg_vars["gemini_model"] = gm_model_var
-        tk.Entry(model_row, textvariable=gm_model_var, width=20,
-                 bg="#22223A", fg=TEXT_NORM, insertbackground=TEXT_NORM,
-                 relief=tk.FLAT).pack(side=tk.LEFT, padx=4)
-
-        tk.Label(f, text="", bg=BG2).pack()
-        tk.Label(f, text="Claude API Key（備用）", bg=BG2, fg="#888855",
-                 font=("Microsoft JhengHei UI",10,"bold")).pack(anchor="w")
-        api_row = tk.Frame(f, bg=BG2); api_row.pack(fill=tk.X, pady=2)
-        tk.Label(api_row, text="ANTHROPIC_API_KEY", bg=BG2, fg=TEXT_NORM,
-                 font=("Microsoft JhengHei UI",9), width=22, anchor="w").pack(side=tk.LEFT)
-        api_var = tk.StringVar(value=self.config.get("api_key",""))
-        self._cfg_vars["api_key"] = api_var
-        api_entry = tk.Entry(api_row, textvariable=api_var, width=28, show="*",
-                             bg="#22223A", fg=TEXT_NORM, insertbackground=TEXT_NORM, relief=tk.FLAT)
-        api_entry.pack(side=tk.LEFT, padx=4)
-        def _toggle_show(btn=None, entry=api_entry):
-            entry.configure(show="" if entry.cget("show")=="*" else "*")
-            if btn: btn.configure(text="隱藏" if entry.cget("show")==""  else "顯示")
-        show_btn = tk.Button(api_row, text="顯示", bg=BG2, fg=TEXT_DIM, relief=tk.FLAT, padx=4,
-                             font=("Microsoft JhengHei UI",8), command=lambda: _toggle_show(show_btn))
-        show_btn.pack(side=tk.LEFT)
-        tk.Label(f, text="兩個都留空則使用 Windows OCR", bg=BG2, fg=TEXT_DIM,
-                 font=("Microsoft JhengHei UI",8)).pack(anchor="w", padx=4)
-
-        tk.Label(f, text="", bg=BG2).pack()
-        tk.Label(f, text="彈窗偵測", bg=BG2, fg=ACCENT,
-                 font=("Microsoft JhengHei UI",10,"bold")).pack(anchor="w")
-        row(f, "偵測點 X 比例",   "popup_check_x",              "0.0–1.0")
-        row(f, "偵測點 Y 比例",   "popup_check_y",              "0.0–1.0")
-        row(f, "亮度門檻",        "popup_brightness_threshold", "低於此值=彈窗 (0–255)")
-        row(f, "彈窗框線門檻",     "popup_edge_threshold",       "越高越嚴格（預設 35）")
-        row(f, "辨識冷卻秒數",     "popup_recognition_cooldown", "避免同題重複 OCR")
-        row(f, "選邊站比對相似度", "match_threshold",            "0.0–1.0（預設 0.72）")
-        row(f, "自動加題防重門檻", "auto_add_duplicate_threshold", "越低越容易視為同題")
-        row(f, "座標偵測間隔",     "coord_check_interval",       "秒（預設 1.0）")
-        row(f, "座標模板門檻",     "coord_template_threshold",   "越低越嚴格（預設 0.34）")
-        row(f, "座標自動學習",     "coord_auto_learn",           "1=開，0=關")
-        row(f, "地圖圖片相似門檻", "map_image_match_threshold",  "越高越嚴格（預設 0.78）")
-        row(f, "選邊自動導航",     "sidestand_auto_nav",         "1=開，0=關")
-        row(f, "選邊抵達容許",     "sidestand_coord_tolerance",  "遊戲座標距離")
-        row(f, "O 區座標 X",       "sidestand_o_coord_x",        "遊戲座標")
-        row(f, "O 區座標 Y",       "sidestand_o_coord_y",        "遊戲座標")
-        row(f, "X 區座標 X",       "sidestand_x_coord_x",        "遊戲座標")
-        row(f, "X 區座標 Y",       "sidestand_x_coord_y",        "遊戲座標")
-        row(f, "導航最多步數",     "sidestand_nav_max_steps",    "預設 12")
-        row(f, "導航步間隔",       "sidestand_nav_step_wait",    "秒")
-
         def region_block(parent, title, rkey, hint=""):
-            tk.Label(parent, text="", bg=BG2).pack()
             hdr = tk.Frame(parent, bg=BG2); hdr.pack(fill=tk.X)
             tk.Label(hdr, text=title, bg=BG2, fg=ACCENT,
                      font=("Microsoft JhengHei UI",10,"bold")).pack(side=tk.LEFT)
@@ -2122,6 +3492,11 @@ class DaxiApp:
                       activebackground="#3D5068",
                       command=lambda k=rkey: self._open_region_selector(k)
                       ).pack(side=tk.LEFT, padx=(8,0))
+            tk.Button(hdr, text="圖片框選", bg="#2C3E50", fg=TEXT_DIM, relief=tk.FLAT,
+                      padx=6, pady=0, font=("Microsoft JhengHei UI",8),
+                      activebackground="#3D5068",
+                      command=lambda k=rkey: self._open_region_selector(k, force_file=True)
+                      ).pack(side=tk.LEFT, padx=(6,0))
             if hint:
                 tk.Label(parent, text=hint, bg=BG2, fg=TEXT_DIM,
                          font=("Microsoft JhengHei UI",8)).pack(anchor="w", padx=4)
@@ -2136,13 +3511,83 @@ class DaxiApp:
                          bg="#22223A", fg=TEXT_NORM, insertbackground=TEXT_NORM,
                          relief=tk.FLAT).pack(side=tk.LEFT, padx=4)
 
-        region_block(f, "彈窗完整範圍（OCR 用）", "popup_full_region")
-        region_block(f, "題目文字區域", "question_region")
-        region_block(f, "右上座標區域", "coord_region",
+        def section(parent, title):
+            box = tk.Frame(parent, bg=BG2, padx=8, pady=6,
+                           highlightthickness=1, highlightbackground="#2E2E4A")
+            box.pack(fill=tk.X, padx=6, pady=6)
+            tk.Label(box, text=title, bg=BG2, fg=ACCENT,
+                     font=("Microsoft JhengHei UI",10,"bold")).pack(anchor="w", pady=(0,4))
+            return box
+
+        def password_row(parent, label, key, width=28):
+            r = tk.Frame(parent, bg=BG2); r.pack(fill=tk.X, pady=2)
+            tk.Label(r, text=label, bg=BG2, fg=TEXT_NORM,
+                     font=("Microsoft JhengHei UI",9), width=22, anchor="w").pack(side=tk.LEFT)
+            var = tk.StringVar(value=self.config.get(key,""))
+            self._cfg_vars[key] = var
+            entry = tk.Entry(r, textvariable=var, width=width, show="*",
+                             bg="#22223A", fg=TEXT_NORM, insertbackground=TEXT_NORM,
+                             relief=tk.FLAT)
+            entry.pack(side=tk.LEFT, padx=4)
+            def toggle(btn=None):
+                entry.configure(show="" if entry.cget("show")=="*" else "*")
+                if btn: btn.configure(text="隱藏" if entry.cget("show")=="" else "顯示")
+            btn = tk.Button(r, text="顯示", bg=BG2, fg=TEXT_DIM, relief=tk.FLAT, padx=4,
+                            font=("Microsoft JhengHei UI",8), command=lambda: toggle(btn))
+            btn.pack(side=tk.LEFT)
+
+        nb = ttk.Notebook(f)
+        nb.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
+
+        pages = {}
+        for key, title in [
+            ("basic", "常用"),
+            ("regions", "區域"),
+            ("mapcoord", "地圖 / 座標"),
+            ("api", "API / 進階"),
+        ]:
+            page = tk.Frame(nb, bg=BG2)
+            nb.add(page, text=title)
+            pages[key] = self._make_scrollable_frame(page, height=300)
+
+        basic = pages["basic"]
+        box = section(basic, "辨識與題庫")
+        row(box, "OCR 引擎",          "ocr_engine", "windows / paddle / auto")
+        row(box, "辨識冷卻秒數",     "popup_recognition_cooldown", "同一題幾秒內不重讀，避免一直刷通知")
+        row(box, "同題判定差異",     "popup_same_signature_threshold", "越低越容易把新題視為不同題；預設 0.01")
+        row(box, "待機監測間隔",     "monitor_idle_interval", "沒題目時多久截一次圖；數字越大越省效能")
+        row(box, "題目監測間隔",     "monitor_active_interval", "有題目時多久檢查一次畫面變化")
+        row(box, "四選一命中分數",   "quiz4_match_threshold",      "越低越容易命中舊題；太低可能拿錯答案")
+        row(box, "選邊站命中分數",   "match_threshold",            "越低越容易判成同一題；太低可能 O/X 錯")
+        row(box, "截圖命中分數",     "image_question_match_threshold", "用已校正題目截圖比對；越高越嚴格")
+        row(box, "OCR 未命中信任文字", "trust_ocr_text_for_pending", "0=新題只存截圖待校正；1=把 OCR 文字當題目")
+        row(box, "新題防重分數",     "auto_add_duplicate_threshold", "高於此分數就不當新題，避免錯字重複新增")
+        row(box, "待校正合併分數",   "pending_merge_threshold",    "活動中 OCR 錯字先合併到同一筆待校正")
+        row(box, "保存待校正截圖",   "save_pending_captures", "1=新題 / 失敗自動存圖；0=不存")
+        row(box, "保存分區截圖",     "save_capture_regions", "1=同時保存題目區和選項區")
+        box = section(basic, "彈窗偵測")
+        row(box, "偵測點 X 比例", "popup_check_x", "0.0–1.0")
+        row(box, "偵測點 Y 比例", "popup_check_y", "0.0–1.0")
+        row(box, "亮度門檻",      "popup_brightness_threshold", "畫面變暗低於此值，才可能是彈窗")
+        row(box, "框線門檻",      "popup_edge_threshold", "越高越嚴格；彈窗抓不到就調低")
+
+        regions = pages["regions"]
+        box = section(regions, "問答彈窗")
+        region_block(box, "彈窗完整範圍", "popup_full_region",
+                     hint="框整個問答彈窗，用來判斷彈窗和備用辨識")
+        region_block(box, "題目文字區域", "question_region",
+                     hint="辨識只看這個框；只框題目那一行，不要框到標題列、倒數、角色名或選項")
+        region_block(box, "選項文字區域", "options_region",
+                     hint="只框 1～4 的選項文字，不要框到題目或倒數時間")
+        box = section(regions, "地圖與座標區域")
+        region_block(box, "右上座標區域", "coord_region",
                      hint="框選右上角角色座標，例如 4248,4024")
-        region_block(f, "地圖名稱過濾（右上角）", "map_name_region",
-                     hint="設定後只在指定場景啟動辨識；留空關鍵字欄位 = 不過濾")
-        kw_row = tk.Frame(f, bg=BG2); kw_row.pack(fill=tk.X, pady=2)
+        region_block(box, "地圖名稱過濾（右上角）", "map_name_region",
+                     hint="留空關鍵字欄位 = 不過濾")
+
+        mapcoord = pages["mapcoord"]
+        box = section(mapcoord, "活動場景")
+        kw_row = tk.Frame(box, bg=BG2); kw_row.pack(fill=tk.X, pady=2)
         tk.Label(kw_row, text="  活動關鍵字（逗號分隔）", bg=BG2, fg=TEXT_NORM,
                  font=("Microsoft JhengHei UI",9), width=22, anchor="w").pack(side=tk.LEFT)
         kw_str = ",".join(self.config.get("quiz_map_keywords", []))
@@ -2150,17 +3595,42 @@ class DaxiApp:
         tk.Entry(kw_row, textvariable=self._kw_var, width=22,
                  bg="#22223A", fg=TEXT_NORM, insertbackground=TEXT_NORM,
                  relief=tk.FLAT).pack(side=tk.LEFT, padx=4)
+        row(box, "地圖圖片備援分數", "map_image_match_threshold", "文字讀不到時才看圖片；越高越嚴格")
+        row(box, "待機地圖間隔",     "map_idle_check_interval", "沒題目時低頻檢查地圖，降低卡頓")
+        row(box, "離場保護秒數",     "map_leave_grace_seconds", "換地圖後等幾秒再停止，避免瞬間誤判")
+        row(box, "離場失敗次數",     "map_leave_stop_misses", "連續幾次不是活動地圖，才停止")
+        row(box, "離場自動停止",     "auto_stop_on_map_leave", "1=離開活動地圖就停；0=只提示不停")
+        box = section(mapcoord, "座標與導航")
+        row(box, "座標偵測間隔", "coord_check_interval", "秒")
+        row(box, "座標模板分數", "coord_template_threshold", "模板備援用；越低越嚴格")
+        row(box, "座標自動學習", "coord_auto_learn", "1=讀到座標就學數字模板；0=不學")
+        row(box, "選邊自動導航", "sidestand_auto_nav", "目前建議 0，等座標穩定再開")
+        row(box, "選邊抵達容許", "sidestand_coord_tolerance", "離目標多近算抵達，單位是遊戲座標")
+        row(box, "O 區座標 X", "sidestand_o_coord_x", "遊戲座標")
+        row(box, "O 區座標 Y", "sidestand_o_coord_y", "遊戲座標")
+        row(box, "X 區座標 X", "sidestand_x_coord_x", "遊戲座標")
+        row(box, "X 區座標 Y", "sidestand_x_coord_y", "遊戲座標")
+        row(box, "導航最多步數", "sidestand_nav_max_steps", "預設 12")
+        row(box, "導航步間隔", "sidestand_nav_step_wait", "秒")
 
-        tk.Label(f, text="", bg=BG2).pack()
-        btn_row = tk.Frame(f, bg=BG2); btn_row.pack()
-        ttk.Button(btn_row, text="儲存設定",       command=self._apply_cfg).pack(side=tk.LEFT, padx=6)
-        ttk.Button(btn_row, text="測試亮度",       command=self._test_brightness).pack(side=tk.LEFT, padx=6)
-        ttk.Button(btn_row, text="測試地圖名稱",   command=self._test_map_name).pack(side=tk.LEFT, padx=6)
-        ttk.Button(btn_row, text="校準地圖圖片",   command=self._calibrate_map_image).pack(side=tk.LEFT, padx=6)
-        ttk.Button(btn_row, text="測試座標",       command=self._test_coordinates).pack(side=tk.LEFT, padx=6)
-        ttk.Button(btn_row, text="校準座標模板",   command=self._calibrate_coord_templates).pack(side=tk.LEFT, padx=6)
-        ttk.Button(btn_row, text="測試截圖辨識",   command=self._test_recognition).pack(side=tk.LEFT, padx=6)
-        ttk.Button(btn_row, text="從截圖檔案辨識", command=self._test_recognition_file).pack(side=tk.LEFT)
+        api = pages["api"]
+        box = section(api, "本機優先，付費 API 預設關閉")
+        password_row(box, "GEMINI_API_KEY", "gemini_api_key")
+        row(box, "Gemini 模型", "gemini_model", "")
+        password_row(box, "ANTHROPIC_API_KEY", "api_key")
+        row(box, "允許付費 API 備援", "allow_paid_api_fallback", "平常用 0；開 1 才會呼叫 Gemini / Claude")
+
+        btn_wrap = tk.Frame(f, bg=BG2); btn_wrap.pack(fill=tk.X, padx=8, pady=6)
+        save_row = tk.Frame(btn_wrap, bg=BG2); save_row.pack(fill=tk.X, pady=(0,4))
+        test_row = tk.Frame(btn_wrap, bg=BG2); test_row.pack(fill=tk.X)
+        ttk.Button(save_row, text="儲存設定", command=self._apply_cfg).pack(side=tk.LEFT, padx=6)
+        ttk.Button(test_row, text="用圖片檢查全部", command=self._test_image_all).pack(side=tk.LEFT, padx=6)
+        ttk.Button(test_row, text="只測問答辨識",   command=self._test_recognition_file).pack(side=tk.LEFT, padx=6)
+        ttk.Button(test_row, text="抓遊戲測問答",   command=self._test_recognition).pack(side=tk.LEFT, padx=6)
+        ttk.Button(test_row, text="只測座標",       command=self._test_coordinates).pack(side=tk.LEFT, padx=6)
+        ttk.Button(test_row, text="只測地圖名稱",   command=self._test_map_name).pack(side=tk.LEFT, padx=6)
+        ttk.Button(test_row, text="校準地圖圖片",   command=self._calibrate_map_image).pack(side=tk.LEFT, padx=6)
+        ttk.Button(test_row, text="校準座標模板",   command=self._calibrate_coord_templates).pack(side=tk.LEFT, padx=6)
 
     # ── 控制 ──
 
@@ -2216,7 +3686,28 @@ class DaxiApp:
     def _on_detail(self, m):
         """偵測器的 detail 回呼：限速 / 配額錯誤用灰色，其餘用橙色。"""
         tag = "dim" if any(k in m for k in ("429", "RESOURCE_EXHAUSTED", "quota")) else "warn"
+        now = time.time()
+        key = (tag, m[:100])
+        if now - self._detail_seen.get(key, 0.0) < 5.0:
+            return
+        self._detail_seen[key] = now
+        if len(self._detail_seen) > 80:
+            old_keys = sorted(self._detail_seen, key=self._detail_seen.get)[:20]
+            for old_key in old_keys:
+                self._detail_seen.pop(old_key, None)
         self.root.after(0, self._add_notif, m, tag)
+
+    def _schedule_refresh(self, func, delay=120):
+        name = getattr(func, "__name__", str(id(func)))
+        if name in self._refresh_jobs:
+            return
+        self._refresh_jobs.add(name)
+
+        def run():
+            self._refresh_jobs.discard(name)
+            func()
+
+        self.root.after(delay, run)
 
     def _toggle_monitor(self):
         if self._thread and self._thread.is_alive():
@@ -2236,14 +3727,26 @@ class DaxiApp:
                 on_detail=self._on_detail,
             )
             self.detector.set_mode(self._mode.get())
+            self.detector.force_next_recognition()
             self.start_btn.configure(text="停止監測", bg="#C0392B")
+            self._set_status("已開始監測，正在檢查目前畫面是否有題目…")
             self._thread = threading.Thread(
                 target=self.detector.run,
                 args=(self._on_result, self._set_status, self._on_error),
-                kwargs={"on_popup_gone": self._on_popup_gone, "hwnd": hwnd, "title": title},
+                kwargs={
+                    "on_popup_gone": self._on_popup_gone,
+                    "on_stopped": self._on_monitor_stopped,
+                    "hwnd": hwnd,
+                    "title": title,
+                },
                 daemon=True,
             )
             self._thread.start()
+
+    def _on_monitor_stopped(self):
+        def update():
+            self.start_btn.configure(text="開始監測", bg="#2ECC71")
+        self.root.after(0, update)
 
     def _toggle_coord_monitor(self):
         if self._coord_thread and self._coord_thread.is_alive():
@@ -2298,6 +3801,12 @@ class DaxiApp:
         self.root.after(0, lambda: self.coord_btn.configure(text="座標監測", bg="#2C3E50"))
 
     def _on_result(self, result):
+        key = self._result_key(result)
+        now = time.time()
+        if key == self._last_result_key and now - self._last_result_time < 3.0:
+            return
+        self._last_result_key = key
+        self._last_result_time = now
         self._current = result
         if not self._pinned: self.root.after(0, self._popup_window)
         self.root.after(0, self._show_result, result)
@@ -2306,31 +3815,99 @@ class DaxiApp:
         if q:
             mode = self._mode.get()
             dup_threshold = float(self.config.get("auto_add_duplicate_threshold", 0.80))
+            merge_threshold = float(self.config.get("pending_merge_threshold", dup_threshold))
             if mode == "quiz4" and not result.get("answer_idx"):
-                if not self.db4.lookup(question=q, threshold=dup_threshold):
-                    self.db4.upsert(result.get("phash") or 0, q, None, "",
-                                    result.get("options", []))
-                    self.root.after(0, self._notify_auto_added, "quiz4")
-                    self.root.after(0, self._refresh_db4)
+                status = self.db4.add_pending(
+                    result.get("phash") or 0,
+                    q,
+                    result.get("options", []),
+                    threshold=merge_threshold,
+                    capture_path=result.get("capture_path") or "",
+                )
+                if status == "merged":
+                    self.root.after(0, self._add_notif, "四選一 → 這題像之前的待校正題，已合併，不新增一筆", "dim")
+                    self._schedule_refresh(self._refresh_pending4)
+                elif status == "added":
+                    opt_count = quiz_option_count(result.get("options", []))
+                    self.root.after(0, self._notify_auto_added, "quiz4", opt_count)
+                    self._schedule_refresh(self._refresh_pending4)
+                elif status == "answered":
+                    self.root.after(0, self._add_notif, "四選一 → 類似題已經有答案，這次 OCR 錯字不寫入題庫", "dim")
             elif mode == "sidestand" and not result.get("answer"):
-                if not self.dbs.lookup(q, threshold=dup_threshold):
-                    self.dbs.add(q, None)
+                status = self.dbs.add_pending(
+                    q,
+                    threshold=merge_threshold,
+                    capture_path=result.get("capture_path") or "",
+                )
+                if status == "added":
                     self.root.after(0, self._notify_auto_added, "sidestand")
-                    self.root.after(0, self._refresh_dbs)
+                    self._schedule_refresh(self._refresh_pending_dbs)
+                elif status == "merged":
+                    self.root.after(0, self._add_notif, "選邊站 → 這題像之前的待填題，已略過，不新增一筆", "dim")
+                    self._schedule_refresh(self._refresh_pending_dbs)
+                elif status == "answered":
+                    self.root.after(0, self._add_notif, "選邊站 → 類似題已經有答案，這次 OCR 錯字不寫入題庫", "dim")
+
+    def _result_key(self, result):
+        mode = self._mode.get()
+        question = result.get("question", "")
+        if mode == "quiz4":
+            options = tuple((result.get("options") or [])[:4])
+            return (
+                mode,
+                question,
+                result.get("answer_idx"),
+                result.get("answer_text", ""),
+                options,
+            )
+        return (
+            mode,
+            question,
+            result.get("answer"),
+            result.get("recognized", ""),
+        )
 
     def _add_notif(self, msg, tag="info"):
         ts = datetime.datetime.now().strftime("%H:%M:%S")
+        now = time.time()
+        key = (tag, msg)
+        if key == self._last_notif_key and now - self._last_notif_time < 1.5:
+            return
+        self._last_notif_key = key
+        self._last_notif_time = now
+        self._notif_pending.append((ts, msg, tag))
+        if not self._notif_drain_scheduled:
+            self._notif_drain_scheduled = True
+            self.root.after(80, self._drain_notifs)
+
+    def _drain_notifs(self):
+        self._notif_drain_scheduled = False
+        if not self._notif_pending:
+            return
+        pending = self._notif_pending[:40]
+        del self._notif_pending[:40]
         self.notif_log.configure(state=tk.NORMAL)
-        self.notif_log.insert("end", f"[{ts}] ", "time")
-        self.notif_log.insert("end", msg + "\n", tag)
+        for ts, msg, tag in pending:
+            self.notif_log.insert("end", f"[{ts}] ", "time")
+            self.notif_log.insert("end", msg + "\n", tag)
+        line_count = int(float(self.notif_log.index("end-1c").split(".")[0]))
+        if line_count > self._notif_max_lines:
+            self.notif_log.delete("1.0", f"{line_count - self._notif_max_lines + 1}.0")
         self.notif_log.see("end")
         self.notif_log.configure(state=tk.DISABLED)
+        if self._notif_pending:
+            self._notif_drain_scheduled = True
+            self.root.after(120, self._drain_notifs)
 
-    def _notify_auto_added(self, mode):
-        tab = "四選一題庫" if mode == "quiz4" else "選邊站題庫"
+    def _notify_auto_added(self, mode, opt_count=None):
+        tab = "四選一待校正" if mode == "quiz4" else "選邊站待校正"
         self.status_lbl.configure(fg="#E67E22")
-        self.status_var.set(f"⚠ 未知題目已自動加入「{tab}」（尚無答案），請雙擊補充")
-        self._add_notif(f"新題目加入「{tab}」（待填答案）", "warn")
+        if mode == "quiz4" and opt_count is not None and opt_count < 4:
+            self.status_var.set(f"⚠ 新題目已暫存，但只有 {opt_count}/4 個選項，請活動後雙擊校正")
+            self._add_notif(f"四選一 → 先暫存，選項只讀到 {opt_count}/4，活動後再校正", "warn")
+        else:
+            self.status_var.set(f"⚠ 未知題目已自動加入「{tab}」（尚無答案），請雙擊補充")
+            self._add_notif(f"新題目已加入「{tab}」，目前還沒有答案", "warn")
         self.root.after(8000, lambda: self.status_lbl.configure(fg="#666688"))
 
     def _popup_window(self):
@@ -2355,6 +3932,11 @@ class DaxiApp:
         ])
 
     def _set_status(self, msg):
+        now = time.time()
+        if msg == self._last_status_msg and now - self._last_status_time < 1.0:
+            return
+        self._last_status_msg = msg
+        self._last_status_time = now
         self.root.after(0, lambda m=msg: self.status_var.set(m))
 
     def _show_result(self, result):
@@ -2367,6 +3949,7 @@ class DaxiApp:
             question = result.get("question","")
             options  = result.get("options",[])
             source   = result.get("source","")
+            recog    = result.get("recognized","")
 
             self.ans_num_var.set(str(idx) if idx else "?")
             self.ans_text_var.set(ans_text)
@@ -2374,8 +3957,14 @@ class DaxiApp:
                 self.quiz_answer_line_var.set(f"{idx}. {ans_text or '已命中答案'}")
             else:
                 self.quiz_answer_line_var.set("尚未命中答案")
-            self.q_var4.set(question[:90]+("…" if len(question)>90 else ""))
-            self.source_var4.set(f"來源：{source}" if source else "")
+            display_q = question
+            if _is_ocr_failed_placeholder(question) and recog:
+                display_q = f"{question}｜OCR 參考：{recog[:48]}"
+            self.q_var4.set(display_q[:90]+("…" if len(display_q)>90 else ""))
+            if recog and _is_ocr_failed_placeholder(question):
+                self.source_var4.set(f"來源：{source}｜OCR 只當參考")
+            else:
+                self.source_var4.set(f"來源：{source}" if source else "")
 
             for i,(var,color) in enumerate(zip(self.opt_vars, OPT_COLORS)):
                 opt  = options[i] if i < len(options) else ""
@@ -2414,10 +4003,12 @@ class DaxiApp:
             self.q_vars.set(question[:60]+("…" if len(question)>60 else ""))
             if sim is not None:
                 self.source_vars.set(f"相似度 {sim:.0%}　辨識：{recog[:48]}")
+            elif recog and _is_ocr_failed_placeholder(question):
+                self.source_vars.set(f"OCR 參考：{recog[:48]}")
             else:
                 self.source_vars.set("未找到，可手動存入題庫")
 
-            self.fix_btn.configure(state=tk.DISABLED)
+            self.fix_btn.configure(state=tk.NORMAL if has_q else tk.DISABLED)
 
             if ans in ("O", "X"):
                 sim_txt = f"（{sim:.0%}）" if sim is not None else ""
@@ -2439,15 +4030,18 @@ class DaxiApp:
             if not idx:
                 messagebox.showwarning("提示","請先確認答案（用「修正答案」設定）"); return
             self.db4.upsert(self._current.get("phash") or 0, q, idx,
-                            self._current.get("answer_text",""), self._current.get("options",[]))
+                            self._current.get("answer_text",""), self._current.get("options",[]),
+                            capture_path=self._current.get("capture_path") or "")
             self._set_status(f"已存入四選一題庫：{q[:25]}…")
             self._refresh_db4()
+            self._refresh_pending4()
         else:
             ans = self._current.get("answer")
             if ans:
-                self.dbs.add(q, ans)
+                self.dbs.upsert(q, ans, old_question=q, capture_path=self._current.get("capture_path") or "")
                 self._set_status(f"已存入選邊站題庫：{q[:25]}…")
                 self._refresh_dbs()
+                self._refresh_pending_dbs()
             else:
                 self._set_status("請直接點畫面上的 O / X 設定答案")
 
@@ -2458,10 +4052,11 @@ class DaxiApp:
         if not q: return
         self._current["answer"] = ans
         self._show_result(self._current)
-        self.dbs.add(q, ans)
+        self.dbs.upsert(q, ans, old_question=q, capture_path=self._current.get("capture_path") or "")
         self._set_status(f"答案 {ans} 已記錄：{q[:20]}…")
         self._add_notif(f"選邊站 → 答案確認 {ans}", "ok")
         self._refresh_dbs()
+        self._refresh_pending_dbs()
 
     def _sidestand_target_coord(self, ans):
         prefix = "sidestand_o" if ans == "O" else "sidestand_x"
@@ -2613,83 +4208,361 @@ class DaxiApp:
         if q:
             self.db4.upsert(self._current.get("phash") or 0, q, idx,
                             self._current.get("answer_text",""),
-                            self._current.get("options",[]))
+                            self._current.get("options",[]),
+                            capture_path=self._current.get("capture_path") or "")
             ans_t = self._current.get("answer_text","")
             self._set_status(f"答案 {idx} 已記錄：{q[:20]}…")
             self._add_notif(f"四選一 → 答案確認 {idx}. {ans_t[:18]}", "ok")
             self._refresh_db4()
+            self._refresh_pending4()
 
     def _fix_answer(self):
-        if not self._current or self._mode.get() != "quiz4": return
-        dlg = simpledialog.askstring(
-            "修正答案","請輸入正確答案編號（1–4）：",
-            initialvalue=str(self._current.get("answer_idx") or ""),
-            parent=self.root,
-        )
-        if dlg and dlg.strip() in ("1","2","3","4"):
-            self._click_option(int(dlg.strip()))
+        if not self._current:
+            return
+        if self._mode.get() == "quiz4":
+            self._open_current_quiz4_editor()
+        else:
+            self._open_current_sidestand_editor()
+
+    def _load_capture_preview_image(self, capture_path, region):
+        if not capture_path:
+            return None
+        path = capture_path if region == "popup" else _capture_region_path(capture_path, region)
+        if not path or not os.path.exists(path):
+            return None
+        try:
+            return Image.open(path).convert("RGB")
+        except Exception:
+            return None
+
+    def _add_capture_preview(self, parent, entry, mode="quiz4"):
+        paths = _entry_capture_paths(entry or {})
+        if not paths:
+            return
+        capture_path = paths[-1]
+        regions = [("question", "題目截圖", 420, 92)]
+        if mode == "quiz4":
+            regions.append(("options", "選項截圖", 420, 92))
+        images = []
+        for region, title, max_w, max_h in regions:
+            img = self._load_capture_preview_image(capture_path, region)
+            if img is not None:
+                images.append((title, img, max_w, max_h))
+        if not images:
+            img = self._load_capture_preview_image(capture_path, "popup")
+            if img is not None:
+                images.append(("完整彈窗", img, 420, 140))
+        if not images:
+            return
+
+        box = tk.Frame(parent, bg=BG)
+        box.pack(fill=tk.X, pady=(0, 8))
+        tk.Label(
+            box, text="當時保存的截圖", bg=BG, fg=TEXT_DIM,
+            font=("Microsoft JhengHei UI", 9),
+        ).pack(anchor="w")
+        photos = []
+        for title, img, max_w, max_h in images:
+            row = tk.Frame(box, bg=BG2)
+            row.pack(fill=tk.X, pady=(3, 0))
+            photo = self._preview_photo(img, max_w=max_w, max_h=max_h, nearest=True)
+            photos.append(photo)
+            lbl = tk.Label(row, image=photo, bg=BG2)
+            lbl.image = photo
+            lbl.pack(side=tk.LEFT, padx=4, pady=4)
+            tk.Label(
+                row, text=title, bg=BG2, fg=TEXT_DIM,
+                font=("Microsoft JhengHei UI", 9),
+            ).pack(side=tk.LEFT, padx=(6, 4))
+        box._preview_photos = photos
+
+    def _open_current_quiz4_editor(self):
+        cur = self._current or {}
+        q = cur.get("question", "")
+        opts = list(cur.get("options", []))
+
+        win = tk.Toplevel(self.root)
+        win.title("校正目前四選一"); win.configure(bg=BG)
+        win.attributes("-topmost", True); win.resizable(True, True)
+        win.minsize(460, 360)
+
+        body = tk.Frame(win, bg=BG, padx=12, pady=10)
+        body.pack(fill=tk.BOTH, expand=True)
+        self._add_capture_preview(body, cur, mode="quiz4")
+
+        tk.Label(body, text="題目文字", bg=BG, fg=TEXT_DIM,
+                 font=("Microsoft JhengHei UI", 9)).pack(anchor="w")
+        q_txt = tk.Text(body, height=3, bg=BG2, fg=TEXT_NORM, insertbackground=TEXT_NORM,
+                        relief=tk.FLAT, wrap=tk.WORD, font=("Microsoft JhengHei UI", 10))
+        q_txt.insert("1.0", q)
+        q_txt.pack(fill=tk.X, pady=(2, 8))
+
+        tk.Label(body, text="選項和正確答案", bg=BG, fg=TEXT_DIM,
+                 font=("Microsoft JhengHei UI", 9)).pack(anchor="w")
+        chosen = tk.IntVar(value=cur.get("answer_idx") or 0)
+        rows = []
+        btn_frame = tk.Frame(body, bg=BG); btn_frame.pack(fill=tk.X, pady=(2, 8))
+        for i in range(4):
+            opt_text = opts[i] if i < len(opts) else ""
+            row = tk.Frame(btn_frame, bg=BG)
+            row.pack(fill=tk.X, pady=2)
+            tk.Radiobutton(row, text=str(i + 1), variable=chosen, value=i + 1,
+                           bg=BG, fg=OPT_COLORS[i], selectcolor="#222240",
+                           font=("Microsoft JhengHei UI", 10), activebackground=BG).pack(side=tk.LEFT)
+            var = tk.StringVar(value=opt_text)
+            ent = tk.Entry(row, textvariable=var, bg=BG2, fg=TEXT_NORM,
+                           insertbackground=TEXT_NORM, relief=tk.FLAT,
+                           font=("Microsoft JhengHei UI", 10))
+            ent.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(6, 0), ipady=3)
+            rows.append(var)
+
+        hint = "可以先只修題目和選項；沒勾答案時會存成待校正。"
+        tk.Label(body, text=hint, bg=BG, fg=TEXT_DIM, wraplength=430,
+                 justify=tk.LEFT, font=("Microsoft JhengHei UI", 9)).pack(anchor="w", pady=(0, 8))
+
+        def confirm():
+            new_q = q_txt.get("1.0", "end").strip()
+            new_opts = [var.get().strip() for var in rows]
+            v = chosen.get()
+            if not new_q:
+                messagebox.showwarning("提示", "題目不能空白", parent=win)
+                return
+            ans_text = new_opts[v - 1] if v in (1, 2, 3, 4) and v <= len(new_opts) else ""
+            cur["question"] = new_q
+            cur["options"] = new_opts
+            cur["answer_idx"] = v if v in (1, 2, 3, 4) else None
+            cur["answer_text"] = ans_text
+            self._current = cur
+            self._show_result(cur)
+            if cur.get("answer_idx"):
+                self.db4.upsert(
+                    cur.get("phash") or 0, new_q, cur["answer_idx"], ans_text, new_opts,
+                    capture_path=cur.get("capture_path") or "",
+                )
+                self._set_status(f"已校正並存入四選一：{new_q[:20]}… → {cur['answer_idx']}")
+            else:
+                self.db4.add_pending(cur.get("phash") or 0, new_q, new_opts,
+                                     threshold=float(self.config.get("pending_merge_threshold", 0.68)),
+                                     capture_path=cur.get("capture_path") or "")
+                self._set_status(f"已更新題目文字，暫存待校正：{new_q[:20]}…")
+            self._refresh_db4()
+            self._refresh_pending4()
+            win.destroy()
+
+        btn_row = tk.Frame(body, bg=BG); btn_row.pack(anchor="e")
+        tk.Button(btn_row, text="確認", bg=ACCENT, fg="white", relief=tk.FLAT,
+                  padx=16, pady=4, font=("Microsoft JhengHei UI", 10),
+                  command=confirm).pack(side=tk.LEFT, padx=6)
+        tk.Button(btn_row, text="取消", bg=BG2, fg=TEXT_NORM, relief=tk.FLAT,
+                  padx=16, pady=4, font=("Microsoft JhengHei UI", 10),
+                  command=win.destroy).pack(side=tk.LEFT)
+
+    def _open_current_sidestand_editor(self):
+        cur = self._current or {}
+        old_q = cur.get("question", "")
+
+        win = tk.Toplevel(self.root)
+        win.title("校正目前選邊站"); win.configure(bg=BG)
+        win.attributes("-topmost", True); win.resizable(True, True)
+        win.minsize(420, 260)
+
+        body = tk.Frame(win, bg=BG, padx=12, pady=10)
+        body.pack(fill=tk.BOTH, expand=True)
+        self._add_capture_preview(body, cur, mode="sidestand")
+        tk.Label(body, text="題目 / 敘述文字", bg=BG, fg=TEXT_DIM,
+                 font=("Microsoft JhengHei UI", 9)).pack(anchor="w")
+        q_txt = tk.Text(body, height=4, bg=BG2, fg=TEXT_NORM, insertbackground=TEXT_NORM,
+                        relief=tk.FLAT, wrap=tk.WORD, font=("Microsoft JhengHei UI", 10))
+        q_txt.insert("1.0", old_q)
+        q_txt.pack(fill=tk.BOTH, expand=True, pady=(2, 10))
+
+        chosen = tk.StringVar(value=cur.get("answer") or "")
+        ans_row = tk.Frame(body, bg=BG); ans_row.pack(fill=tk.X, pady=(0, 8))
+        tk.Radiobutton(ans_row, text="O 正確", variable=chosen, value="O",
+                       bg=BG, fg=COL_O, selectcolor="#222240",
+                       font=("Microsoft JhengHei UI", 12, "bold"),
+                       activebackground=BG).pack(side=tk.LEFT, padx=(0, 14))
+        tk.Radiobutton(ans_row, text="X 錯誤", variable=chosen, value="X",
+                       bg=BG, fg=COL_X, selectcolor="#222240",
+                       font=("Microsoft JhengHei UI", 12, "bold"),
+                       activebackground=BG).pack(side=tk.LEFT)
+
+        def confirm():
+            new_q = q_txt.get("1.0", "end").strip()
+            ans = chosen.get() if chosen.get() in ("O", "X") else None
+            if not new_q:
+                messagebox.showwarning("提示", "題目不能空白", parent=win)
+                return
+            cur["question"] = new_q
+            cur["recognized"] = new_q
+            cur["answer"] = ans
+            self._current = cur
+            self._show_result(cur)
+            if ans:
+                self.dbs.upsert(new_q, ans, old_question=old_q, capture_path=cur.get("capture_path") or "")
+                self._set_status(f"已校正並存入選邊站：{new_q[:20]}… → {ans}")
+            else:
+                self.dbs.add_pending(
+                    new_q,
+                    threshold=float(self.config.get("pending_merge_threshold", 0.68)),
+                    capture_path=cur.get("capture_path") or "",
+                )
+                self._set_status(f"已更新選邊站題目，暫存待校正：{new_q[:20]}…")
+            self._refresh_dbs()
+            self._refresh_pending_dbs()
+            win.destroy()
+
+        btn_row = tk.Frame(body, bg=BG); btn_row.pack(anchor="e")
+        tk.Button(btn_row, text="確認", bg=ACCENT, fg="white", relief=tk.FLAT,
+                  padx=16, pady=4, font=("Microsoft JhengHei UI", 10),
+                  command=confirm).pack(side=tk.LEFT, padx=6)
+        tk.Button(btn_row, text="取消", bg=BG2, fg=TEXT_NORM, relief=tk.FLAT,
+                  padx=16, pady=4, font=("Microsoft JhengHei UI", 10),
+                  command=win.destroy).pack(side=tk.LEFT)
 
     def _refresh_db4(self):
-        self.db4_tree.tag_configure("no_ans", foreground="#E67E22")
+        if not hasattr(self, "db4_tree"):
+            return
         for item in self.db4_tree.get_children(): self.db4_tree.delete(item)
-        for e in self.db4.entries:
+        self._db4_visible_indices = self.db4.confirmed_indices()
+        for real_idx in self._db4_visible_indices:
+            e = self.db4.entries[real_idx]
             idx  = e.get("answer_idx")
             t    = e.get("answer_text","")[:15]
-            tag  = ("no_ans",) if not idx else ()
-            self.db4_tree.insert("","end", tags=tag, values=(
+            answer_label = f"{idx}. {t}" if idx else "（待填）"
+            self.db4_tree.insert("","end", values=(
                 e.get("question","")[:28],
-                f"{idx}. {t}" if idx else "（待填）",
+                answer_label,
                 e.get("source","")[:8]))
 
+    def _refresh_pending4(self):
+        if not hasattr(self, "pending4_tree"):
+            return
+        self.pending4_tree.tag_configure("warn", foreground="#E67E22")
+        for item in self.pending4_tree.get_children(): self.pending4_tree.delete(item)
+        self._pending4_visible_indices = self.db4.pending_indices()
+        for real_idx in self._pending4_visible_indices:
+            e = self.db4.entries[real_idx]
+            opt_count = quiz_option_count(e.get("options", []))
+            answer_idx = e.get("answer_idx")
+            state = "待選答案" if opt_count >= 4 else f"選項 {opt_count}/4"
+            if answer_idx and opt_count < 4:
+                state = f"已選 {answer_idx}，選項 {opt_count}/4"
+            self.pending4_tree.insert("","end", tags=("warn",), values=(
+                e.get("question","")[:34],
+                state,
+                e.get("source","")[:10]))
+
     def _refresh_dbs(self):
-        self.dbs_tree.tag_configure("no_ans", foreground="#E67E22")
+        if not hasattr(self, "dbs_tree"):
+            return
         for item in self.dbs_tree.get_children(): self.dbs_tree.delete(item)
-        for e in self.dbs.entries:
+        self._dbs_visible_indices = self.dbs.confirmed_indices()
+        for real_idx in self._dbs_visible_indices:
+            e = self.dbs.entries[real_idx]
             ans = e.get("answer")
-            tag = ("no_ans",) if not ans else ()
-            self.dbs_tree.insert("","end", tags=tag, values=(
-                e.get("question","")[:50], ans or "（待填）"))
+            self.dbs_tree.insert("","end", values=(e.get("question","")[:50], ans))
+
+    def _refresh_pending_dbs(self):
+        if not hasattr(self, "pending_dbs_tree"):
+            return
+        self.pending_dbs_tree.tag_configure("warn", foreground="#E67E22")
+        for item in self.pending_dbs_tree.get_children(): self.pending_dbs_tree.delete(item)
+        self._pending_dbs_visible_indices = self.dbs.pending_indices()
+        for real_idx in self._pending_dbs_visible_indices:
+            e = self.dbs.entries[real_idx]
+            self.pending_dbs_tree.insert("","end", tags=("warn",), values=(
+                e.get("question","")[:58], "待選 O/X"))
+
+    def _selected_real_index(self, tree, mapping_name):
+        sel = tree.selection()
+        if not sel:
+            return None
+        visible_idx = tree.index(sel[0])
+        mapping = getattr(self, mapping_name, [])
+        if visible_idx < 0 or visible_idx >= len(mapping):
+            return None
+        return mapping[visible_idx]
 
     def _edit_db4_entry(self, event):
-        sel = self.db4_tree.selection()
-        if not sel: return
-        idx  = self.db4_tree.index(sel[0])
+        idx = self._selected_real_index(self.db4_tree, "_db4_visible_indices")
+        if idx is None:
+            return
+        self._open_db4_entry_editor(idx)
+
+    def _edit_pending4_entry(self, event):
+        idx = self._selected_real_index(self.pending4_tree, "_pending4_visible_indices")
+        if idx is None:
+            return
+        self._open_db4_entry_editor(idx)
+
+    def _open_db4_entry_editor(self, idx):
         entry = self.db4.entries[idx]
         q    = entry.get("question", "")
         opts = entry.get("options", [])
 
         win = tk.Toplevel(self.root)
-        win.title("修改答案"); win.configure(bg=BG)
-        win.attributes("-topmost", True); win.resizable(False, False)
+        win.title("校正四選一題庫"); win.configure(bg=BG)
+        win.attributes("-topmost", True); win.resizable(True, True)
+        win.minsize(460, 360)
 
-        tk.Label(win, text=q, bg=BG, fg=TEXT_NORM, wraplength=360,
-                 font=("Microsoft JhengHei UI", 10), padx=12, pady=8,
-                 justify=tk.LEFT).pack(fill=tk.X)
-        tk.Label(win, text="選擇正確答案：", bg=BG, fg=TEXT_DIM,
-                 font=("Microsoft JhengHei UI", 9)).pack(anchor="w", padx=12)
+        body = tk.Frame(win, bg=BG, padx=12, pady=10)
+        body.pack(fill=tk.BOTH, expand=True)
+        self._add_capture_preview(body, entry, mode="quiz4")
 
+        tk.Label(body, text="題目", bg=BG, fg=TEXT_DIM,
+                 font=("Microsoft JhengHei UI", 9)).pack(anchor="w")
+        q_txt = tk.Text(body, height=3, bg=BG2, fg=TEXT_NORM, insertbackground=TEXT_NORM,
+                        relief=tk.FLAT, wrap=tk.WORD, font=("Microsoft JhengHei UI", 10))
+        q_txt.insert("1.0", q)
+        q_txt.pack(fill=tk.X, pady=(2, 8))
+
+        tk.Label(body, text="選項和正確答案", bg=BG, fg=TEXT_DIM,
+                 font=("Microsoft JhengHei UI", 9)).pack(anchor="w")
         chosen = tk.IntVar(value=entry.get("answer_idx") or 0)
-        btn_frame = tk.Frame(win, bg=BG); btn_frame.pack(padx=12, pady=6, fill=tk.X)
+        rows = []
+        btn_frame = tk.Frame(body, bg=BG); btn_frame.pack(fill=tk.X, pady=(2, 8))
         for i in range(4):
             opt_text = opts[i] if i < len(opts) else f"選項 {i+1}"
-            tk.Radiobutton(btn_frame, text=f"{i+1}. {opt_text}",
-                           variable=chosen, value=i+1,
+            row = tk.Frame(btn_frame, bg=BG)
+            row.pack(fill=tk.X, pady=2)
+            tk.Radiobutton(row, text=str(i + 1), variable=chosen, value=i + 1,
                            bg=BG, fg=OPT_COLORS[i], selectcolor="#222240",
-                           font=("Microsoft JhengHei UI", 10),
-                           activebackground=BG).pack(anchor="w", pady=2)
+                           font=("Microsoft JhengHei UI", 10), activebackground=BG).pack(side=tk.LEFT)
+            var = tk.StringVar(value=opt_text)
+            ent = tk.Entry(row, textvariable=var, bg=BG2, fg=TEXT_NORM,
+                           insertbackground=TEXT_NORM, relief=tk.FLAT,
+                           font=("Microsoft JhengHei UI", 10))
+            ent.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(6, 0), ipady=3)
+            rows.append(var)
+
+        hint = "活動中可以先讓題目暫存；活動後在這裡修題目、選項，再勾正確答案。"
+        tk.Label(body, text=hint, bg=BG, fg=TEXT_DIM, wraplength=430,
+                 justify=tk.LEFT, font=("Microsoft JhengHei UI", 9)).pack(anchor="w", pady=(0, 8))
 
         def confirm():
             v = chosen.get()
-            if v in (1, 2, 3, 4):
-                ans_text = opts[v-1] if v <= len(opts) else ""
-                self.db4.entries[idx]["answer_idx"]  = v
-                self.db4.entries[idx]["answer_text"] = ans_text
-                self.db4._save()
-                self._refresh_db4()
-                self._set_status(f"已更新答案：{q[:20]}… → {v}")
+            new_q = q_txt.get("1.0", "end").strip()
+            new_opts = [var.get().strip() for var in rows]
+            if not new_q:
+                messagebox.showwarning("提示", "題目不能空白", parent=win)
+                return
+            if v not in (1, 2, 3, 4):
+                messagebox.showwarning("提示", "請選擇正確答案", parent=win)
+                return
+            ans_text = new_opts[v-1] if v <= len(new_opts) else ""
+            self.db4.entries[idx]["question"] = new_q
+            self.db4.entries[idx]["options"] = new_opts
+            self.db4.entries[idx]["answer_idx"] = v
+            self.db4.entries[idx]["answer_text"] = ans_text
+            self.db4.entries[idx]["source"] = "手動"
+            self.db4._save()
+            self._refresh_db4()
+            self._refresh_pending4()
+            self._set_status(f"已校正：{new_q[:20]}… → {v}")
             win.destroy()
 
-        btn_row = tk.Frame(win, bg=BG); btn_row.pack(pady=(4, 10))
+        btn_row = tk.Frame(body, bg=BG); btn_row.pack(anchor="e")
         tk.Button(btn_row, text="確認", bg=ACCENT, fg="white", relief=tk.FLAT,
                   padx=16, pady=4, font=("Microsoft JhengHei UI", 10),
                   command=confirm).pack(side=tk.LEFT, padx=6)
@@ -2698,51 +4571,123 @@ class DaxiApp:
                   command=win.destroy).pack(side=tk.LEFT)
 
     def _edit_dbs_entry(self, event):
-        sel = self.dbs_tree.selection()
-        if not sel: return
-        idx   = self.dbs_tree.index(sel[0])
+        idx = self._selected_real_index(self.dbs_tree, "_dbs_visible_indices")
+        if idx is None:
+            return
+        self._open_dbs_entry_editor(idx)
+
+    def _edit_pending_dbs_entry(self, event):
+        idx = self._selected_real_index(self.pending_dbs_tree, "_pending_dbs_visible_indices")
+        if idx is None:
+            return
+        self._open_dbs_entry_editor(idx)
+
+    def _open_dbs_entry_editor(self, idx):
         entry = self.dbs.entries[idx]
         q     = entry.get("question", "")
+        current_answer = entry.get("answer") if entry.get("answer") in ("O", "X") else ""
 
         win = tk.Toplevel(self.root)
-        win.title("修改答案"); win.configure(bg=BG)
-        win.attributes("-topmost", True); win.resizable(False, False)
+        win.title("校正選邊站題庫"); win.configure(bg=BG)
+        win.attributes("-topmost", True); win.resizable(True, True)
+        win.minsize(440, 300)
 
-        tk.Label(win, text=q, bg=BG, fg=TEXT_NORM, wraplength=360,
-                 font=("Microsoft JhengHei UI", 11), padx=12, pady=10,
-                 justify=tk.LEFT).pack(fill=tk.X)
+        body = tk.Frame(win, bg=BG, padx=12, pady=10)
+        body.pack(fill=tk.BOTH, expand=True)
+        self._add_capture_preview(body, entry, mode="sidestand")
 
-        def pick(v):
-            self.dbs.entries[idx]["answer"] = v
+        tk.Label(body, text="題目", bg=BG, fg=TEXT_DIM,
+                 font=("Microsoft JhengHei UI", 9)).pack(anchor="w")
+        q_txt = tk.Text(body, height=5, bg=BG2, fg=TEXT_NORM, insertbackground=TEXT_NORM,
+                        relief=tk.FLAT, wrap=tk.WORD, font=("Microsoft JhengHei UI", 10))
+        q_txt.insert("1.0", q)
+        q_txt.pack(fill=tk.BOTH, expand=True, pady=(2, 8))
+
+        tk.Label(body, text="答案", bg=BG, fg=TEXT_DIM,
+                 font=("Microsoft JhengHei UI", 9)).pack(anchor="w")
+        chosen = tk.StringVar(value=current_answer)
+        ans_row = tk.Frame(body, bg=BG)
+        ans_row.pack(fill=tk.X, pady=(2, 8))
+        for label, value, color in [
+            ("O（正確）", "O", COL_O),
+            ("X（錯誤）", "X", COL_X),
+            ("待校正", "", TEXT_DIM),
+        ]:
+            tk.Radiobutton(
+                ans_row, text=label, variable=chosen, value=value,
+                bg=BG, fg=color, selectcolor="#222240",
+                font=("Microsoft JhengHei UI", 10), activebackground=BG,
+            ).pack(side=tk.LEFT, padx=(0, 14))
+
+        hint = "如果 OCR 題目有錯字，直接在這裡修正；答案選 O 或 X 後會進正式題庫。"
+        tk.Label(body, text=hint, bg=BG, fg=TEXT_DIM, wraplength=410,
+                 justify=tk.LEFT, font=("Microsoft JhengHei UI", 9)).pack(anchor="w", pady=(0, 8))
+
+        def confirm():
+            new_q = q_txt.get("1.0", "end").strip()
+            if not new_q:
+                messagebox.showwarning("提示", "題目不能空白", parent=win)
+                return
+            answer = chosen.get() or None
+            self.dbs.entries[idx]["question"] = new_q
+            self.dbs.entries[idx]["answer"] = answer
             self.dbs._save()
             self._refresh_dbs()
-            self._set_status(f"已更新答案：{q[:20]}… → {v}")
+            self._refresh_pending_dbs()
+            self._set_status(f"已校正選邊站：{new_q[:20]}… → {answer or '待校正'}")
             win.destroy()
 
-        btn_row = tk.Frame(win, bg=BG); btn_row.pack(pady=(0, 14))
-        tk.Button(btn_row, text="O（正確）", font=("Microsoft JhengHei UI", 14, "bold"),
-                  bg=COL_O, fg="white", relief=tk.FLAT, padx=16, pady=6,
-                  command=lambda: pick("O")).pack(side=tk.LEFT, padx=10)
-        tk.Button(btn_row, text="X（錯誤）", font=("Microsoft JhengHei UI", 14, "bold"),
-                  bg=COL_X, fg="white", relief=tk.FLAT, padx=16, pady=6,
-                  command=lambda: pick("X")).pack(side=tk.LEFT, padx=10)
+        btn_row = tk.Frame(body, bg=BG)
+        btn_row.pack(anchor="e")
+        tk.Button(btn_row, text="確認", bg=ACCENT, fg="white", relief=tk.FLAT,
+                  padx=16, pady=4, font=("Microsoft JhengHei UI", 10),
+                  command=confirm).pack(side=tk.LEFT, padx=6)
+        tk.Button(btn_row, text="取消", bg=BG2, fg=TEXT_NORM, relief=tk.FLAT,
+                  padx=16, pady=4, font=("Microsoft JhengHei UI", 10),
+                  command=win.destroy).pack(side=tk.LEFT)
 
     def _delete_db4(self):
         sel = self.db4_tree.selection()
         if not sel: return
         if messagebox.askyesno("刪除","確定要刪除這筆四選一題庫資料？"):
-            self.db4.delete(self.db4_tree.index(sel[0]))
+            idx = self._selected_real_index(self.db4_tree, "_db4_visible_indices")
+            if idx is not None:
+                self.db4.delete(idx)
             self._refresh_db4()
+            self._refresh_pending4()
+
+    def _delete_pending4(self):
+        sel = self.pending4_tree.selection()
+        if not sel: return
+        if messagebox.askyesno("刪除","確定要刪除這筆四選一待校正資料？"):
+            idx = self._selected_real_index(self.pending4_tree, "_pending4_visible_indices")
+            if idx is not None:
+                self.db4.delete(idx)
+            self._refresh_db4()
+            self._refresh_pending4()
 
     def _delete_dbs(self):
         sel = self.dbs_tree.selection()
         if not sel: return
         if messagebox.askyesno("刪除","確定要刪除這筆選邊站題庫資料？"):
-            self.dbs.delete(self.dbs_tree.index(sel[0]))
+            idx = self._selected_real_index(self.dbs_tree, "_dbs_visible_indices")
+            if idx is not None:
+                self.dbs.delete(idx)
             self._refresh_dbs()
+            self._refresh_pending_dbs()
+
+    def _delete_pending_dbs(self):
+        sel = self.pending_dbs_tree.selection()
+        if not sel: return
+        if messagebox.askyesno("刪除","確定要刪除這筆選邊站待校正資料？"):
+            idx = self._selected_real_index(self.pending_dbs_tree, "_pending_dbs_visible_indices")
+            if idx is not None:
+                self.dbs.delete(idx)
+            self._refresh_dbs()
+            self._refresh_pending_dbs()
 
     def _apply_cfg(self):
-        _str_keys = {"api_key", "gemini_api_key", "gemini_model"}
+        _str_keys = {"api_key", "gemini_api_key", "gemini_model", "ocr_engine"}
         for key, var in self._cfg_vars.items():
             raw = var.get()
             if key in _str_keys:
@@ -2761,15 +4706,17 @@ class DaxiApp:
         kw_raw = self._kw_var.get().strip()
         self.config["quiz_map_keywords"] = normalize_map_keywords(kw_raw.split(","))
         self._kw_var.set(",".join(self.config["quiz_map_keywords"]))
+        set_ocr_engine(self.config.get("ocr_engine", "windows"))
         self.detector.config = self.config
         self._save_config()
         messagebox.showinfo("設定","設定已儲存")
 
-    def _open_region_selector(self, region_key):
+    def _open_region_selector(self, region_key, force_file=False):
         """截遊戲畫面（或讀截圖檔案），讓使用者拖曳框選區域，自動寫回設定欄位。"""
         img = None
-        # 優先用遊戲視窗截圖；找不到時改為開啟截圖檔案
-        windows = self.detector.find_window()
+        frame_top = 0
+        # 預設用遊戲視窗；按「圖片框選」時直接讀截圖檔案。
+        windows = [] if force_file else self.detector.find_window()
         if windows:
             chosen = self._pick_window(windows)
             if chosen:
@@ -2788,6 +4735,7 @@ class DaxiApp:
             if not path: return
             try:
                 img = Image.open(path).convert("RGB")
+                img, frame_top = strip_window_frame_if_present(img)
                 iw, ih = img.size
             except Exception as e:
                 messagebox.showerror("錯誤", f"無法開啟圖片：{e}"); return
@@ -2800,7 +4748,8 @@ class DaxiApp:
         win = tk.Toplevel(self.root)
         win.title(f"框選區域：{region_key}"); win.configure(bg=BG)
         win.attributes("-topmost", True); win.resizable(True, True)
-        tk.Label(win, text="拖曳滑鼠框選目標區域，放開後座標自動填入（記得儲存設定）",
+        source_hint = "截圖檔已自動去掉上方標題列。" if frame_top else "拖曳滑鼠框選目標區域，放開後座標自動填入（記得儲存設定）"
+        tk.Label(win, text=source_hint,
                  bg=BG, fg=TEXT_DIM, font=("Microsoft JhengHei UI", 9)).pack(pady=(6, 2))
 
         canvas = tk.Canvas(win, width=dw, height=dh, bg="#000000",
@@ -3007,11 +4956,12 @@ class DaxiApp:
 
                 # OCR（去除 CJK 字間空格後再比對）
                 image_status = ""
-                text = ocr_image(map_crop).strip()
+                text = ocr_map_name_image(map_crop).strip()
                 clean_text = clean_map_name_text(text)
                 keywords = self.config.get("quiz_map_keywords", [])
                 if keywords:
                     clean_keywords = normalize_map_keywords(keywords)
+                    text_kw, text_score = match_map_keyword(clean_text, clean_keywords)
                     best_kw = ""
                     best_sim = 0.0
                     for kw in clean_keywords:
@@ -3024,12 +4974,17 @@ class DaxiApp:
                     threshold = float(self.config.get("map_image_match_threshold", 0.78))
                     image_matched = bool(best_kw) and best_sim >= threshold
                     image_status = (
-                        f"圖片比對：{best_kw or '未校準'} "
-                        f"{best_sim:.0%} / 門檻 {threshold:.0%}\n"
+                        f"文字比對：{text_kw or '未命中'} {text_score:.0%}\n"
+                        f"圖片比對：{best_kw or '未校準'} {best_sim:.0%} / 門檻 {threshold:.0%}\n"
                     )
-                    matched = image_matched or any(kw and kw in clean_text for kw in clean_keywords)
-                    kw_status = ("✓ 符合關鍵字 → 辨識啟動" if matched
-                                 else "✗ 不符合關鍵字 → 辨識略過")
+                    text_matched = bool(text_kw) and text_score >= 0.80
+                    matched = text_matched or image_matched
+                    if text_matched:
+                        kw_status = "✓ 文字已命中地圖名稱 → 辨識啟動（圖片分數只當參考）"
+                    elif image_matched:
+                        kw_status = "✓ 圖片比對命中 → 辨識啟動"
+                    else:
+                        kw_status = "✗ 文字和圖片都未命中 → 辨識略過"
                 else:
                     clean_keywords = []
                     kw_status = "（關鍵字未設定，不過濾）"
@@ -3066,6 +5021,7 @@ class DaxiApp:
     def _test_coordinates(self):
         img = None
         w = h = 0
+        frame_top = 0
         windows = self.detector.find_window()
         if windows:
             found = self._pick_window(windows)
@@ -3076,15 +5032,11 @@ class DaxiApp:
                 except Exception as e:
                     messagebox.showerror("錯誤", f"截圖失敗：{e}"); return
         if img is None:
-            from tkinter import filedialog
-            path = filedialog.askopenfilename(
-                title="選擇遊戲截圖（座標測試）",
-                filetypes=[("圖片", "*.png *.jpg *.jpeg *.bmp"), ("所有檔案", "*.*")],
-            )
-            if not path: return
             try:
-                img = Image.open(path).convert("RGB")
-                w, h = img.size
+                picked = self._pick_screenshot_file("選擇遊戲截圖（座標測試）", strip_frame=True)
+                if not picked:
+                    return
+                img, w, h, path, frame_top = picked
             except Exception as e:
                 messagebox.showerror("錯誤", f"無法開啟圖片：{e}"); return
 
@@ -3119,6 +5071,224 @@ class DaxiApp:
             messagebox.showinfo("座標測試", msg)
         except Exception as e:
             messagebox.showerror("錯誤", str(e))
+
+    def _pick_screenshot_file(self, title="選擇遊戲截圖", strip_frame=True):
+        from tkinter import filedialog
+        path = filedialog.askopenfilename(
+            title=title,
+            filetypes=[("圖片", "*.png *.jpg *.jpeg *.bmp"), ("所有檔案", "*.*")],
+        )
+        if not path:
+            return None
+        img = Image.open(path).convert("RGB")
+        frame_top = 0
+        if strip_frame:
+            img, frame_top = strip_window_frame_if_present(img)
+        w, h = img.size
+        return img, w, h, path, frame_top
+
+    def _preview_photo(self, pil_img, max_w=360, max_h=130, nearest=False):
+        iw, ih = pil_img.size
+        scale = min(max_w / max(iw, 1), max_h / max(ih, 1), 1.0)
+        resample = Image.Resampling.NEAREST if nearest else Image.Resampling.LANCZOS
+        preview = pil_img.resize(
+            (max(1, int(iw * scale)), max(1, int(ih * scale))),
+            resample,
+        )
+        return ImageTk.PhotoImage(preview)
+
+    def _test_image_all(self):
+        picked = self._pick_screenshot_file("選擇遊戲截圖（圖片綜合測試）", strip_frame=True)
+        if not picked:
+            return
+        img, w, h, path, frame_top = picked
+
+        win = tk.Toplevel(self.root)
+        win.title("圖片綜合測試"); win.configure(bg=BG)
+        win.resizable(True, True); win.attributes("-topmost", True)
+        win.minsize(620, 520)
+
+        tk.Label(win, text="圖片綜合測試", bg=BG, fg=ACCENT,
+                 font=("Microsoft JhengHei UI", 12, "bold")).pack(pady=(8, 2))
+        status_lbl = tk.Label(win, text="辨識中…", bg=BG, fg=TEXT_DIM,
+                              font=("Microsoft JhengHei UI", 9))
+        status_lbl.pack()
+
+        crop_frame = tk.Frame(win, bg=BG)
+        crop_frame.pack(fill=tk.X, padx=10, pady=6)
+        crop_labels = {}
+        mode = self._mode.get()
+        crop_items = [
+            ("question_region", "題目區"),
+            ("map_name_region", "地圖區"),
+            ("coord_region", "座標區"),
+        ]
+        if mode == "quiz4":
+            crop_items.insert(1, ("options_region", "選項區"))
+        for idx, (key, title) in enumerate(crop_items):
+            cell = tk.Frame(crop_frame, bg=BG)
+            cell.grid(row=idx // 2, column=idx % 2, sticky="nsew", padx=4, pady=4)
+            tk.Label(cell, text=title, bg=BG, fg=TEXT_DIM,
+                     font=("Microsoft JhengHei UI", 8)).pack(anchor="w")
+            lbl = tk.Label(cell, bg="#111122", fg=TEXT_DIM, relief=tk.SUNKEN,
+                           text="（預覽）", font=("Microsoft JhengHei UI", 8))
+            lbl.pack(fill=tk.X, ipadx=4, ipady=4)
+            crop_labels[key] = lbl
+        crop_frame.columnconfigure(0, weight=1)
+        crop_frame.columnconfigure(1, weight=1)
+
+        result_txt = tk.Text(win, bg=BG2, fg=TEXT_NORM, height=14, width=76,
+                             font=("Microsoft JhengHei UI", 10),
+                             relief=tk.FLAT, state=tk.DISABLED, wrap=tk.WORD)
+        result_txt.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+        result_txt.tag_configure("head", foreground="#FFAA00",
+                                 font=("Microsoft JhengHei UI", 10, "bold"))
+        result_txt.tag_configure("warn", foreground="#E67E22")
+        result_txt.tag_configure("ok", foreground="#2ECC71")
+        result_txt.tag_configure("dim", foreground=TEXT_DIM)
+
+        def append(text, tag=None):
+            result_txt.configure(state=tk.NORMAL)
+            result_txt.insert("end", text, tag) if tag else result_txt.insert("end", text)
+            result_txt.configure(state=tk.DISABLED)
+
+        def run():
+            try:
+                crops = {
+                    key: self.detector._crop(img, w, h, key)
+                    for key in ("question_region", "options_region", "map_name_region", "coord_region", "popup_full_region")
+                }
+                detail_cb = lambda msg: win.after(0, append, f"  ⚠ {msg}\n", "warn")
+                if mode == "quiz4":
+                    q_text, options = ocr_parse_quiz(
+                        crops["popup_full_region"],
+                        question_img=crops["question_region"],
+                        options_img=crops["options_region"],
+                        on_detail=detail_cb,
+                    )
+                    side_entry = None
+                else:
+                    q_text, _ = ocr_parse_quiz(
+                        crops["popup_full_region"],
+                        question_img=crops["question_region"],
+                        on_detail=detail_cb,
+                    )
+                    options = []
+                    side_entry = self.dbs.lookup(
+                        q_text,
+                        self.config.get("match_threshold", 0.72),
+                    ) if q_text else None
+                map_raw = ocr_map_name_image(crops["map_name_region"]).strip()
+                map_clean = clean_map_name_text(map_raw)
+                map_keywords = self.config.get("quiz_map_keywords", [])
+                map_match_lines = []
+                if map_keywords:
+                    clean_keywords = normalize_map_keywords(map_keywords)
+                    text_kw, text_score = match_map_keyword(map_clean, clean_keywords)
+                    best_kw = ""
+                    best_sim = 0.0
+                    for kw in clean_keywords:
+                        ref = load_map_reference(kw)
+                        if not ref:
+                            continue
+                        sim = image_similarity(crops["map_name_region"], ref)
+                        if sim > best_sim:
+                            best_kw, best_sim = kw, sim
+                    map_threshold = float(self.config.get("map_image_match_threshold", 0.78))
+                    text_matched = bool(text_kw) and text_score >= 0.80
+                    image_matched = bool(best_kw) and best_sim >= map_threshold
+                    map_match_lines.append((
+                        f"文字比對：{text_kw or '未命中'} {text_score:.0%}\n",
+                        "ok" if text_matched else "warn",
+                    ))
+                    map_match_lines.append((
+                        f"圖片比對：{best_kw or '未校準'} {best_sim:.0%} / 門檻 {map_threshold:.0%}\n",
+                        "ok" if image_matched else "dim",
+                    ))
+                    if text_matched:
+                        map_match_lines.append(("判斷：文字已命中，圖片分數只當參考。\n", "ok"))
+                    elif image_matched:
+                        map_match_lines.append(("判斷：文字未命中，但圖片備援命中。\n", "ok"))
+                    else:
+                        map_match_lines.append(("判斷：文字和圖片都未命中，會略過辨識。\n", "warn"))
+                else:
+                    map_match_lines.append(("關鍵字未設定，目前不會用地圖名稱過濾。\n", "dim"))
+                detector = GameDetector(self.config, self.db4, self.dbs)
+                coord, coord_raw = detector.read_coordinates(img, w, h)
+                coord_used_fallback = False
+                if not coord:
+                    coord, coord_raw = detector.read_coordinates(img, w, h, try_fallback_regions=True)
+                    coord_used_fallback = bool(coord)
+                brightness = self.detector.sample_brightness(img, w, h)
+                threshold = self.config.get("popup_brightness_threshold", 80)
+                opt_count = quiz_option_count(options)
+
+                photos = {
+                    "question_region": self._preview_photo(crops["question_region"], 285, 90, nearest=True),
+                    "map_name_region": self._preview_photo(crops["map_name_region"], 285, 90, nearest=True),
+                    "coord_region": self._preview_photo(crops["coord_region"], 285, 90, nearest=True),
+                }
+                if mode == "quiz4":
+                    photos["options_region"] = self._preview_photo(crops["options_region"], 285, 90, nearest=True)
+
+                def update():
+                    for key, photo in photos.items():
+                        crop_labels[key].configure(image=photo, text="")
+                        crop_labels[key].image = photo
+
+                    append(f"檔案：{os.path.basename(path)}\n", "dim")
+                    append(f"OCR 引擎：{ocr_engine_label()}\n", "dim")
+                    if frame_top:
+                        append(f"已自動去掉上方標題列 {frame_top}px。\n", "dim")
+                    append(f"彈窗亮度：{brightness:.1f} / 門檻 {threshold}", "head")
+                    append("  → 像是彈窗\n" if brightness < threshold else "  → 可能不是彈窗\n",
+                           "ok" if brightness < threshold else "warn")
+
+                    if mode == "quiz4":
+                        append("\n四選一辨識\n", "head")
+                        append(f"題目：{q_text or '（空，請調整題目文字區域）'}\n",
+                               None if q_text else "warn")
+                        append(f"選項完整度：{opt_count}/4\n", "ok" if opt_count == 4 else "warn")
+                        for i in range(4):
+                            opt = options[i] if i < len(options) else ""
+                            append(f"  {i + 1}. {opt or '（空）'}\n",
+                                   None if opt else "warn")
+                    else:
+                        append("\n選邊站 / 是非題辨識\n", "head")
+                        append(f"敘述：{q_text or '（空，請調整題目文字區域）'}\n",
+                               None if q_text else "warn")
+                        if side_entry:
+                            append(
+                                f"題庫判斷：{side_entry.get('answer') or '（待填）'}"
+                                f"（相似度 {side_entry.get('similarity', 0):.0%}）\n",
+                                "ok" if side_entry.get("answer") else "warn",
+                            )
+                        elif q_text:
+                            append("題庫未找到此題\n", "warn")
+
+                    append("\n地圖名稱\n", "head")
+                    append(f"OCR：{map_raw or '（空）'}\n")
+                    append(f"清理後：{map_clean or '（空）'}\n",
+                           None if map_clean else "warn")
+                    for line, tag in map_match_lines:
+                        append(line, tag)
+
+                    append("\n座標\n", "head")
+                    append(f"原文：{coord_raw or '（空）'}\n")
+                    append(
+                        f"解析：{coord[0]},{coord[1]}\n" if coord else "解析：失敗\n",
+                        "ok" if coord else "warn",
+                    )
+                    if coord_used_fallback:
+                        append("目前設定的座標框沒讀到，改用右上角候選範圍才讀到。\n", "warn")
+                    append("\n如果上方某一區預覽框不是你要的文字，請到「設定 → 區域」重新框選該區域。\n", "dim")
+                    status_lbl.configure(text="完成")
+
+                win.after(0, update)
+            except Exception as e:
+                win.after(0, lambda: status_lbl.configure(text=f"錯誤：{e}"))
+
+        threading.Thread(target=run, daemon=True).start()
 
     def _test_recognition(self):
         found = self._find_or_pick()
@@ -3186,6 +5356,7 @@ class DaxiApp:
                 img, w, h, label, brightness, threshold = get_img_fn()
                 full_img = self.detector._crop(img, w, h, "popup_full_region")
                 q_img    = self.detector._crop(img, w, h, "question_region")
+                opt_img  = self.detector._crop(img, w, h, "options_region")
                 pw, ph2  = full_img.size
                 scale    = min(380/pw, 1.0)
                 preview  = full_img.resize((int(pw*scale), max(1,int(ph2*scale))), Image.Resampling.LANCZOS)
@@ -3204,21 +5375,24 @@ class DaxiApp:
                             status_lbl.configure(text="完成（彈窗未出現）"); return
                     else:
                         _append("→ 檔案模式，直接辨識\n","dim")
+                    _append(f"OCR 引擎：{ocr_engine_label()}\n", "dim")
 
                     def _detail(msg):
                         win.after(0, lambda m=msg: _append(f"  ⚠ {m}\n", "warn"))
 
                     if mode == "quiz4":
-                        q_text, options, src = "", [], "Windows OCR"
-                        q_text, options = ocr_parse_quiz(full_img, question_img=q_img, on_detail=_detail)
+                        q_text, options = "", []
+                        q_text, options = ocr_parse_quiz(full_img, question_img=q_img, options_img=opt_img, on_detail=_detail)
+                        src = ocr_engine_label()
                         _append(f"\n辨識方式：{src}\n","dim")
                         _append("測試模式只跑本機 OCR，不呼叫 Gemini / Claude。\n","dim")
                         _append("題目：","head"); _append(f"{q_text or '（無法辨識）'}\n")
                         _append("選項：\n","head")
                         for i,opt in enumerate(options[:4]): _append(f"  {i+1}. {opt}\n")
                     else:
-                        q_text, src = "", "Windows OCR"
+                        q_text = ""
                         q_text, _ = ocr_parse_quiz(full_img, question_img=q_img, on_detail=_detail)
+                        src = ocr_engine_label()
                         _append(f"\n辨識方式：{src}\n","dim")
                         _append("測試模式只跑本機 OCR，不呼叫 Gemini / Claude。\n","dim")
                         _append("題目：","head"); _append(f"{q_text or '（無法辨識）'}\n")
