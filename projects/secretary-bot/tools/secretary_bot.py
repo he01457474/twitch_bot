@@ -191,8 +191,9 @@ def resolve_ticker(query: str) -> tuple[str, str] | tuple[None, None]:
     """
     query = query.strip()
 
-    # 若看起來就是代號（純數字或 6 碼以內字母數字）直接用
-    if query.isdigit() or (query.isalnum() and len(query) <= 6):
+    # 若看起來就是代號（純數字或 6 碼以內英數字）直接用
+    # 注意：不能用 str.isalnum()，中文字也會被判定為 True，導致中文名稱被誤判成代號
+    if re.fullmatch(r'[A-Za-z0-9]{1,6}', query):
         # 先從持股 DB 取中文名
         for h in get_holdings():
             if h['ticker'] == query:
