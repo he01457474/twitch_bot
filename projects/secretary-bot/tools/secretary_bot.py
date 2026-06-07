@@ -216,15 +216,23 @@ def resolve_ticker(query: str) -> tuple[str, str] | tuple[None, None]:
     return None, None
 
 def parse_shares(text: str) -> int | None:
-    """解析股數輸入，支援「張」為單位（1 張 = 1000 股），失敗回傳 None。"""
+    """解析股數輸入，支援「張」為單位（1 張 = 1000 股）；小數無條件捨去（不四捨五入），失敗回傳 None。"""
     text = text.strip().replace(',', '')
     m = re.match(r'^(\d+(?:\.\d+)?)\s*張$', text)
     if m:
-        return round(float(m.group(1)) * 1000)
+        return int(float(m.group(1)) * 1000)
     m = re.match(r'^(\d+(?:\.\d+)?)\s*股?$', text)
     if m:
-        return round(float(m.group(1)))
+        return int(float(m.group(1)))
     return None
+
+# 批次買賣解析：「股票名稱/代號」+「買入/賣出」+「股數」(+單位) (+價格)
+# 例：昇達科賣出5股 2200.0 定穎投控賣出10股 187.0
+_BATCH_TRADE_RE = re.compile(
+    r'([^\s]+?)(買入|買進|加碼|賣出|賣掉|出清|減碼)'
+    r'(\d+(?:\.\d+)?)\s*(張|股)?'
+    r'(?:\s*(\d+(?:\.\d+)?))?'
+)
 
 # ── 股價 API ──────────────────────────────────────────────────
 def _recent_trading_days(n=5) -> list[datetime.date]:
@@ -856,17 +864,52 @@ async def cmd_todo(interaction: discord.Interaction, action: str, content: str =
     else:
         await interaction.response.send_message('可用：`add` / `list` / `done` / `delete`', ephemeral=True)
 
+async def _execute_trade(loop, rticker: str, rname: str, parsed_shares: int, price: float, typ: str):
+    """批次買賣用：執行單筆買入/賣出並寫入資料庫，回傳 (是否成功, 一行摘要)。typ: 'buy' | 'sell'"""
+    if typ == 'buy':
+        p = await loop.run_in_executor(None, fetch_price, rticker)
+        name = (p['name'] if p else None) or rname or rticker
+        actual_price = price if price > 0 else ((p.get('today_close') or p.get('yesterday_close')) if p else None)
+        if not actual_price:
+            return False, f'❌ {rname or rticker}({rticker})：查不到目前市價，請補上價格'
+        with db() as c:
+            c.execute('INSERT INTO transactions (ticker,name,shares,cost,type) VALUES (?,?,?,?,?)',
+                      (rticker, name, parsed_shares, actual_price, 'buy'))
+        note = '（市價）' if price <= 0 else ''
+        return True, f'✅ 買入 **{name}({rticker})** × {parsed_shares:,}股 @ {actual_price:,.0f}元{note}'
+    else:
+        hs = get_holdings()
+        h = next((x for x in hs if x['ticker'] == rticker), None)
+        if not h or h['shares'] < parsed_shares:
+            disp_name = h['name'] if h else (rname or rticker)
+            return False, f'❌ {disp_name}({rticker})：持股不足（目前 {h["shares"] if h else 0} 股）'
+        actual_price = price
+        if actual_price <= 0:
+            p = await loop.run_in_executor(None, fetch_price, rticker)
+            actual_price = (p.get('today_close') or p.get('yesterday_close')) if p else None
+        if not actual_price:
+            return False, f'❌ {h["name"]}({rticker})：查不到目前市價，請補上價格'
+        realized = (actual_price - h['avg_cost']) * parsed_shares
+        with db() as c:
+            c.execute('INSERT INTO transactions (ticker,name,shares,cost,type) VALUES (?,?,?,?,?)',
+                      (rticker, h['name'], parsed_shares, actual_price, 'sell'))
+        note = '（市價）' if price <= 0 else ''
+        return True, (f'✅ 賣出 **{h["name"]}({rticker})** × {parsed_shares:,}股 @ {actual_price:,.0f}元{note}'
+                      f'｜損益 {signed(realized)}元 {color(realized)}')
+
 # ── 股票指令 ──────────────────────────────────────────────────
 @tree.command(name='股票', description='股票買賣記錄與損益查詢')
 @app_commands.describe(
     action='選擇動作',
     ticker='股票代號或名稱（例如 2330 或 台積電）',
     shares='股數，可用「張」為單位（例如 1張 = 1000股）',
-    price='每股價格（元），留空則自動用目前市價'
+    price='每股價格（元），留空則自動用目前市價',
+    batch='一次輸入多筆買賣，例如：昇達科賣出5股2200 定穎投控賣出10股187（價格可省略，會用目前市價）'
 )
 @app_commands.choices(action=[
     app_commands.Choice(name='買入記錄', value='buy'),
     app_commands.Choice(name='賣出記錄', value='sell'),
+    app_commands.Choice(name='批次買賣', value='batch'),
     app_commands.Choice(name='持股清單', value='list'),
     app_commands.Choice(name='損益查看', value='pnl'),
     app_commands.Choice(name='試算損益（不動資料）', value='calc'),
@@ -874,7 +917,7 @@ async def cmd_todo(interaction: discord.Interaction, action: str, content: str =
 ])
 async def cmd_stock(interaction: discord.Interaction,
                     action: str, ticker: str = '',
-                    shares: str = '', price: float = 0.0):
+                    shares: str = '', price: float = 0.0, batch: str = ''):
     if not await _check_guild(interaction): return
     a = action.lower().strip()
     await interaction.response.defer(ephemeral=True)
@@ -939,6 +982,34 @@ async def cmd_stock(interaction: discord.Interaction,
         await interaction.followup.send(
             f'✅ 賣出記錄\n**{h["name"]} {rticker}** × {parsed_shares:,}股 @ {actual_price:,.0f}元{note}\n'
             f'實現損益：{signed(realized)}元 {color(realized)}', ephemeral=True)
+
+    elif a == 'batch':
+        if not batch.strip():
+            await interaction.followup.send(
+                '請在「batch」欄位一次輸入多筆買賣，例如：\n'
+                '`昇達科賣出5股2200 定穎投控賣出10股187`\n'
+                '（用空白分隔每筆，價格可省略則用目前市價）', ephemeral=True); return
+        matches = list(_BATCH_TRADE_RE.finditer(batch))
+        if not matches:
+            await interaction.followup.send(
+                '看不懂批次格式，請用「股票名稱/代號＋買入或賣出＋股數＋股＋價格」，例如：\n'
+                '`昇達科賣出5股2200 定穎投控賣出10股187`', ephemeral=True); return
+        results = []
+        for m in matches:
+            raw_name, act_word, shares_str, unit, price_str = m.groups()
+            typ = 'buy' if act_word in ('買入', '買進', '加碼') else 'sell'
+            rticker, rname = await loop.run_in_executor(None, resolve_ticker, raw_name)
+            if not rticker:
+                results.append(f'❌ 找不到「{raw_name}」')
+                continue
+            psh = parse_shares(f'{shares_str}{unit or "股"}')
+            if not psh:
+                results.append(f'❌ {raw_name}：股數格式錯誤')
+                continue
+            entered_price = float(price_str) if price_str else 0.0
+            _, msg = await _execute_trade(loop, rticker, rname, psh, entered_price, typ)
+            results.append(msg)
+        await interaction.followup.send('📋 批次處理結果\n' + '\n'.join(results), ephemeral=True)
 
     elif a == 'list':
         hs = get_holdings()
@@ -1025,7 +1096,7 @@ async def cmd_stock(interaction: discord.Interaction,
         else:
             await interaction.followup.send('請填交易 ID（數字），或不填查看紀錄。', ephemeral=True)
     else:
-        await interaction.followup.send('可用：`buy` / `sell` / `list` / `pnl` / `calc` / `delete`', ephemeral=True)
+        await interaction.followup.send('可用：`buy` / `sell` / `batch` / `list` / `pnl` / `calc` / `delete`', ephemeral=True)
 
 # ── 設定指令 ──────────────────────────────────────────────────
 @tree.command(name='設定', description='設定推送時間與頻道')
