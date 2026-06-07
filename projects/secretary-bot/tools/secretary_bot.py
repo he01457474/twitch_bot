@@ -454,7 +454,7 @@ def ask_ai(prompt: str, max_tokens=800) -> str:
         resp = groq_client.chat.completions.create(
             model=GROQ_MODEL,
             messages=[
-                {'role': 'system', 'content': '\u4f60\u662f\u53f0\u80a1\u6295\u8cc7\u52a9\u7406\uff0c\u53ea\u7528\u7e41\u9ad4\u4e2d\u6587\u56de\u8986\uff0c\u4e0d\u5f97\u6df7\u5165\u6cf0\u6587\u3001\u97d3\u6587\u3001\u65e5\u6587\u5047\u540d\u6216\u5176\u4ed6\u975e\u4e2d\u6587\u8a9e\u8a00\u3002'},
+                {'role': 'system', 'content': '\u4f60\u662f\u53f0\u80a1\u6295\u8cc7\u52a9\u7406\uff0c\u53ea\u7528\u7e41\u9ad4\u4e2d\u6587\u56de\u8986\uff0c\u4e0d\u5f97\u6df7\u5165\u6cf0\u6587\u3001\u97d3\u6587\u3001\u65e5\u6587\u5047\u540d\u6216\u5176\u4ed6\u975e\u4e2d\u6587\u8a9e\u8a00\u3002\u63d0\u5230\u80a1\u7968\u6642\u4e00\u5f8b\u5beb\u6210\u300c\u516c\u53f8\u540d\u7a31(\u4ee3\u865f)\u300d\u683c\u5f0f\uff08\u4f8b\u5982\u53f0\u7a4d\u96fb(2330)\uff09\uff0c\u4e0d\u8981\u53ea\u5beb\u4ee3\u865f\u3002'},
                 {'role': 'user', 'content': prompt},
             ],
             max_tokens=max_tokens,
@@ -1110,13 +1110,18 @@ async def cmd_weekly(interaction: discord.Interaction):
     if not await _check_guild(interaction): return
     await interaction.response.defer(ephemeral=True)
     hs = get_holdings()
-    tickers = '、'.join(h['ticker'] for h in hs) if hs else '無'
+    holdings_str = '、'.join(f"{h['name']}({h['ticker']})" for h in hs) if hs else '無'
     today = datetime.date.today().strftime('%Y/%m/%d')
     result = await asyncio.get_event_loop().run_in_executor(None, ask_ai,
-        f"你是台股週報分析師，請用繁體中文寫本週市場週報（約 300 字）。\n"
-        f"今日：{today}，持股：{tickers}\n\n"
-        f"請包含：\n1.持股週績效\n2.三大法人動向\n3.重要新聞 TOP3\n4.下週題材預覽\n5.新手學習提醒一句\n\n"
-        f"語氣友善，適合新手。"
+        f"你是台股週報分析師，請用繁體中文寫本週市場週報，總字數約 300 字。\n"
+        f"今日：{today}，持股：{holdings_str}\n\n"
+        f"請完全照下面的格式輸出（標題自成一行、內容另起一行、段落之間空一行，"
+        f"不要保留括號內的提示文字，提到股票一律寫成「公司名稱(代號)」格式）：\n\n"
+        f"**📊 持股週績效**\n(一兩句話描述本週持股表現)\n\n"
+        f"**🏦 三大法人動向**\n(一兩句話描述外資/投信買賣超趨勢)\n\n"
+        f"**📰 重要新聞 TOP3**\n(條列 3 則重要新聞，每則一行)\n\n"
+        f"**🔮 下週題材預覽**\n(一兩句話預告下週可能熱門的題材)\n\n"
+        f"**📖 新手學習提醒**\n(用一句話介紹一個台股術語)"
     )
     channel_id = int(get_cfg('channel_id') or str(PUSH_CHANNEL_ID))
     channel = bot.get_channel(channel_id)
