@@ -214,6 +214,17 @@ def resolve_ticker(query: str) -> tuple[str, str] | tuple[None, None]:
 
     return None, None
 
+def parse_shares(text: str) -> int | None:
+    """解析股數輸入，支援「張」為單位（1 張 = 1000 股），失敗回傳 None。"""
+    text = text.strip().replace(',', '')
+    m = re.match(r'^(\d+(?:\.\d+)?)\s*張$', text)
+    if m:
+        return round(float(m.group(1)) * 1000)
+    m = re.match(r'^(\d+(?:\.\d+)?)\s*股?$', text)
+    if m:
+        return round(float(m.group(1)))
+    return None
+
 # ── 股價 API ──────────────────────────────────────────────────
 def _recent_trading_days(n=5) -> list[datetime.date]:
     days, d = [], datetime.date.today()
@@ -848,9 +859,9 @@ async def cmd_todo(interaction: discord.Interaction, action: str, content: str =
 @tree.command(name='股票', description='股票買賣記錄與損益查詢')
 @app_commands.describe(
     action='選擇動作',
-    ticker='股票代號（例如 2330）',
-    shares='股數',
-    price='每股價格（元）'
+    ticker='股票代號或名稱（例如 2330 或 台積電）',
+    shares='股數，可用「張」為單位（例如 1張 = 1000股）',
+    price='每股價格（元），留空則自動用目前市價'
 )
 @app_commands.choices(action=[
     app_commands.Choice(name='買入記錄', value='buy'),
@@ -862,37 +873,70 @@ async def cmd_todo(interaction: discord.Interaction, action: str, content: str =
 ])
 async def cmd_stock(interaction: discord.Interaction,
                     action: str, ticker: str = '',
-                    shares: int = 0, price: float = 0.0):
+                    shares: str = '', price: float = 0.0):
     if not await _check_guild(interaction): return
     a = action.lower().strip()
     await interaction.response.defer(ephemeral=True)
+    loop = asyncio.get_event_loop()
+
+    # buy / sell / calc 共用：股票可填代號或名稱，股數可用「張」
+    resolved = (None, None)
+    parsed_shares = None
+    if a in ('buy', 'sell', 'calc'):
+        if ticker:
+            resolved = await loop.run_in_executor(None, resolve_ticker, ticker)
+            if resolved[0] is None:
+                await interaction.followup.send(f'找不到股票「{ticker}」，請確認代號或名稱是否正確。', ephemeral=True)
+                return
+        if shares:
+            parsed_shares = parse_shares(shares)
+            if not parsed_shares:
+                await interaction.followup.send('股數格式錯誤，可輸入「1000」或「1張」（= 1000 股）。', ephemeral=True)
+                return
 
     if a == 'buy':
-        if not ticker or not shares or not price:
-            await interaction.followup.send('用法：`/stock buy 2330 10 900`', ephemeral=True); return
-        p = await asyncio.get_event_loop().run_in_executor(None, fetch_price, ticker)
-        name = p['name'] if p else ticker
+        if not resolved[0] or not parsed_shares:
+            await interaction.followup.send(
+                '請填股票、股數；股數可用「張」（1張 = 1000股），價格留空會自動用目前市價。\n'
+                '例如：台積電、1張、900', ephemeral=True); return
+        rticker, rname = resolved
+        p = await loop.run_in_executor(None, fetch_price, rticker)
+        name = (p['name'] if p else None) or rname or rticker
+        actual_price = price if price > 0 else ((p.get('today_close') or p.get('yesterday_close')) if p else None)
+        if not actual_price:
+            await interaction.followup.send('查不到目前市價，請手動輸入價格。', ephemeral=True); return
         with db() as c:
             c.execute('INSERT INTO transactions (ticker,name,shares,cost,type) VALUES (?,?,?,?,?)',
-                      (ticker, name, shares, price, 'buy'))
+                      (rticker, name, parsed_shares, actual_price, 'buy'))
+        note = '（目前市價）' if price <= 0 else ''
         await interaction.followup.send(
-            f'✅ 買入記錄\n**{name} {ticker}** × {shares:,}股 @ {price:,.0f}元\n'
-            f'總成本：{shares*price:,.0f}元', ephemeral=True)
+            f'✅ 買入記錄\n**{name} {rticker}** × {parsed_shares:,}股 @ {actual_price:,.0f}元{note}\n'
+            f'總成本：{parsed_shares*actual_price:,.0f}元', ephemeral=True)
 
     elif a == 'sell':
-        if not ticker or not shares or not price:
-            await interaction.followup.send('用法：`/stock sell 2330 10 950`', ephemeral=True); return
-        hs = get_holdings()
-        h = next((x for x in hs if x['ticker'] == ticker), None)
-        if not h or h['shares'] < shares:
+        if not resolved[0] or not parsed_shares:
             await interaction.followup.send(
-                f'持股不足，{ticker} 目前 {h["shares"] if h else 0} 股', ephemeral=True); return
-        realized = (price - h['avg_cost']) * shares
+                '請填股票、股數；股數可用「張」（1張 = 1000股），價格留空會自動用目前市價。\n'
+                '例如：台積電、1張、950', ephemeral=True); return
+        rticker, rname = resolved
+        hs = get_holdings()
+        h = next((x for x in hs if x['ticker'] == rticker), None)
+        if not h or h['shares'] < parsed_shares:
+            await interaction.followup.send(
+                f'持股不足，{h["name"] if h else (rname or rticker)} 目前 {h["shares"] if h else 0} 股', ephemeral=True); return
+        actual_price = price
+        if actual_price <= 0:
+            p = await loop.run_in_executor(None, fetch_price, rticker)
+            actual_price = (p.get('today_close') or p.get('yesterday_close')) if p else None
+        if not actual_price:
+            await interaction.followup.send('查不到目前市價，請手動輸入價格。', ephemeral=True); return
+        realized = (actual_price - h['avg_cost']) * parsed_shares
         with db() as c:
             c.execute('INSERT INTO transactions (ticker,name,shares,cost,type) VALUES (?,?,?,?,?)',
-                      (ticker, h['name'], shares, price, 'sell'))
+                      (rticker, h['name'], parsed_shares, actual_price, 'sell'))
+        note = '（目前市價）' if price <= 0 else ''
         await interaction.followup.send(
-            f'✅ 賣出記錄\n**{h["name"]} {ticker}** × {shares:,}股 @ {price:,.0f}元\n'
+            f'✅ 賣出記錄\n**{h["name"]} {rticker}** × {parsed_shares:,}股 @ {actual_price:,.0f}元{note}\n'
             f'實現損益：{signed(realized)}元 {color(realized)}', ephemeral=True)
 
     elif a == 'list':
@@ -940,17 +984,27 @@ async def cmd_stock(interaction: discord.Interaction,
         await interaction.followup.send('\n'.join(lines), ephemeral=True)
 
     elif a == 'calc':
-        if not ticker or not shares or not price:
-            await interaction.followup.send('用法：`/stock calc 2330 10 1200`', ephemeral=True); return
+        if not resolved[0] or not parsed_shares:
+            await interaction.followup.send(
+                '請填股票、股數；股數可用「張」（1張 = 1000股），價格留空會自動用目前市價。\n'
+                '例如：台積電、1張、1200', ephemeral=True); return
+        rticker, rname = resolved
         hs = get_holdings()
-        h = next((x for x in hs if x['ticker'] == ticker), None)
+        h = next((x for x in hs if x['ticker'] == rticker), None)
         if not h:
-            await interaction.followup.send(f'找不到 {ticker} 的持股紀錄。', ephemeral=True); return
-        pnl = (price - h['avg_cost']) * shares
-        pp  = (price - h['avg_cost']) / h['avg_cost'] * 100
+            await interaction.followup.send(f'找不到 {rname or rticker} 的持股紀錄。', ephemeral=True); return
+        actual_price = price
+        if actual_price <= 0:
+            p = await loop.run_in_executor(None, fetch_price, rticker)
+            actual_price = (p.get('today_close') or p.get('yesterday_close')) if p else None
+        if not actual_price:
+            await interaction.followup.send('查不到目前市價，請手動輸入價格。', ephemeral=True); return
+        pnl = (actual_price - h['avg_cost']) * parsed_shares
+        pp  = (actual_price - h['avg_cost']) / h['avg_cost'] * 100
+        note = '（目前市價）' if price <= 0 else ''
         await interaction.followup.send(
-            f'📊 試算（不動資料）\n**{h["name"]} {ticker}**\n'
-            f'賣出 {shares:,}股 @ {price:,.0f}元 | 均價 {h["avg_cost"]:.0f}\n'
+            f'📊 試算（不動資料）\n**{h["name"]} {rticker}**\n'
+            f'賣出 {parsed_shares:,}股 @ {actual_price:,.0f}元{note} | 均價 {h["avg_cost"]:.0f}\n'
             f'損益 {signed(pnl)}元 {color(pnl)}（{signed(pp, ".2f")}%）', ephemeral=True)
 
     elif a == 'delete':
