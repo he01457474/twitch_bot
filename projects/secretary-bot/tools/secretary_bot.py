@@ -191,13 +191,18 @@ def resolve_ticker(query: str) -> tuple[str, str] | tuple[None, None]:
     """
     query = query.strip()
 
-    # 若看起來就是代號（純數字或 6 碼以內英數字）直接用
+    # 若看起來就是代號（純數字或 6 碼以內英數字）直接用，但要設法找到正確中文名稱
     # 注意：不能用 str.isalnum()，中文字也會被判定為 True，導致中文名稱被誤判成代號
     if re.fullmatch(r'[A-Za-z0-9]{1,6}', query):
         # 先從持股 DB 取中文名
         for h in get_holdings():
             if h['ticker'] == query:
                 return query, h['name']
+        # 從全市場清單反查代號對應的中文名稱（避免名稱直接存成代號本身）
+        mapping = _load_ticker_map()
+        for name, code in mapping.items():
+            if code == query:
+                return query, name
         return query, query
 
     # 從持股 DB 模糊比對
@@ -866,11 +871,20 @@ async def cmd_todo(interaction: discord.Interaction, action: str, content: str =
     else:
         await interaction.response.send_message('可用：`add` / `list` / `done` / `delete`', ephemeral=True)
 
+def _best_name(rticker: str, rname: str | None, p: dict | None) -> str:
+    """挑選最佳顯示名稱：優先用 resolve_ticker 解析到的中文名，
+    避免 yfinance 查無公司名稱時，把代號本身當成佔位名稱存進資料庫。"""
+    if rname and rname != rticker:
+        return rname
+    if p and p.get('name') and p['name'] != rticker:
+        return p['name']
+    return rname or rticker
+
 async def _execute_trade(loop, rticker: str, rname: str, parsed_shares: int, price: float, typ: str):
     """批次買賣用：執行單筆買入/賣出並寫入資料庫，回傳 (是否成功, 一行摘要)。typ: 'buy' | 'sell'"""
     if typ == 'buy':
         p = await loop.run_in_executor(None, fetch_price, rticker)
-        name = (p['name'] if p else None) or rname or rticker
+        name = _best_name(rticker, rname, p)
         actual_price = price if price > 0 else ((p.get('today_close') or p.get('yesterday_close')) if p else None)
         if not actual_price:
             return False, f'❌ {rname or rticker}({rticker})：查不到目前市價，請補上價格'
@@ -948,7 +962,7 @@ async def cmd_stock(interaction: discord.Interaction,
                 '例如：台積電、1張、900', ephemeral=True); return
         rticker, rname = resolved
         p = await loop.run_in_executor(None, fetch_price, rticker)
-        name = (p['name'] if p else None) or rname or rticker
+        name = _best_name(rticker, rname, p)
         actual_price = price if price > 0 else ((p.get('today_close') or p.get('yesterday_close')) if p else None)
         if not actual_price:
             await interaction.followup.send('查不到目前市價，請手動輸入價格。', ephemeral=True); return
