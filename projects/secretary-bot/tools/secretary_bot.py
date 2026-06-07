@@ -824,6 +824,7 @@ async def on_ready():
 
 # ── 待辦指令 ──────────────────────────────────────────────────
 @tree.command(name='待辦', description='待辦事項管理')
+@app_commands.rename(action='動作', content='內容')
 @app_commands.describe(action='選擇動作', content='新增時填內容，完成/刪除時填編號')
 @app_commands.choices(action=[
     app_commands.Choice(name='新增', value='add'),
@@ -900,6 +901,7 @@ async def _execute_trade(loop, rticker: str, rname: str, parsed_shares: int, pri
 
 # ── 股票指令 ──────────────────────────────────────────────────
 @tree.command(name='股票', description='股票買賣記錄與損益查詢')
+@app_commands.rename(action='動作', ticker='股票', shares='股數', price='價格', batch='批次輸入')
 @app_commands.describe(
     action='選擇動作',
     ticker='股票代號或名稱（例如 2330 或 台積電）',
@@ -1101,6 +1103,7 @@ async def cmd_stock(interaction: discord.Interaction,
 
 # ── 設定指令 ──────────────────────────────────────────────────
 @tree.command(name='設定', description='設定推送時間與頻道')
+@app_commands.rename(key='項目', value='數值')
 @app_commands.describe(key='選擇要設定的項目', value='推送時間填 HH:MM（例如 08:30）；頻道填頻道 ID')
 @app_commands.choices(key=[
     app_commands.Choice(name='推送時間', value='push_time'),
@@ -1122,6 +1125,7 @@ async def cmd_config(interaction: discord.Interaction, key: str, value: str):
 
 # ── 學習指令 ──────────────────────────────────────────────────
 @tree.command(name='學習', description='查詢台股術語，填 reset 重置學習紀錄')
+@app_commands.rename(term='術語')
 @app_commands.describe(term='術語名稱（空白列出全部）')
 async def cmd_learn(interaction: discord.Interaction, term: str = ''):
     if not await _check_guild(interaction): return
