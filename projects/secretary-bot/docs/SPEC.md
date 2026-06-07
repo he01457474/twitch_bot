@@ -28,11 +28,18 @@ projects/secretary-bot/
 │   └── SPEC.md           ← 本文件
 ├── tools/
 │   └── secretary_bot.py  ← 主程式
+├── scripts/
+│   ├── start_secretary.ps1  ← 背景啟動（pythonw + PID 檔）
+│   └── stop_secretary.ps1   ← 依 PID 檔關閉
 ├── launchers/
-│   └── 啟動私人秘書.bat
+│   ├── 啟動私人秘書.bat     ← 雙擊在背景啟動（無視窗）
+│   └── 關閉私人秘書.bat     ← 雙擊關閉背景程序
 └── data/
     └── secretary.db      ← SQLite（不提交 Git）
 ```
+
+> Bot 在背景執行（`pythonw.exe`，無 CMD 視窗），PID 記錄在 `%TEMP%\secretary_bot.pid`，
+> 與 IRL Discord Bot（`irl_discord_bot.py`）用同一套啟動／關閉模式。
 
 ---
 

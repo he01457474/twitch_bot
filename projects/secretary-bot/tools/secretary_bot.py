@@ -23,6 +23,7 @@ from groq import Groq
 BASE_DIR = Path(__file__).parent.parent
 ENV_FILE = BASE_DIR / '.env'
 DB_FILE  = BASE_DIR / 'data' / 'secretary.db'
+PID_FILE = Path(os.environ.get('TEMP', str(BASE_DIR))) / 'secretary_bot.pid'
 
 load_dotenv(ENV_FILE)
 
@@ -1292,4 +1293,16 @@ if __name__ == '__main__':
     log.info('DB 初始化完成')
     if not DISCORD_TOKEN:
         log.error('DISCORD_TOKEN 未設定'); exit(1)
-    bot.run(DISCORD_TOKEN)
+    try:
+        with open(PID_FILE, 'w', encoding='ascii') as f:
+            f.write(str(os.getpid()))
+    except Exception:
+        pass
+    try:
+        bot.run(DISCORD_TOKEN)
+    finally:
+        try:
+            if PID_FILE.exists():
+                PID_FILE.unlink()
+        except Exception:
+            pass
