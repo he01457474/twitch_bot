@@ -499,7 +499,7 @@ def ai_holding_analysis(enriched: list[dict]) -> str:
     stocks = [h for h in enriched if not _is_etf(h['ticker'])]
     etfs   = [h for h in enriched if _is_etf(h['ticker'])]
     summary = '\n'.join(
-        f"{h['name']}（{h['ticker']}）：均價{h['avg_cost']:.0f}元，現價{h.get('today_close') or '未知'}元"
+        f"{h['name']}（{h['ticker']}）：均價{h['avg_cost']:.2f}元，現價{h.get('today_close') or '未知'}元"
         for h in stocks
     )
     etf_str = '、'.join(f"{h['name']}（{h['ticker']}）" for h in etfs) if etfs else ''
@@ -673,11 +673,11 @@ def build_report() -> tuple[discord.Embed, str]:
         # 第三行：成本對照（pnl/pp 已在 enriched 用 cur 算好）
         cur = tc or yc
         if cur is not None and pnl is not None:
-            lines.append(f'成本 {avg:.0f} → 現價 {cur:.0f}元｜損益 {signed(pnl)}元（{signed(pp, ".1f")}%）{color(pnl)}')
+            lines.append(f'成本 {avg:.2f} → 現價 {cur:.0f}元｜損益 {signed(pnl)}元（{signed(pp, ".1f")}%）{color(pnl)}')
         elif cur is not None:
-            lines.append(f'成本 {avg:.0f} → 現價 {cur:.0f}元')
+            lines.append(f'成本 {avg:.2f} → 現價 {cur:.0f}元')
         else:
-            lines.append(f'成本 {avg:.0f}元（尚無市價）')
+            lines.append(f'成本 {avg:.2f}元（尚無市價）')
         hold_parts.append('\n'.join(lines))
 
     any_realtime = any(e.get('is_realtime') for e in enriched)
@@ -1025,7 +1025,7 @@ async def cmd_stock(interaction: discord.Interaction,
                 pnl = (tc - h['avg_cost']) * h['shares']
                 pp  = (tc - h['avg_cost']) / h['avg_cost'] * 100
                 pnl_str = f'｜現價 {tc:.0f}｜損益 {signed(pnl)}（{signed(pp, ".2f")}%）{color(pnl)}'
-            lines.append(f'**{h["name"]} {h["ticker"]}**：{h["shares"]:,}股 @ 均價 {h["avg_cost"]:.0f}{pnl_str}')
+            lines.append(f'**{h["name"]} {h["ticker"]}**：{h["shares"]:,}股 @ 均價 {h["avg_cost"]:.2f}{pnl_str}')
         await interaction.followup.send('\n'.join(lines), ephemeral=True)
 
     elif a == 'pnl':
@@ -1043,7 +1043,7 @@ async def cmd_stock(interaction: discord.Interaction,
             pnl = val - cost; pp = pnl / cost * 100 if cost else 0
             lines.append(
                 f'**{h["name"]} {h["ticker"]}**\n'
-                f'{h["shares"]:,}股｜均價 {h["avg_cost"]:.0f}｜現價 {tc or "?"}\n'
+                f'{h["shares"]:,}股｜均價 {h["avg_cost"]:.2f}｜現價 {tc or "?"}\n'
                 f'損益 {signed(pnl)}元 {color(pnl)}（{signed(pp, ".2f")}%）\n'
             )
         total_pnl = tv_total - tc_total
@@ -1077,7 +1077,7 @@ async def cmd_stock(interaction: discord.Interaction,
         note = '（目前市價）' if price <= 0 else ''
         await interaction.followup.send(
             f'📊 試算（不動資料）\n**{h["name"]} {rticker}**\n'
-            f'賣出 {parsed_shares:,}股 @ {actual_price:,.0f}元{note} | 均價 {h["avg_cost"]:.0f}\n'
+            f'賣出 {parsed_shares:,}股 @ {actual_price:,.0f}元{note} | 均價 {h["avg_cost"]:.2f}\n'
             f'損益 {signed(pnl)}元 {color(pnl)}（{signed(pp, ".2f")}%）', ephemeral=True)
 
     elif a == 'delete':
@@ -1290,7 +1290,7 @@ def build_stock_analysis(ticker: str, display_name: str = '') -> discord.Embed |
         pp  = (cur - avg) / avg * 100
         embed.add_field(
             name='💼 我的持股',
-            value=f'持有 {sh} 股\n成本 {avg:.0f} → 現價 {cur:.0f}元\n損益 {signed(pnl)}元（{signed(pp, ".1f")}%）{color(pnl)}',
+            value=f'持有 {sh} 股\n成本 {avg:.2f} → 現價 {cur:.0f}元\n損益 {signed(pnl)}元（{signed(pp, ".1f")}%）{color(pnl)}',
             inline=True
         )
 
