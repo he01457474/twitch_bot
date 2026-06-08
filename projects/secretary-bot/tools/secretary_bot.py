@@ -508,15 +508,17 @@ def ai_holding_analysis(enriched: list[dict]) -> str:
         for h in stocks
     )
     etf_str = '、'.join(f"{h['name']}（{h['ticker']}）" for h in etfs) if etfs else ''
+    # 持股檔數越多，給 AI 的字數額度跟著放大，避免每檔被壓縮成「漲」「跌」這種空泛單詞
+    word_limit = max(150, 45 * len(stocks))
     prompt = (
-        f"你是台股投資助理，用繁體中文分析以下個股，回覆控制在 150 字內，不要重複說免責聲明。\n\n"
+        f"你是台股投資助理，用繁體中文分析以下個股，回覆控制在 {word_limit} 字內，不要重複說免責聲明。\n\n"
         f"個股：\n{summary or '（無）'}\n"
         + (f"ETF（不需分析）：{etf_str}\n" if etf_str else '') +
-        f"\n分兩段：\n"
-        f"1.【方向】各股一句話看法（漲跌原因或趨勢）\n"
-        f"2.【建議】一句話操作方向，直接講重點，不要解釋術語定義"
+        f"\n分兩段，每一檔都要逐一點評、不要省略：\n"
+        f"1.【方向】每檔各一句具體看法（指出漲跌原因、籌碼動向或關鍵趨勢，避免只寫「持平」「上漲」這種空泛字眼）\n"
+        f"2.【建議】每檔各一句具體操作方向（例如加碼、減碼、停利、續抱觀察的條件），不要解釋術語定義"
     )
-    return ask_ai(prompt, max_tokens=400)
+    return ask_ai(prompt, max_tokens=min(1800, 200 + 80 * len(stocks)))
 
 def ai_recommend_tickers(held_tickers: list[str]) -> list[dict]:
     """請 AI 推薦股票代號，回傳 [{ticker, name, sector, tsmc_rel, reason, action}]"""
@@ -577,6 +579,26 @@ def arrow(v: float) -> str:
 
 def signed(v: float, fmt='.0f') -> str:
     return f'+{v:{fmt}}' if v >= 0 else f'{v:{fmt}}'
+
+def _chunk_text(text: str, limit: int = 1024, sep: str = '\n\n') -> list[str]:
+    """依分隔符把長文字切成多個不超過 limit 字數的區塊，
+    用來把持股、法人、AI 分析等內容拆成多個 embed 欄位，避免超過 1024 字被截斷。"""
+    if not text:
+        return []
+    if len(text) <= limit:
+        return [text]
+    parts = text.split(sep)
+    chunks, cur = [], ''
+    for part in parts:
+        candidate = part if not cur else f'{cur}{sep}{part}'
+        if len(candidate) > limit and cur:
+            chunks.append(cur)
+            cur = part
+        else:
+            cur = candidate
+    if cur:
+        chunks.append(cur)
+    return chunks
 
 # ── 每日報告 ──────────────────────────────────────────────────
 def build_report() -> tuple[discord.Embed, str]:
@@ -690,6 +712,7 @@ def build_report() -> tuple[discord.Embed, str]:
     total_pct = total_pnl / total_cost * 100 if total_cost else 0
     rt_note = '（即時報價，約 15 分鐘延遲）' if any_realtime else ''
     hold_text = '\n\n'.join(hold_parts)
+    hold_chunks = _chunk_text(hold_text)
     hold_summary = (
         f'投入 {total_cost/1e4:.1f}萬｜市值 {total_value/1e4:.2f}萬\n'
         f'總損益 {signed(total_pnl)}元 {color(total_pnl)}（{signed(total_pct, ".2f")}%）{rt_note}'
@@ -724,6 +747,7 @@ def build_report() -> tuple[discord.Embed, str]:
         )
     # 無個股資料且無大盤資料，整欄不顯示
     inst_text = '\n\n'.join(inst_parts) if (has_inst_data or mkt) else ''
+    inst_chunks = _chunk_text(inst_text)
 
     # ── 新聞欄（無新聞的股票略過）────────────────────────────
     news_pairs: list[tuple[str, str]] = []
@@ -751,13 +775,12 @@ def build_report() -> tuple[discord.Embed, str]:
     # ── 組 Embed ──────────────────────────────────────────────
     embed = discord.Embed(title=f'📊 每日市場報告｜{date_str}', color=0xE74C3C)
 
-    if inst_text:
-        embed.add_field(name='​', value=hold_text[:1024], inline=True)
-        embed.add_field(name='​', value=inst_text[:1024], inline=True)
-        embed.add_field(name='​', value='​', inline=False)
-    else:
-        embed.add_field(name='​', value=hold_text[:1024], inline=False)
+    for chunk in hold_chunks:
+        embed.add_field(name='​', value=chunk, inline=False)
     embed.add_field(name='💰 總覽', value=hold_summary, inline=False)
+
+    for chunk in inst_chunks:
+        embed.add_field(name='​', value=chunk, inline=False)
 
     if news_pairs:
         embed.add_field(name='📰 持股新聞', value='​', inline=False)
@@ -774,7 +797,8 @@ def build_report() -> tuple[discord.Embed, str]:
                 embed.add_field(name='​', value='​', inline=False)
 
     embed.add_field(name='💎 低估潛力股', value=recommend_text[:1024], inline=False)
-    embed.add_field(name='🤖 AI 參考建議', value=ai_text[:1024], inline=False)
+    for i, chunk in enumerate(_chunk_text(ai_text, sep='\n')):
+        embed.add_field(name=('🤖 AI 參考建議' if i == 0 else '​'), value=chunk, inline=False)
     if term_text:
         embed.add_field(name='📖 今日新詞', value=term_text[:1024], inline=False)
     embed.set_footer(text='⚠️ 以上為 AI 輔助參考，不構成投資建議，請依自身判斷操作。')
