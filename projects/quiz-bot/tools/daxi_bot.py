@@ -72,6 +72,8 @@ DEFAULT_CONFIG = {
     "question_region":  {"left": 0.17, "top": 0.12, "right": 0.74, "bottom": 0.27},
     "options_region":   {"left": 0.17, "top": 0.27, "right": 0.74, "bottom": 0.34},
     "popup_full_region":{"left": 0.15, "top": 0.09, "right": 0.76, "bottom": 0.36},
+    "sidestand_question_region":   {"left": 0.17, "top": 0.12, "right": 0.74, "bottom": 0.27},
+    "sidestand_popup_full_region": {"left": 0.15, "top": 0.09, "right": 0.76, "bottom": 0.36},
     "map_name_region":  {"left": 0.67, "top": 0.00, "right": 0.82, "bottom": 0.05},
     "coord_region":     {"left": 0.881, "top": 0.0017, "right": 0.9767, "bottom": 0.0345},
     "quiz_map_keywords": [],   # 留空 = 不篩選；填入關鍵字才啟用地圖過濾
@@ -1052,7 +1054,8 @@ def _rough_questionish_score(text):
 def strip_countdown_text(text):
     text = _clean_ocr_text(text or "")
     countdown = re.search(
-        r"(剩\s*[餘余]?\s*(?:時\s*間)?|倒\s*數)\s*[\s:：·・。.,，、\-—是]*\d{1,3}\s*秒?",
+        r"剩\s*[餘余]\s*時\s*間\s*[\s:：·・。.,，、\-—是]*(?:\d{1,3}\s*秒?)?"
+        r"|(?:剩\s*[餘余]?\s*(?:時\s*間)?|倒\s*數)\s*[\s:：·・。.,，、\-—是]*\d{1,3}\s*秒?",
         text,
     )
     if countdown:
@@ -1065,6 +1068,7 @@ def strip_countdown_text(text):
                 return before + after
             return before if before_score >= after_score else after
         return before or after
+    text = re.sub(r"剩\s*[餘余]\s*時\s*間\s*[\s:：·・。.,，、\-—是]*(?:\d{1,3}\s*秒?)?", "", text)
     text = re.sub(r"剩\s*[餘余]?\s*(?:時\s*間)?\s*[\s:：·・。.,，、\-—是]*\d{1,3}\s*秒?", "", text)
     text = re.sub(r"倒\s*數\s*[:：]?\s*\d{1,3}\s*秒?", "", text)
     text = re.sub(r"(?:剩|餘|余|時|間){1,4}\s*[:：]?\s*\d{1,3}\s*秒?", "", text)
@@ -2669,7 +2673,8 @@ class GameDetector:
         if not self._popup_on:
             self._popup_on = True
 
-        q_img = self._crop(img, w, h, "question_region")
+        q_region_key = "sidestand_question_region" if self.mode == "sidestand" else "question_region"
+        q_img = self._crop(img, w, h, q_region_key)
         opt_img = self._crop(img, w, h, "options_region")
         sig_img = self._quiz_signature_image(q_img, opt_img)
         ph = compute_phash(sig_img)
@@ -2800,8 +2805,8 @@ class GameDetector:
                 "capture_path": capture_path, "recognized": q_text}
 
     def _process_sidestand(self, img, w, h, q_img, ph, on_status):
-        full  = self._crop(img, w, h, "popup_full_region")
-        q_img = self._crop(img, w, h, "question_region")
+        full  = self._crop(img, w, h, "sidestand_popup_full_region")
+        q_img = self._crop(img, w, h, "sidestand_question_region")
 
         image_entry = self.dbs.find_by_question_image(
             q_img,
@@ -3579,6 +3584,11 @@ class DaxiApp:
                      hint="辨識只看這個框；只框題目那一行，不要框到標題列、倒數、角色名或選項")
         region_block(box, "選項文字區域", "options_region",
                      hint="只框 1～4 的選項文字，不要框到題目或倒數時間")
+        box = section(regions, "選邊站彈窗")
+        region_block(box, "彈窗完整範圍（選邊站）", "sidestand_popup_full_region",
+                     hint="選邊站視窗通常比四選一矮，請切到選邊站模式後重新框選整個彈窗")
+        region_block(box, "題目文字區域（選邊站）", "sidestand_question_region",
+                     hint="只框選邊站的題目那一行，不要框到標題列、倒數或角色名")
         box = section(regions, "地圖與座標區域")
         region_block(box, "右上座標區域", "coord_region",
                      hint="框選右上角角色座標，例如 4248,4024")
@@ -5154,9 +5164,16 @@ class DaxiApp:
 
         def run():
             try:
+                region_keys = {
+                    "question_region": "sidestand_question_region" if mode == "sidestand" else "question_region",
+                    "options_region": "options_region",
+                    "popup_full_region": "sidestand_popup_full_region" if mode == "sidestand" else "popup_full_region",
+                    "map_name_region": "map_name_region",
+                    "coord_region": "coord_region",
+                }
                 crops = {
-                    key: self.detector._crop(img, w, h, key)
-                    for key in ("question_region", "options_region", "map_name_region", "coord_region", "popup_full_region")
+                    label_key: self.detector._crop(img, w, h, region_keys[label_key])
+                    for label_key in region_keys
                 }
                 detail_cb = lambda msg: win.after(0, append, f"  ⚠ {msg}\n", "warn")
                 if mode == "quiz4":
