@@ -2269,16 +2269,30 @@ class Bot(commands.Bot):
         row = await self.db.fetchone("SELECT user, display_name, last_checkin, total_count, monthly_count FROM checkins WHERE user_id=? AND channel=?", (uid, ch))
         sc = (await self.db.fetchone("SELECT stream_count FROM channel_stats WHERE channel=?", (ch,)) or [0])[0]
 
-        if self.live_status.get(ch, False) and ch in self.stream_start_times:
-            live_msg = f"(🟢 本月第 {sc} 次開播，今日於 {self.format_hhmm(self.stream_start_times[ch])} 開台)"
-        else:
-            offline_row = await self.db.fetchone("SELECT value FROM bot_state WHERE key=?", (f"OFFLINE_TS_{ch}",))
-            if offline_row and offline_row[0]:
+        def days_ago_label(d):
+            n = (datetime.datetime.now(LOCAL_TZ).date() - d).days
+            ago = "今天" if n <= 0 else "昨天" if n == 1 else f"{n} 天前"
+            return f"{d.month}/{d.day}（{ago}）"
+
+        is_live_now = self.live_status.get(ch, False) and ch in self.stream_start_times
+        if is_live_now:
+            # 直播中：上次開台＝這次開台之前那一場，OFFLINE_TS 在開台期間不會被覆寫，正好是上一場下播時間
+            prev_row = await self.db.fetchone("SELECT value FROM bot_state WHERE key=?", (f"OFFLINE_TS_{ch}",))
+            prev_label = ""
+            if prev_row and prev_row[0]:
                 try:
-                    offline_ts = float(offline_row[0])
-                    offline_time_str = datetime.datetime.fromtimestamp(offline_ts).strftime('%m/%d %H:%M')
-                    live_msg = f"(💤 最後關台：{offline_time_str}，本月累計開播 {sc} 次)"
-                except:
+                    prev_date = datetime.datetime.fromtimestamp(float(prev_row[0]), LOCAL_TZ).date()
+                    prev_label = f" ｜ 上次開台：{days_ago_label(prev_date)}"
+                except (ValueError, OSError):
+                    pass
+            live_msg = f"(🟢 本月第 {sc} 次開播，今日於 {self.format_hhmm(self.stream_start_times[ch])} 開台{prev_label})"
+        else:
+            date_row = await self.db.fetchone("SELECT value FROM bot_state WHERE key=?", (f"LAST_STREAM_DATE_{ch}",))
+            if date_row and date_row[0]:
+                try:
+                    last_date = datetime.datetime.strptime(date_row[0], "%Y-%m-%d").date()
+                    live_msg = f"(💤 上次開台：{days_ago_label(last_date)} ｜ 本月累計開播 {sc} 次)"
+                except ValueError:
                     live_msg = f"(🔴本月累計開播 {sc} 次)"
             else:
                 live_msg = f"(🔴本月累計開播 {sc} 次)"
