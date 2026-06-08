@@ -2282,13 +2282,21 @@ class Bot(commands.Bot):
             # 直播中：LAST_STREAM_DATE 已被覆寫成今天，改讀「上一個有開台的日曆日」PREV_STREAM_DATE，
             # 這樣不論直播中或離線查詢，看到的「上次開台」都是同一個基準（開台日，不受跨夜下播影響）
             prev_row = await self.db.fetchone("SELECT value FROM bot_state WHERE key=?", (f"PREV_STREAM_DATE_{ch}",))
-            prev_label = ""
+            prev_date = None
             if prev_row and prev_row[0]:
                 try:
                     prev_date = datetime.datetime.strptime(prev_row[0], "%Y-%m-%d").date()
-                    prev_label = f" ｜ 上次開台：{days_ago_label(prev_date)}"
                 except ValueError:
                     pass
+            if prev_date is None:
+                # 過渡期備援：PREV_STREAM_DATE 要等下一次跨日開台才會寫入，舊資料 OFFLINE_TS 先頂著顯示
+                legacy_row = await self.db.fetchone("SELECT value FROM bot_state WHERE key=?", (f"OFFLINE_TS_{ch}",))
+                if legacy_row and legacy_row[0]:
+                    try:
+                        prev_date = datetime.datetime.fromtimestamp(float(legacy_row[0]), LOCAL_TZ).date()
+                    except (ValueError, OSError):
+                        pass
+            prev_label = f" ｜ 上次開台：{days_ago_label(prev_date)}" if prev_date else ""
             live_msg = f"(🟢 本月第 {sc} 次開播，今日於 {self.format_hhmm(self.stream_start_times[ch])} 開台{prev_label})"
         else:
             date_row = await self.db.fetchone("SELECT value FROM bot_state WHERE key=?", (f"LAST_STREAM_DATE_{ch}",))
