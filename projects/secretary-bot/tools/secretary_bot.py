@@ -497,28 +497,46 @@ def ask_ai(prompt: str, max_tokens=800) -> str:
         log.warning(f'Groq: {e}')
         return '\uff08AI \u66ab\u6642\u7121\u6cd5\u4f7f\u7528\uff09'
 
-def ai_holding_analysis(enriched: list[dict]) -> str:
+def ai_holding_analysis(enriched: list[dict], insts: dict | None = None) -> str:
     if not enriched:
         return '目前沒有持股資料。'
-    # 只分析個股，ETF 不做新聞摘要
+    insts = insts or {}
+    # 只分析個股，ETF 不需要逐檔分析
     stocks = [h for h in enriched if not _is_etf(h['ticker'])]
     etfs   = [h for h in enriched if _is_etf(h['ticker'])]
-    summary = '\n'.join(
-        f"{h['name']}（{h['ticker']}）：均價{h['avg_cost']:.2f}元，現價{h.get('today_close') or '未知'}元"
-        for h in stocks
-    )
+
+    def _line(h: dict) -> str:
+        bits = [f"{h['name']}（{h['ticker']}）：均價{h['avg_cost']:.2f}元，現價{h.get('today_close') or '未知'}元"]
+        if h.get('day_pct') is not None:
+            bits.append(f"今日{signed(h['day_pct'], '.2f')}%")
+        if h.get('pnl_pct') is not None:
+            bits.append(f"目前損益{signed(h['pnl_pct'], '.1f')}%")
+        inst = insts.get(h['ticker'])
+        if inst and (inst.get('foreign') or inst.get('trust') or inst.get('dealer')):
+            flow = []
+            if inst.get('foreign'): flow.append(f"外資{signed(inst['foreign']/1e8, '.2f')}億")
+            if inst.get('trust'):   flow.append(f"投信{signed(inst['trust']/1e8, '.2f')}億")
+            if inst.get('dealer'):  flow.append(f"自營{signed(inst['dealer']/1e8, '.2f')}億")
+            bits.append('、'.join(flow))
+        return '，'.join(bits)
+
+    summary = '\n'.join(_line(h) for h in stocks)
     etf_str = '、'.join(f"{h['name']}（{h['ticker']}）" for h in etfs) if etfs else ''
     # 持股檔數越多，給 AI 的字數額度跟著放大，避免每檔被壓縮成「漲」「跌」這種空泛單詞
-    word_limit = max(150, 45 * len(stocks))
+    word_limit = max(200, 60 * len(stocks))
     prompt = (
-        f"你是台股投資助理，用繁體中文分析以下個股，回覆控制在 {word_limit} 字內，不要重複說免責聲明。\n\n"
-        f"個股：\n{summary or '（無）'}\n"
+        f"你是資深台股分析師，根據下面每檔個股的「均價、現價、今日漲跌、目前損益、三大法人買賣超」"
+        f"等實際數據，用繁體中文寫出有根據的深度分析，回覆控制在 {word_limit} 字內，不要重複說免責聲明、"
+        f"不要寫沒有數據佐證的空泛敘述（例如「受惠產業成長」「基本面良好」這類套話）。\n\n"
+        f"個股數據：\n{summary or '（無）'}\n"
         + (f"ETF（不需分析）：{etf_str}\n" if etf_str else '') +
         f"\n分兩段，每一檔都要逐一點評、不要省略：\n"
-        f"1.【方向】每檔各一句具體看法（指出漲跌原因、籌碼動向或關鍵趨勢，避免只寫「持平」「上漲」這種空泛字眼）\n"
-        f"2.【建議】每檔各一句具體操作方向（例如加碼、減碼、停利、續抱觀察的條件），不要解釋術語定義"
+        f"1.【方向】每檔各一句，直接點出今日漲跌幅度、法人買超或賣超金額、目前損益狀況三者之間的關聯，"
+        f"幫使用者解讀「現在是什麼情況」\n"
+        f"2.【建議】每檔各一句具體操作方向（加碼、減碼、停利、停損、續抱觀察的條件等），"
+        f"理由要連結到第一段點出的數據，不要憑空給建議"
     )
-    return ask_ai(prompt, max_tokens=min(1800, 200 + 80 * len(stocks)))
+    return ask_ai(prompt, max_tokens=min(2000, 250 + 100 * len(stocks)))
 
 def ai_recommend_tickers(held_tickers: list[str]) -> list[dict]:
     """請 AI 推薦股票代號，回傳 [{ticker, name, sector, tsmc_rel, reason, action}]"""
@@ -646,7 +664,7 @@ def build_report() -> tuple[discord.Embed, str]:
 
     # ── Phase 2：並行 AI 運算 ────────────────────────────────
     with ThreadPoolExecutor(max_workers=6) as ex:
-        ai_analysis_fut  = ex.submit(ai_holding_analysis, enriched)
+        ai_analysis_fut  = ex.submit(ai_holding_analysis, enriched, insts)
         ai_recommend_fut = ex.submit(ai_recommend_tickers, held_tickers)
         theme_detail_futs = [ex.submit(ai_theme_detail, t) for t in themes]
 
