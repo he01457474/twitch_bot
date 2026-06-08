@@ -1916,6 +1916,8 @@ class Bot(commands.Bot):
                     db_date = await self.db.fetchone("SELECT value FROM bot_state WHERE key=?", (f"LAST_STREAM_DATE_{cl}",))
                     if not db_date or db_date[0] != today:
                         await self.db.execute('INSERT INTO channel_stats (channel, stream_count) VALUES (?, 1) ON CONFLICT(channel) DO UPDATE SET stream_count = stream_count + 1', (cl,))
+                        if db_date and db_date[0]:
+                            await self.db.execute('INSERT OR REPLACE INTO bot_state VALUES (?, ?)', (f"PREV_STREAM_DATE_{cl}", db_date[0]))
                         await self.db.execute('INSERT OR REPLACE INTO bot_state VALUES (?, ?)', (f"LAST_STREAM_DATE_{cl}", today))
 
                 await self._refill_regular_queue(cl)
@@ -1929,6 +1931,8 @@ class Bot(commands.Bot):
                     db_date = await self.db.fetchone("SELECT value FROM bot_state WHERE key=?", (f"LAST_STREAM_DATE_{cl}",))
                     if not db_date or db_date[0] != today:
                         await self.db.execute('UPDATE channel_stats SET stream_count = stream_count + 1 WHERE channel=?', (cl,))
+                        if db_date and db_date[0]:
+                            await self.db.execute('INSERT OR REPLACE INTO bot_state VALUES (?, ?)', (f"PREV_STREAM_DATE_{cl}", db_date[0]))
                         await self.db.execute('INSERT OR REPLACE INTO bot_state VALUES (?, ?)', (f"LAST_STREAM_DATE_{cl}", today))
 
         elif not is_live and was_live:
@@ -1944,7 +1948,6 @@ class Bot(commands.Bot):
                 await self.db.execute("UPDATE user_stats SET is_online = 0, last_leave_ts = ? WHERE channel = ? AND is_online = 1", (int(time.time()), cl))
                 if cl in self.active_chatters:
                     self.active_chatters[cl].clear()
-                await self.db.execute("INSERT OR REPLACE INTO bot_state VALUES (?, ?)", (f"OFFLINE_TS_{cl}", str(int(time.time()))))
 
         self.last_stream_ids[cl] = sid
 
@@ -2276,14 +2279,15 @@ class Bot(commands.Bot):
 
         is_live_now = self.live_status.get(ch, False) and ch in self.stream_start_times
         if is_live_now:
-            # 直播中：上次開台＝這次開台之前那一場，OFFLINE_TS 在開台期間不會被覆寫，正好是上一場下播時間
-            prev_row = await self.db.fetchone("SELECT value FROM bot_state WHERE key=?", (f"OFFLINE_TS_{ch}",))
+            # 直播中：LAST_STREAM_DATE 已被覆寫成今天，改讀「上一個有開台的日曆日」PREV_STREAM_DATE，
+            # 這樣不論直播中或離線查詢，看到的「上次開台」都是同一個基準（開台日，不受跨夜下播影響）
+            prev_row = await self.db.fetchone("SELECT value FROM bot_state WHERE key=?", (f"PREV_STREAM_DATE_{ch}",))
             prev_label = ""
             if prev_row and prev_row[0]:
                 try:
-                    prev_date = datetime.datetime.fromtimestamp(float(prev_row[0]), LOCAL_TZ).date()
+                    prev_date = datetime.datetime.strptime(prev_row[0], "%Y-%m-%d").date()
                     prev_label = f" ｜ 上次開台：{days_ago_label(prev_date)}"
-                except (ValueError, OSError):
+                except ValueError:
                     pass
             live_msg = f"(🟢 本月第 {sc} 次開播，今日於 {self.format_hhmm(self.stream_start_times[ch])} 開台{prev_label})"
         else:
