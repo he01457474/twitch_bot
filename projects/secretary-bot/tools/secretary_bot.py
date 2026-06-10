@@ -971,7 +971,8 @@ async def _execute_trade(loop, rticker: str, rname: str, parsed_shares: int, pri
     app_commands.Choice(name='批次買賣', value='batch'),
     app_commands.Choice(name='持股清單', value='list'),
     app_commands.Choice(name='損益查看', value='pnl'),
-    app_commands.Choice(name='試算損益（不動資料）', value='calc'),
+    app_commands.Choice(name='試算買入損益', value='calc_buy'),
+    app_commands.Choice(name='試算賣出損益', value='calc_sell'),
     app_commands.Choice(name='刪除交易紀錄', value='delete'),
 ])
 async def cmd_stock(interaction: discord.Interaction,
@@ -985,7 +986,7 @@ async def cmd_stock(interaction: discord.Interaction,
     # buy / sell / calc 共用：股票可填代號或名稱，股數可用「張」
     resolved = (None, None)
     parsed_shares = None
-    if a in ('buy', 'sell', 'calc'):
+    if a in ('buy', 'sell', 'calc_buy', 'calc_sell'):
         if ticker:
             resolved = await loop.run_in_executor(None, resolve_ticker, ticker)
             if resolved[0] is None:
@@ -1114,7 +1115,7 @@ async def cmd_stock(interaction: discord.Interaction,
         )
         await interaction.followup.send('\n'.join(lines), ephemeral=True)
 
-    elif a == 'calc':
+    elif a == 'calc_sell':
         if not resolved[0] or not parsed_shares:
             await interaction.followup.send(
                 '請填股票、股數；股數可用「張」（1張 = 1000股），價格留空會自動用目前市價。\n'
@@ -1124,6 +1125,8 @@ async def cmd_stock(interaction: discord.Interaction,
         h = next((x for x in hs if x['ticker'] == rticker), None)
         if not h:
             await interaction.followup.send(f'找不到 {rname or rticker} 的持股紀錄。', ephemeral=True); return
+        if h['shares'] < parsed_shares:
+            await interaction.followup.send(f'持股不足，{h["name"]} 目前 {h["shares"]} 股', ephemeral=True); return
         actual_price = price
         if actual_price <= 0:
             p = await loop.run_in_executor(None, fetch_price, rticker)
@@ -1134,8 +1137,38 @@ async def cmd_stock(interaction: discord.Interaction,
         pp  = (actual_price - h['avg_cost']) / h['avg_cost'] * 100
         note = '（目前市價）' if price <= 0 else ''
         await interaction.followup.send(
-            f'📊 試算（不動資料）\n**{h["name"]} {rticker}**\n'
+            f'📊 試算賣出（不動資料）\n**{h["name"]} {rticker}**\n'
             f'賣出 {parsed_shares:,}股 @ {actual_price:,.0f}元{note} | 均價 {h["avg_cost"]:.2f}\n'
+            f'損益 {signed(pnl)}元 {color(pnl)}（{signed(pp, ".2f")}%）', ephemeral=True)
+
+    elif a == 'calc_buy':
+        if not resolved[0] or not parsed_shares:
+            await interaction.followup.send(
+                '請填股票、股數；股數可用「張」（1張 = 1000股），價格留空會自動用目前市價。\n'
+                '例如：台積電、1張、900', ephemeral=True); return
+        rticker, rname = resolved
+        hs = get_holdings()
+        h = next((x for x in hs if x['ticker'] == rticker), None)
+        p = await loop.run_in_executor(None, fetch_price, rticker)
+        market_price = (p.get('today_close') or p.get('yesterday_close')) if p else None
+        actual_price = price if price > 0 else market_price
+        if not actual_price:
+            await interaction.followup.send('查不到目前市價，請手動輸入價格。', ephemeral=True); return
+        if not market_price:
+            await interaction.followup.send('查不到目前市價，無法試算買入後損益。', ephemeral=True); return
+        old_shares, old_cost = (h['shares'], h['avg_cost']) if h else (0, 0.0)
+        new_shares = old_shares + parsed_shares
+        new_avg_cost = (old_cost * old_shares + actual_price * parsed_shares) / new_shares
+        name = h['name'] if h else _best_name(rticker, rname, p)
+        pnl = (market_price - new_avg_cost) * new_shares
+        pp  = (market_price - new_avg_cost) / new_avg_cost * 100
+        note = '（目前市價）' if price <= 0 else ''
+        holding_line = f'原持有 {old_shares:,}股 @ 均價 {old_cost:.2f}\n' if old_shares else ''
+        await interaction.followup.send(
+            f'📊 試算買入（不動資料）\n**{name} {rticker}**\n'
+            f'{holding_line}'
+            f'買入 {parsed_shares:,}股 @ {actual_price:,.0f}元{note}\n'
+            f'買入後均價：{new_avg_cost:.2f}｜目前市價：{market_price:,.0f}\n'
             f'損益 {signed(pnl)}元 {color(pnl)}（{signed(pp, ".2f")}%）', ephemeral=True)
 
     elif a == 'delete':
@@ -1155,7 +1188,7 @@ async def cmd_stock(interaction: discord.Interaction,
         else:
             await interaction.followup.send('請填交易 ID（數字），或不填查看紀錄。', ephemeral=True)
     else:
-        await interaction.followup.send('可用：`buy` / `sell` / `batch` / `list` / `pnl` / `calc` / `delete`', ephemeral=True)
+        await interaction.followup.send('可用：`buy` / `sell` / `batch` / `list` / `pnl` / `calc_buy` / `calc_sell` / `delete`', ephemeral=True)
 
 # ── 設定指令 ──────────────────────────────────────────────────
 @tree.command(name='設定', description='設定推送時間與頻道')
