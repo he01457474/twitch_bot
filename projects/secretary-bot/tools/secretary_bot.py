@@ -1168,6 +1168,7 @@ async def cmd_stock(interaction: discord.Interaction,
             f'📊 試算買入（不動資料）\n**{name} {rticker}**\n'
             f'{holding_line}'
             f'買入 {parsed_shares:,}股 @ {actual_price:,.0f}元{note}\n'
+            f'本次成本：{parsed_shares*actual_price:,.0f}元\n'
             f'買入後均價：{new_avg_cost:.2f}｜目前市價：{market_price:,.0f}\n'
             f'損益 {signed(pnl)}元 {color(pnl)}（{signed(pp, ".2f")}%）', ephemeral=True)
 
