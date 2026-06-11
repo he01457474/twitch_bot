@@ -440,26 +440,49 @@ def scrape_stock_news(ticker: str, name: str, limit=2) -> list[str]:
 def scrape_hot_themes() -> list[str]:
     try:
         r = requests.get(
-            'https://api.cnyes.com/media/api/v1/newslist/category/tw_industry?limit=8&page=1',
+            'https://api.cnyes.com/media/api/v1/newslist/category/tw_stock?limit=8&page=1',
             headers=_HEADERS, timeout=8
         )
-        items = r.json().get('data', {}).get('items', [])
+        items = r.json().get('items', {}).get('data', [])
         titles = [item['title'][:50] for item in items if item.get('title')]
-        return titles[:6]
+        if titles:
+            return titles[:6]
     except Exception:
-        # 備援：爬 HTML
+        pass
+    # 備援：爬 HTML
+    try:
+        r = requests.get('https://news.cnyes.com/news/cat/tw_stock', headers=_HEADERS, timeout=8)
+        soup = BeautifulSoup(r.text, 'html.parser')
+        seen, themes = set(), []
+        for el in soup.find_all(['h3', 'h2'], limit=30):
+            t = el.get_text(strip=True)
+            if 5 < len(t) < 60 and t not in seen:
+                themes.append(t[:50]); seen.add(t)
+            if len(themes) >= 6: break
+        return themes
+    except Exception:
+        return []
+
+def scrape_intl_news(limit=6) -> list[str]:
+    """爬國際股市/焦點新聞，作為大盤情勢背景（地緣政治、關稅、Fed利率、AI巨頭動向等），
+    分類來源較容易隨 cnyes 調整，所以多抓幾類合併、互相備援。"""
+    seen, titles = set(), []
+    for cat in ('wd_stock', 'headline', 'tw_macro'):
         try:
-            r = requests.get('https://news.cnyes.com/news/cat/tw_industry', headers=_HEADERS, timeout=8)
-            soup = BeautifulSoup(r.text, 'html.parser')
-            seen, themes = set(), []
-            for el in soup.find_all(['h3', 'h2'], limit=30):
-                t = el.get_text(strip=True)
-                if 5 < len(t) < 60 and t not in seen:
-                    themes.append(t[:50]); seen.add(t)
-                if len(themes) >= 6: break
-            return themes
+            r = requests.get(
+                f'https://api.cnyes.com/media/api/v1/newslist/category/{cat}?limit=10&page=1',
+                headers=_HEADERS, timeout=8
+            )
+            for item in r.json().get('items', {}).get('data', []):
+                t = (item.get('title') or '')[:50]
+                if t and t not in seen:
+                    seen.add(t)
+                    titles.append(t)
         except Exception:
-            return []
+            continue
+        if len(titles) >= limit:
+            break
+    return titles[:limit]
 
 # ── Gemini ────────────────────────────────────────────────────
 def ask_ai(prompt: str, max_tokens=800) -> str:
@@ -497,7 +520,7 @@ def ask_ai(prompt: str, max_tokens=800) -> str:
         log.warning(f'Groq: {e}')
         return '\uff08AI \u66ab\u6642\u7121\u6cd5\u4f7f\u7528\uff09'
 
-def ai_holding_analysis(enriched: list[dict], insts: dict | None = None) -> str:
+def ai_holding_analysis(enriched: list[dict], insts: dict | None = None, market_context: str = '') -> str:
     if not enriched:
         return '目前沒有持股資料。'
     insts = insts or {}
@@ -528,21 +551,26 @@ def ai_holding_analysis(enriched: list[dict], insts: dict | None = None) -> str:
         f"你是資深台股分析師，根據下面每檔個股的「均價、現價、今日漲跌、目前損益、三大法人買賣超」"
         f"等實際數據，用繁體中文寫出有根據的深度分析，回覆控制在 {word_limit} 字內，不要重複說免責聲明、"
         f"不要寫沒有數據佐證的空泛敘述（例如「受惠產業成長」「基本面良好」這類套話）。\n\n"
+        + (f"近期市場情勢／題材參考（與個股無關的可略過不提）：\n{market_context}\n\n" if market_context else '') +
         f"個股數據：\n{summary or '（無）'}\n"
         + (f"ETF（不需分析）：{etf_str}\n" if etf_str else '') +
         f"\n分兩段，每一檔都要逐一點評、不要省略：\n"
-        f"1.【方向】每檔各一句，直接點出今日漲跌幅度、法人買超或賣超金額、目前損益狀況三者之間的關聯，"
-        f"幫使用者解讀「現在是什麼情況」\n"
+        f"1.【方向】每檔各一句，直接點出今日漲跌幅度、法人買超或賣超金額、目前損益狀況三者之間的關聯"
+        + ("，如果上面的市場情勢／題材對該股有實質影響也一併點出（沒有明顯關聯就不要硬扯）" if market_context else "") +
+        f"，幫使用者解讀「現在是什麼情況」\n"
         f"2.【建議】每檔各一句具體操作方向（加碼、減碼、停利、停損、續抱觀察的條件等），"
         f"理由要連結到第一段點出的數據，不要憑空給建議"
     )
     return ask_ai(prompt, max_tokens=min(2000, 250 + 100 * len(stocks)))
 
-def ai_recommend_tickers(held_tickers: list[str]) -> list[dict]:
+def ai_recommend_tickers(held_tickers: list[str], market_context: str = '') -> list[dict]:
     """請 AI 推薦股票代號，回傳 [{ticker, name, sector, tsmc_rel, reason, action}]"""
     exclude = '、'.join(held_tickers) if held_tickers else '無'
     raw = ask_ai(
         f"你是台股投資顧問，請用繁體中文推薦 2 檔目前基本面良好、股價相對低估的台股。\n\n"
+        + (f"近期市場情勢／題材參考：\n{market_context}\n\n"
+           f"請優先挑選跟上述情勢／題材相關、可能受惠的標的；如果情勢跟某些族群無關就不用硬扯。\n\n"
+           if market_context else '') +
         f"排除以下已持有股票（代號）：{exclude}\n\n"
         f"推薦條件：\n"
         f"・第 1 檔：必須與台積電有供應鏈關聯（供應商、客戶或上下游）\n"
@@ -634,13 +662,23 @@ def build_report() -> tuple[discord.Embed, str]:
         inst_futs  = {h['ticker']: ex.submit(fetch_institutional, h['ticker']) for h in holdings}
         news_futs  = [(h, ex.submit(scrape_stock_news, h['ticker'], h['name'])) for h in non_etf]
         themes_fut = ex.submit(scrape_hot_themes)
+        intl_fut   = ex.submit(scrape_intl_news)
         mkt_fut    = ex.submit(fetch_market_inst)
 
     prices = {t: f.result() for t, f in price_futs.items()}
     insts  = {t: f.result() for t, f in inst_futs.items()}
     news_results = [(h, f.result()) for h, f in news_futs]
-    themes = themes_fut.result()[:4]
-    mkt    = mkt_fut.result()
+    themes    = themes_fut.result()[:4]
+    intl_news = intl_fut.result()
+    mkt       = mkt_fut.result()
+
+    # AI 用的市場情勢背景：國際情勢 + 台股焦點題材
+    market_context_lines = []
+    if intl_news:
+        market_context_lines.append('國際情勢：' + '；'.join(intl_news[:5]))
+    if themes:
+        market_context_lines.append('台股焦點題材：' + '；'.join(themes))
+    market_context = '\n'.join(market_context_lines)
 
     # 計算損益
     enriched, total_cost, total_value = [], 0.0, 0.0
@@ -664,8 +702,8 @@ def build_report() -> tuple[discord.Embed, str]:
 
     # ── Phase 2：並行 AI 運算 ────────────────────────────────
     with ThreadPoolExecutor(max_workers=6) as ex:
-        ai_analysis_fut  = ex.submit(ai_holding_analysis, enriched, insts)
-        ai_recommend_fut = ex.submit(ai_recommend_tickers, held_tickers)
+        ai_analysis_fut  = ex.submit(ai_holding_analysis, enriched, insts, market_context)
+        ai_recommend_fut = ex.submit(ai_recommend_tickers, held_tickers, market_context)
         theme_detail_futs = [ex.submit(ai_theme_detail, t) for t in themes]
 
     ai_text         = ai_analysis_fut.result()
@@ -781,7 +819,7 @@ def build_report() -> tuple[discord.Embed, str]:
         theme_pairs.append((f'{h_icon} {t[:30]}', '（詳見題材詳解）'))
 
     # ── 新手術語 ──────────────────────────────────────────────
-    full = hold_text + inst_text + ' '.join(themes) + ai_text + recommend_text
+    full = hold_text + inst_text + ' '.join(themes) + ' '.join(intl_news) + ai_text + recommend_text
     with db() as c:
         learned = {r[0] for r in c.execute('SELECT term FROM learned_terms').fetchall()}
     new_terms = [(t, e) for t, e in TERMS.items() if t not in learned and t in full][:3]
@@ -813,6 +851,13 @@ def build_report() -> tuple[discord.Embed, str]:
             embed.add_field(name=n, value=v, inline=True)
             if i % 2 == 1:
                 embed.add_field(name='​', value='​', inline=False)
+
+    if intl_news:
+        embed.add_field(
+            name='🌍 國際情勢',
+            value='\n'.join(f'・{n}' for n in intl_news[:5])[:1024],
+            inline=False
+        )
 
     embed.add_field(name='💎 低估潛力股', value=recommend_text[:1024], inline=False)
     for i, chunk in enumerate(_chunk_text(ai_text, sep='\n')):
