@@ -404,11 +404,18 @@ def get_selenium_driver():
 
     # 🟢 加入安全啟動與無腦重試機制
     for attempt in range(3):
+        service = Service(ChromeDriverManager().install())
         try:
-            driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=opts)
+            driver = webdriver.Chrome(service=service, options=opts)
             driver._bot_profile_dir = profile_dir
+            driver._bot_driver_pid = service.process.pid if service.process else None
             return driver
         except Exception as e:
+            # session 建立失敗時 chromedriver 子程序可能已啟動但沒有 driver 物件可回收，
+            # 不手動收掉就會變成孤兒程序一直卡著
+            if service.process:
+                subprocess.run(["taskkill", "/T", "/F", "/PID", str(service.process.pid)],
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             shutil.rmtree(profile_dir, ignore_errors=True)
             if attempt < 2:
                 # 啟動失敗常是殘留的 Chrome 殭屍程序佔住資源，先清一輪再重試
@@ -417,11 +424,25 @@ def get_selenium_driver():
                 continue
             raise e
 
+def _terminate_driver(driver):
+    """強制結束 driver 對應的 chromedriver/Chrome 程序樹並清掉設定檔。
+    斷線或換IP重啟時 driver.quit() 可能卡住或失敗，光靠它清不掉殭屍程序，
+    所以額外用記下來的 chromedriver PID 做 taskkill /T 強制收掉整個子程序樹。"""
+    pid = getattr(driver, "_bot_driver_pid", None)
+    try:
+        driver.quit()
+    except Exception:
+        pass
+    if pid:
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    profile_dir = getattr(driver, "_bot_profile_dir", None)
+    if profile_dir:
+        shutil.rmtree(profile_dir, ignore_errors=True)
+
 # --- 全域輔助函數 ---
 def force_cleanup_zombies():
     """只清理本 bot 建立的 headless Chrome profile，避免誤傷其他自動化工具。"""
     try:
-        import subprocess, time
         killed_any = False
         profile_marker = os.path.normcase(os.path.abspath(CHROME_PROFILE_ROOT)).replace("/", "\\")
         output = subprocess.check_output(
@@ -858,11 +879,9 @@ class Bot(commands.Bot):
                 time.sleep(10)
             finally:
                 if driver:
-                    profile_dir = getattr(driver, "_bot_profile_dir", None)
-                    try: driver.quit(); self.active_drivers.remove(driver)
-                    except: pass
-                    if profile_dir:
-                        shutil.rmtree(profile_dir, ignore_errors=True)
+                    _terminate_driver(driver)
+                    try: self.active_drivers.remove(driver)
+                    except ValueError: pass
 
     def run_paypal(self, target_channel, url):
         while True:
@@ -921,11 +940,9 @@ class Bot(commands.Bot):
                 time.sleep(10)
             finally:
                 if driver:
-                    profile_dir = getattr(driver, "_bot_profile_dir", None)
-                    try: driver.quit(); self.active_drivers.remove(driver)
-                    except: pass
-                    if profile_dir:
-                        shutil.rmtree(profile_dir, ignore_errors=True)
+                    _terminate_driver(driver)
+                    try: self.active_drivers.remove(driver)
+                    except ValueError: pass
 
     def convert_twd(self, text):
         try:
@@ -970,9 +987,10 @@ class Bot(commands.Bot):
         logging.info("🧹 正在清理背景瀏覽器資源...")
         if hasattr(self, "active_drivers"):
             for driver in self.active_drivers:
-                try: driver.quit()
-                except: pass
+                _terminate_driver(driver)
             self.active_drivers.clear()
+        # os.execv 不會觸發 atexit，斷線/換IP重啟前在這裡多掃一輪，避免殭屍程序累積
+        force_cleanup_zombies()
 
     async def close(self):
         await self._graceful_shutdown()
