@@ -723,7 +723,6 @@ def build_report() -> discord.Embed:
         parts.append(f"理由：{item.get('reason', '')}")
         parts.append(f"操作：{item.get('action', '')}")
         recommend_lines.append('\n'.join(parts))
-    recommend_lines.append('⚠️ 以上為 AI 輔助參考，不構成投資建議。')
     recommend_text = '\n\n'.join(recommend_lines)
 
     # ── 持股欄 ────────────────────────────────────────────────
@@ -827,8 +826,10 @@ def build_report() -> discord.Embed:
             if i % 2 == 1:
                 embed.add_field(name='​', value='​', inline=False)
 
-    embed.add_field(name='💎 低估潛力股', value=recommend_text[:1024], inline=False)
-    for i, chunk in enumerate(_chunk_text(ai_text, sep='\n')):
+    advice_text = ai_text
+    if recommend_text:
+        advice_text += '\n\n**💎 潛力股推薦**\n' + recommend_text
+    for i, chunk in enumerate(_chunk_text(advice_text, sep='\n')):
         embed.add_field(name=('🤖 AI 參考建議' if i == 0 else '​'), value=chunk, inline=False)
     if term_text:
         embed.add_field(name='📖 今日新詞', value=term_text[:1024], inline=False)
