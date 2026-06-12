@@ -409,10 +409,12 @@ def get_selenium_driver():
             driver._bot_profile_dir = profile_dir
             return driver
         except Exception as e:
+            shutil.rmtree(profile_dir, ignore_errors=True)
             if attempt < 2:
+                # 啟動失敗常是殘留的 Chrome 殭屍程序佔住資源，先清一輪再重試
+                force_cleanup_zombies()
                 time.sleep(2)
                 continue
-            shutil.rmtree(profile_dir, ignore_errors=True)
             raise e
 
 # --- 全域輔助函數 ---
@@ -852,6 +854,7 @@ class Bot(commands.Bot):
                     time.sleep(0.5)
             except Exception as e:
                 logging.error(f"⚠️ [{target_channel} {platform_name}] 監聽器發生異常，10 秒後重啟: {e}")
+                force_cleanup_zombies()
                 time.sleep(10)
             finally:
                 if driver:
@@ -914,6 +917,7 @@ class Bot(commands.Bot):
                     time.sleep(0.5)
             except Exception as e:
                 logging.error(f"⚠️ [{target_channel} PayPal] 監聽器發生異常，10 秒後重啟: {e}")
+                force_cleanup_zombies()
                 time.sleep(10)
             finally:
                 if driver:
