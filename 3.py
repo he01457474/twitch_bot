@@ -1712,7 +1712,7 @@ class Bot(commands.Bot):
                 data = await r.json()
                 ignored_bots = {
                     "nightbot", "streamelements", "fossabot", "soundalerts",
-                    "kofkof", "alienguytim", "commanderroot", "wizebot",
+                    "kofkof", "alienguytim", "commanderroot", "wizebot", "chiwabots",
                     getattr(self, "nick", "").lower(), cl
                 }
                 chatters.update(c["user_id"] for c in data.get("data", []) if c["user_login"].lower() not in ignored_bots)
@@ -2723,6 +2723,11 @@ class Bot(commands.Bot):
             SELECT user_id, watch_minutes, message_count, (watch_minutes * 2 + message_count * 5) as exp
             FROM user_stats
             WHERE channel=?
+              AND user_id NOT IN (
+                SELECT user_id FROM checkins WHERE LOWER(display_name)='chiwabots'
+                UNION
+                SELECT user_id FROM user_aliases WHERE LOWER(display_name)='chiwabots'
+              )
             ORDER BY exp DESC
             LIMIT ?
         """
