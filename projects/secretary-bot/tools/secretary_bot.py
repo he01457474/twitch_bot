@@ -607,17 +607,6 @@ def ai_recommend_tickers(held_tickers: list[str], market_context: str = '') -> l
             results.append(item)
     return results
 
-def ai_theme_detail(theme: str) -> str:
-    return ask_ai(
-        f"你是台股產業分析師，請用繁體中文說明以下台股題材（約 150 字）：\n\n"
-        f"題材：{theme}\n\n"
-        f"請包含：\n"
-        f"1.【為什麼熱】背景說明\n"
-        f"2.【相關個股】台灣概念股 2-3 檔（加代號）\n"
-        f"3.【風險】一句話\n\n"
-        f"語氣適合初學者。"
-    )
-
 # ── 顏色工具 ──────────────────────────────────────────────────
 def color(v: float) -> str:
     return '🔴' if v > 0 else ('🟢' if v < 0 else '🟡')
@@ -649,7 +638,7 @@ def _chunk_text(text: str, limit: int = 1024, sep: str = '\n\n') -> list[str]:
     return chunks
 
 # ── 每日報告 ──────────────────────────────────────────────────
-def build_report() -> tuple[discord.Embed, str]:
+def build_report() -> discord.Embed:
     today = datetime.date.today()
     wd = ['一','二','三','四','五','六','日'][today.weekday()]
     date_str = f"{today.strftime('%Y/%m/%d')}（{wd}）"
@@ -706,11 +695,9 @@ def build_report() -> tuple[discord.Embed, str]:
     with ThreadPoolExecutor(max_workers=6) as ex:
         ai_analysis_fut  = ex.submit(ai_holding_analysis, enriched, insts, market_context)
         ai_recommend_fut = ex.submit(ai_recommend_tickers, held_tickers, market_context)
-        theme_detail_futs = [ex.submit(ai_theme_detail, t) for t in themes]
 
     ai_text         = ai_analysis_fut.result()
     recommend_items = ai_recommend_fut.result()
-    theme_details   = [f.result() for f in theme_detail_futs]
 
     # 推薦股真實股價（並行）
     with ThreadPoolExecutor(max_workers=4) as ex:
@@ -813,13 +800,6 @@ def build_report() -> tuple[discord.Embed, str]:
         if news:
             news_pairs.append((f'{h["name"]} {h["ticker"]}', '\n'.join(f'・{n}' for n in news)))
 
-    # ── 題材 ──────────────────────────────────────────────────
-    theme_pairs: list[tuple[str, str]] = []
-    heat = ['🔥', '🔥🔥', '🔥🔥🔥', '🔥🔥🔥🔥', '🔥🔥🔥🔥🔥']
-    for i, t in enumerate(themes):
-        h_icon = heat[min(4, 4 - i)]
-        theme_pairs.append((f'{h_icon} {t[:30]}', '（詳見題材詳解）'))
-
     # ── 新手術語 ──────────────────────────────────────────────
     full = hold_text + inst_text + ' '.join(themes) + ' '.join(intl_news) + ai_text + recommend_text
     with db() as c:
@@ -847,20 +827,6 @@ def build_report() -> tuple[discord.Embed, str]:
             if i % 2 == 1:
                 embed.add_field(name='​', value='​', inline=False)
 
-    if theme_pairs:
-        embed.add_field(name='🔥 今日題材', value='​', inline=False)
-        for i, (n, v) in enumerate(theme_pairs):
-            embed.add_field(name=n, value=v, inline=True)
-            if i % 2 == 1:
-                embed.add_field(name='​', value='​', inline=False)
-
-    if intl_news:
-        embed.add_field(
-            name='🌍 國際情勢',
-            value='\n'.join(f'・{n}' for n in intl_news[:5])[:1024],
-            inline=False
-        )
-
     embed.add_field(name='💎 低估潛力股', value=recommend_text[:1024], inline=False)
     for i, chunk in enumerate(_chunk_text(ai_text, sep='\n')):
         embed.add_field(name=('🤖 AI 參考建議' if i == 0 else '​'), value=chunk, inline=False)
@@ -868,16 +834,7 @@ def build_report() -> tuple[discord.Embed, str]:
         embed.add_field(name='📖 今日新詞', value=term_text[:1024], inline=False)
     embed.set_footer(text='⚠️ 以上為 AI 輔助參考，不構成投資建議，請依自身判斷操作。')
 
-    # ── 題材詳解（第二則訊息）────────────────────────────────
-    if themes:
-        detail_parts = ['**📋 今日題材詳解**\n']
-        for t, detail in zip(themes[:4], theme_details):
-            detail_parts.append(f'━━━━━━━━━━━━━━━━━━\n**{t[:40]}**\n{detail}\n')
-        theme_detail = '\n'.join(detail_parts)
-    else:
-        theme_detail = ''
-
-    return embed, theme_detail
+    return embed
 
 # ── Bot ───────────────────────────────────────────────────────
 intents = discord.Intents.default()
@@ -1310,10 +1267,8 @@ async def cmd_push(interaction: discord.Interaction):
         await interaction.response.send_message('找不到頻道，請先 `/config channel <ID>`。', ephemeral=True); return
     await interaction.response.send_message('⏳ 產生報告中，約需 30 秒…', ephemeral=True)
     try:
-        embed, theme_detail = await asyncio.get_event_loop().run_in_executor(None, build_report)
+        embed = await asyncio.get_event_loop().run_in_executor(None, build_report)
         await channel.send(embed=embed)
-        for i in range(0, len(theme_detail), 1900):
-            await channel.send(theme_detail[i:i+1900])
     except Exception as e:
         log.error(f'手動推送失敗: {e}', exc_info=True)
         await channel.send(f'⚠️ 推送失敗：{e}')
@@ -1489,10 +1444,8 @@ async def daily_push():
     channel = bot.get_channel(channel_id)
     if not channel: return
     try:
-        embed, theme_detail = await asyncio.get_event_loop().run_in_executor(None, build_report)
+        embed = await asyncio.get_event_loop().run_in_executor(None, build_report)
         await channel.send(embed=embed)
-        for i in range(0, len(theme_detail), 1900):
-            await channel.send(theme_detail[i:i+1900])
     except Exception as e:
         log.error(f'定時推送失敗: {e}', exc_info=True)
 
