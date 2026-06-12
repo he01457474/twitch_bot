@@ -546,24 +546,23 @@ def ai_holding_analysis(enriched: list[dict], insts: dict | None = None, market_
     summary = '\n'.join(_line(h) for h in stocks)
     etf_str = '、'.join(f"{h['name']}（{h['ticker']}）" for h in etfs) if etfs else ''
     # 持股檔數越多，給 AI 的字數額度跟著放大，避免每檔被壓縮成「漲」「跌」這種空泛單詞
-    word_limit = max(200, 60 * len(stocks))
+    word_limit = max(150, 30 * len(stocks))
     prompt = (
-        f"你是資深台股分析師，根據下面每檔個股的「均價、現價、今日漲跌、目前損益、三大法人買賣超」"
-        f"等實際數據，用繁體中文寫出有根據的深度分析，回覆控制在 {word_limit} 字內，不要重複說免責聲明、"
-        f"不要寫沒有數據佐證的空泛敘述（例如「受惠產業成長」「基本面良好」這類套話）。\n\n"
-        + (f"近期市場情勢／題材參考（與個股無關的可略過不提）：\n{market_context}\n\n" if market_context else '') +
+        f"你是資深台股分析師，根據以下資料用繁體中文寫出今日持股分析，總字數控制在 {word_limit} 字內，"
+        f"不要寫沒有數據佐證的空泛敘述（例如「受惠產業成長」「基本面良好」這類套話），不要重複說免責聲明。\n\n"
+        + (f"近期市場情勢／題材參考：\n{market_context}\n\n" if market_context else '') +
         f"個股數據：\n{summary or '（無）'}\n"
         + (f"ETF（不需分析）：{etf_str}\n" if etf_str else '') +
-        f"\n分兩段，每一檔都要逐一點評、不要省略：\n"
-        f"1.【方向】每檔各一句，直接點出今日漲跌幅度、法人買超或賣超金額、目前損益狀況之間的關聯"
-        + ("，如果上面的市場情勢／題材對該股有實質影響也一併點出（沒有明顯關聯就不要硬扯）" if market_context else "") +
-        f"，幫使用者解讀「現在是什麼情況」；上面每檔的數據裡只列出實際有提供的項目，"
-        f"沒列出的項目（例如沒有今日漲跌、沒有法人買賣超）就直接跳過、當作那項數據不存在，"
-        f"絕對不要出現「未知」「不明」「無法得知」這類字眼\n"
-        f"2.【建議】每檔各一句具體操作方向（加碼、減碼、停利、停損、續抱觀察的條件等），"
-        f"理由要連結到第一段點出的數據，不要憑空給建議"
+        f"\n請按照以下格式輸出：\n\n"
+        + ("【今日情勢】用1-2句話總結上面的市場情勢／題材對台股大盤或相關族群可能的影響，"
+           "如果跟手上持股有關聯就點出是哪幾檔，沒有明顯關聯就不用硬扯\n\n" if market_context else '') +
+        f"【個股解讀】每一檔各一行，格式「・名稱（代號）：一句話」，"
+        f"點出今日漲跌、法人買賣超、目前損益之間的關聯，每行控制在30字內；"
+        f"上面數據裡沒列出的項目（沒有今日漲跌、沒有法人買賣超）就跳過、不要寫「未知」「不明」「無法得知」\n\n"
+        f"【操作建議】每一檔各一行，格式「・名稱（代號）：一句話具體建議」"
+        f"（加碼、減碼、停利、停損、續抱觀察等），控制在20字內，理由要連結個股解讀的內容"
     )
-    return ask_ai(prompt, max_tokens=min(2000, 250 + 100 * len(stocks)))
+    return ask_ai(prompt, max_tokens=min(1800, 200 + 60 * len(stocks)))
 
 def ai_recommend_tickers(held_tickers: list[str], market_context: str = '') -> list[dict]:
     """請 AI 推薦股票代號，回傳 [{ticker, name, sector, tsmc_rel, reason, action}]"""
