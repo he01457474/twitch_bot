@@ -1,5 +1,5 @@
 # ==============================================================================
-#  TWITCH BOT V5.0.3 (多頻道隔離 + 官方彩色公告 + 極致效能重構版)
+#  TWITCH BOT V5.1.0 (多頻道隔離 + 官方彩色公告 + 極致效能重構版)
 # ==============================================================================
 
 import asyncio, datetime, json, logging, os, random, re, shutil, sys, time, calendar, threading, hashlib
@@ -26,7 +26,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 # [0] 環境與全域設定
 # ----------------------------------------------------------------
 load_dotenv()
-BOT_VERSION = "5.0.3"
+BOT_VERSION = "5.1.0"
 
 if sys.platform.startswith('win'):
     try:
