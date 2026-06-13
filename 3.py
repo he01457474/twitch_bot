@@ -2719,7 +2719,7 @@ class Bot(commands.Bot):
             async with aiohttp.ClientSession() as s:
                 async with s.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=8)) as r:
                     if r.status == 404:
-                        return await ctx.reply(f"⚠️ 找不到玩家 {riot_id}，請確認名稱和 TAG")
+                        return await ctx.reply(f"⚠️ 查不到 {riot_id} 的牌位資料，可能是名稱錯誤，或本季尚未打過排位賽")
                     if r.status != 200:
                         return await ctx.reply(f"⚠️ API 錯誤 ({r.status})，請稍後再試")
                     data = (await r.json()).get("data", {})
