@@ -2753,7 +2753,7 @@ class Bot(commands.Bot):
         actual_name = data.get("name") or name
         actual_tag = data.get("tag") or tag
         display_id = f"{actual_name}#{actual_tag}"
-        msg = f"【{display_id}】 {emoji} {tier_zh} {rr} RR{change_str}{elo_str}{peak_str}"
+        msg = f"【{display_id}】 {emoji} {tier_zh} | {rr} RR{change_str}{elo_str}{peak_str}"
         self._val_cache[cache_key] = (msg, time.time())
         await ctx.reply(msg)
 
