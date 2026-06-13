@@ -2573,7 +2573,7 @@ class Bot(commands.Bot):
         else:
             await ctx.reply("📭 目前沒有任何自訂指令。")
 
-    @commands.command(name='活躍榜', aliases=['top', 'rank', 'ranking', '排行榜', '活躍排行榜'] + [f'top{i}' for i in range(1, 21)])
+    @commands.command(name='活躍榜', aliases=['top', '排行榜', '活躍排行榜'] + [f'top{i}' for i in range(1, 21)])
     @commands.cooldown(1, 10, commands.Bucket.channel)
     @safe_command
     async def cmd_top5_active(self, ctx, limit: str = "5"):
@@ -2732,7 +2732,6 @@ class Bot(commands.Bot):
         rr = current.get("ranking_in_tier", 0)
         rr_change = current.get("mmr_change_to_last_game")
         elo = current.get("elo")
-        leaderboard_rank = current.get("rank_in_tier")
         peak = data.get("highest_rank", {})
         peak_tier = peak.get("patched_tier", "")
 
