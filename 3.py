@@ -2679,11 +2679,10 @@ class Bot(commands.Bot):
             "Immortal": "🔴", "Radiant": "⭐"
         }
 
-        # 解析目標：@某人 / 名字#TAG / 空白（查自己）
+        # 解析目標：@某人 / 名字#TAG / 空白（預設查台主）
         if target and "#" in target:
             riot_id = target.strip()
         else:
-            lookup_uid = str(ctx.author.id)
             if target:
                 t = target.strip()
                 if any(c in t for c in (' ', '/', '\\')) or len(t) > 30:
@@ -2691,9 +2690,11 @@ class Bot(commands.Bot):
                 lookup_uid, _, _ = await self.resolve_target(ctx, t)
                 if not lookup_uid:
                     return await ctx.reply(f"⚠️ 找不到 Twitch 帳號 {t.replace('@', '')}，若要直接查詢請用 名字#TAG")
+            else:
+                lookup_uid = self.broadcaster_name_map.get(ctx.channel.name.lower(), (None,))[0]
             row = await self.db.fetchone("SELECT riot_id FROM val_bindings WHERE user_id=?", (lookup_uid,))
             if not row:
-                who = "你還沒有" if not target else f"{target.strip().replace('@', '')} 沒有"
+                who = "台主還沒有" if not target else f"{target.strip().replace('@', '')} 沒有"
                 return await ctx.reply(f"⚠️ {who}綁定 VALORANT 帳號，請用 !綁定VAL 名字#TAG")
             riot_id = row[0]
 
@@ -2762,7 +2763,6 @@ class Bot(commands.Bot):
             riot_id = target.strip()
             name, tag = [x.strip() for x in riot_id.split("#", 1)]
         else:
-            lookup_uid = str(ctx.author.id)
             if target:
                 t = target.strip()
                 if any(c in t for c in (' ', '/', '\\')) or len(t) > 30:
@@ -2770,9 +2770,11 @@ class Bot(commands.Bot):
                 lookup_uid, _, _ = await self.resolve_target(ctx, t)
                 if not lookup_uid:
                     return await ctx.reply(f"⚠️ 找不到 Twitch 帳號 {t.replace('@', '')}，若要直接查詢請用 名字#TAG")
+            else:
+                lookup_uid = self.broadcaster_name_map.get(ctx.channel.name.lower(), (None,))[0]
             row = await self.db.fetchone("SELECT riot_id FROM val_bindings WHERE user_id=?", (lookup_uid,))
             if not row:
-                who = "你還沒有" if not target else f"{target.strip().replace('@', '')} 沒有"
+                who = "台主還沒有" if not target else f"{target.strip().replace('@', '')} 沒有"
                 return await ctx.reply(f"⚠️ {who}綁定 VALORANT 帳號，請用 !綁定VAL 名字#TAG")
             riot_id = row[0]
             name, tag = [x.strip() for x in riot_id.split("#", 1)]
