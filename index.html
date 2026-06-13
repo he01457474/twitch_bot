@@ -347,6 +347,7 @@
                 <ul class="navbar-nav ms-auto">
                     <li class="nav-item"><a class="nav-link" href="#viewer"><i class="fa-solid fa-users"></i><span>觀眾指令</span></a></li>
                     <li class="nav-item"><a class="nav-link" href="#fun"><i class="fa-solid fa-gamepad"></i><span>娛樂互動</span></a></li>
+                    <li class="nav-item"><a class="nav-link" href="#valorant"><i class="fa-solid fa-crosshairs"></i><span>VALORANT</span></a></li>
                     <li class="nav-item"><a class="nav-link" href="#management"><i class="fa-solid fa-shield-halved"></i><span>管理後台</span></a></li>
                 </ul>
             </div>
@@ -515,6 +516,42 @@
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
+
+        <div id="valorant" class="cmd-section">
+            <div class="section-header">
+                <i class="fa-solid fa-crosshairs section-icon"></i>
+                <div><h2 class="gradient-text">VALORANT 戰績</h2><span class="en-sub-title">VALORANT STATS</span></div>
+            </div>
+            <div class="row g-4">
+
+                <div class="col-md-6 col-lg-4 searchable-item">
+                    <div class="glass-card">
+                        <h5 class="card-title" style="color:#fb7185 !important"><i class="fa-solid fa-ranking-star me-2"></i>牌位查詢</h5>
+                        <p class="card-desc">查詢 VALORANT 目前牌位、RR、隱分與最高牌位。<br><span class="text-white-50 small">沒帶參數時預設查詢台主綁定的帳號；加上 @ID 或 名字#TAG 可查詢其他人。</span></p>
+                        <div class="mt-3">
+                            <span class="cmd-badge" onclick="copyText('!rank')">!rank</span>
+                            <span class="cmd-badge" onclick="copyText('!rank @ID')">!rank @ID</span>
+                            <span class="cmd-badge" onclick="copyText('!rank 名字#TAG')">!rank 名字#TAG</span>
+                        </div>
+                        <div class="mt-2 text-white-50 small">別名：!rk、!r、!牌位</div>
+                    </div>
+                </div>
+
+                <div class="col-md-6 col-lg-4 searchable-item">
+                    <div class="glass-card">
+                        <h5 class="card-title" style="color:#fb7185 !important"><i class="fa-solid fa-list-check me-2"></i>最近對戰</h5>
+                        <p class="card-desc">顯示最近 3 場對戰紀錄，包含模式、角色、地圖、KDA 與爆頭率。<br><span class="text-white-50 small">沒帶參數時預設查詢台主綁定的帳號；加上 @ID 或 名字#TAG 可查詢其他人。</span></p>
+                        <div class="mt-3">
+                            <span class="cmd-badge" onclick="copyText('!最近對戰')">!最近對戰</span>
+                            <span class="cmd-badge" onclick="copyText('!最近對戰 @ID')">!最近對戰 @ID</span>
+                            <span class="cmd-badge" onclick="copyText('!最近對戰 名字#TAG')">!最近對戰 名字#TAG</span>
+                        </div>
+                        <div class="mt-2 text-white-50 small">別名：!近況、!matches</div>
+                    </div>
+                </div>
+
             </div>
         </div>
 
@@ -760,6 +797,28 @@
                                         <span class="role-badge role-owner"><i class="fa-solid fa-crown"></i> 頻道台主</span>
                                     </div>
                                     <p class="mb-0 mt-2 small text-white-50">新增聊天室定時輪播公告內容。</p>
+                                </td>
+                            </tr>
+
+                            <tr class="searchable-row">
+                                <td>
+                                    <div class="d-flex flex-wrap gap-2 mb-3">
+                                        <span class="cmd-badge" onclick="copyText('!綁定VAL')">!綁定VAL</span>
+                                    </div>
+                                    <div><span class="cmd-type-tag type-active">VALORANT (BIND)</span></div>
+                                </td>
+                                <td>
+                                    <div class="param-item">
+                                        <div class="param-key key-purple">!綁定VAL 名字#TAG</div>
+                                        <div class="param-text">綁定本頻道台主的 VALORANT 帳號，供 !rank / !最近對戰 預設查詢使用。</div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
+                                        <span class="role-badge role-admin"><i class="fa-solid fa-user-secret"></i> 系統管理員</span>
+                                        <span class="role-badge role-owner"><i class="fa-solid fa-crown"></i> 頻道台主</span>
+                                    </div>
+                                    <p class="mb-0 mt-2 small text-white-50">綁定後，頻道觀眾打 !rank 即可看到台主目前的牌位。</p>
                                 </td>
                             </tr>
                         </tbody>
