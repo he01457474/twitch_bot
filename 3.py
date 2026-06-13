@@ -2132,42 +2132,6 @@ class Bot(commands.Bot):
         await self.db.execute("INSERT INTO announcements (channel, content, added_at, added_by, is_session_only) VALUES (?, ?, ?, ?, 0)", (ch, content, datetime.datetime.now(LOCAL_TZ).isoformat(), ctx.author.name))
         await ctx.reply(f"✅ 已新增永久公告：{content}")
 
-    @commands.command(name="徽章測試")
-    @require_general_admin
-    @safe_command
-    async def chat_badge_test(self, ctx):
-        ch = ctx.channel.name.lower()
-        ok = await self._send_chat_message_api(ch, "🤖 Chat Bot 徽章測試：如果這則訊息旁有機器人徽章，代表設定成功。", self._extract_message_id(getattr(ctx, "message", None)))
-        if not ok:
-            channel = self.get_channel(ch)
-            if channel:
-                detail = f" Twitch 回覆：{self._last_chat_api_error}" if self._last_chat_api_error else ""
-                await channel.send(f"⚠️ Chat Message API 尚未成功。請確認 BOT 是本台管理員，且 BOT 帳號已重新授權 user:bot / user:write:chat。{detail}")
-
-    @commands.command(name="檢查權限")
-    @require_general_admin
-    @safe_command
-    async def check_scopes(self, ctx):
-        async with self.session.get("https://id.twitch.tv/oauth2/validate", headers={"Authorization": f"OAuth {self.user_access_token}"}) as r:
-            if r.status == 200:
-                data = await r.json()
-                scopes = data.get("scopes", [])
-                token_owner_id = data.get("user_id", "未知ID")
-                token_owner_login = data.get("login", "未知帳號")
-                req_scopes = {
-                    "moderator:manage:banned_users": "管理封鎖(B人/解B)",
-                    "moderator:read:banned_users": "讀取封鎖名單(全頻救援)",
-                    "moderator:read:chatters": "讀取聊天室名單(時數計算)",
-                    "chat:read": "IRC 讀取聊天室",
-                    "chat:edit": "IRC 發送訊息",
-                    "user:write:chat": "Chat Message API 發話",
-                    "user:bot": "聊天機器人身份授權",
-                }
-                missing = [name for scope, name in req_scopes.items() if scope not in scopes]
-                if missing: await ctx.reply(f"⚠️ 金鑰綁定帳號為【{token_owner_login}】(UID:{token_owner_id})，但缺少: {', '.join(missing)}。")
-                else: await ctx.reply(f"✅ 金鑰綁定帳號為【{token_owner_login}】，三大權限皆完整！")
-            else: await ctx.reply(f"❌ 無法向 Twitch 驗證權限 (API Error {r.status})")
-
     @commands.command(name="簽到開關")
     @require_general_admin
     @safe_command
