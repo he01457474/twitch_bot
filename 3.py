@@ -2727,13 +2727,13 @@ class Bot(commands.Bot):
             logging.error(f"VALORANT rank API error: {e}")
             return await ctx.reply("⚠️ 無法取得牌位資訊，請稍後再試")
 
-        tier = data.get("currenttierpatched") or "Unranked"
+        tier = data.get("currenttier_patched") or data.get("currenttierpatched") or "Unranked"
         rr = data.get("ranking_in_tier", 0)
         rr_change = data.get("mmr_change_to_last_game")
         elo = data.get("elo")
         leaderboard_rank = data.get("games_needed_for_rating") if False else data.get("rank_in_tier")
         peak = data.get("highest_rank", {})
-        peak_tier = peak.get("patched_tier", "")
+        peak_tier = peak.get("patched_tier") or peak.get("tier_patched") or ""
 
         def to_zh(t):
             for en, zh in RANK_ZH.items():
