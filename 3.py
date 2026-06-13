@@ -2651,18 +2651,20 @@ class Bot(commands.Bot):
 
     @commands.command(name='綁定VAL', aliases=['綁定val', 'bindval'])
     @commands.cooldown(1, 10, commands.Bucket.user)
-    @safe_command
+    @require_general_admin
     async def cmd_bind_valorant(self, ctx, *, riot_id: str = None):
         if not riot_id or "#" not in riot_id:
             return await ctx.reply("⚠️ 請輸入正確格式：!綁定VAL 名字#TAG")
         riot_id = riot_id.strip()
-        uid = str(ctx.author.id)
+        uid = self.broadcaster_name_map.get(ctx.channel.name.lower(), (None,))[0]
+        if not uid:
+            return await ctx.reply("⚠️ 無法取得台主資訊，請稍後再試")
         now = datetime.datetime.now(LOCAL_TZ).isoformat()
         await self.db.execute(
             "INSERT OR REPLACE INTO val_bindings (user_id, riot_id, bound_at) VALUES (?, ?, ?)",
             (uid, riot_id, now)
         )
-        await ctx.reply(f"✅ 已綁定 VALORANT 帳號：{riot_id}")
+        await ctx.reply(f"✅ 已綁定本頻道台主的 VALORANT 帳號：{riot_id}")
 
     @commands.command(name='rank', aliases=['rk', '牌位'])
     @commands.cooldown(1, 5, commands.Bucket.user)
