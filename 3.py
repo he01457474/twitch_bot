@@ -1564,15 +1564,6 @@ class Bot(commands.Bot):
 
         cmd_name = message.content.split()[0][1:].lower()
 
-        temp_row = await self.db.fetchone("SELECT value FROM bot_state WHERE key=?", (f"TEMP_CMD_{c_name}_{cmd_name}",))
-        if temp_row:
-            cd_key = f"CD_TEMP_{c_name}_{cmd_name}"
-            now = time.time()
-            if now - getattr(self, cd_key, 0) > 5:
-                setattr(self, cd_key, now)
-                await self.send_chat_message(c_name, f"📢 {temp_row[0]}", self._extract_message_id(message))
-            return True
-
         row = await self.db.fetchone("SELECT value FROM bot_state WHERE key=?", (f"CMD_{c_name}_{cmd_name}",))
         if row:
             cd_key = f"CD_CMD_{c_name}_{cmd_name}"
@@ -1966,7 +1957,6 @@ class Bot(commands.Bot):
 
             if cl not in SILENT_CHANNELS:
                 await self.db.execute("DELETE FROM announcements WHERE is_session_only = 1 AND channel = ?", (cl,))
-                await self.db.execute("DELETE FROM bot_state WHERE key LIKE ?", (f"TEMP_CMD_{cl}_%",))
                 await self.db.execute("UPDATE user_stats SET is_online = 0, last_leave_ts = ? WHERE channel = ? AND is_online = 1", (int(time.time()), cl))
                 if cl in self.active_chatters:
                     self.active_chatters[cl].clear()
@@ -2678,50 +2668,6 @@ class Bot(commands.Bot):
             await ctx.reply(f"📜 本台自訂指令：{', '.join(cmds)}")
         else:
             await ctx.reply("📭 目前沒有任何自訂指令。")
-
-    @commands.command(name='設定工商', aliases=['setpromo'])
-    @safe_command
-    async def cmd_set_promo(self, ctx, cmd_name: str = None, *, content: str = None):
-        ok, ch, clean_cmd = await self._verify_custom_cmd_req(ctx, cmd_name)
-        if not ok: return
-        if not clean_cmd or not content: return await ctx.reply("❌ 格式: !設定工商 [名稱] [內容] ｜ 刪除: !刪工商 [名稱] ｜ 清空: !清空工商")
-
-        await self.db.execute("INSERT OR REPLACE INTO bot_state VALUES (?, ?)", (f"TEMP_CMD_{ch}_{clean_cmd}", content))
-
-        promo_text = f"📢 {content}"
-        if not await self.db.fetchone("SELECT id FROM announcements WHERE is_session_only = 1 AND channel=? AND content=?", (ch, promo_text)):
-            await self.db.execute("INSERT INTO announcements (channel, content, added_at, added_by, is_session_only) VALUES (?, ?, ?, ?, 1)", (ch, promo_text, datetime.datetime.now(LOCAL_TZ).isoformat(), ctx.author.name))
-            await self._refill_temp_queue(ch)
-
-        await ctx.reply(f"✅ 已設定專屬指令【!{clean_cmd}】！")
-
-    @commands.command(name='刪工商', aliases=['delpromo'])
-    @safe_command
-    async def cmd_del_promo(self, ctx, cmd_name: str = None):
-        ok, ch, clean_cmd = await self._verify_custom_cmd_req(ctx, cmd_name)
-        if not ok: return
-        if not clean_cmd: return await ctx.reply("❌ 請輸入要刪除的工商名稱！")
-
-        row = await self.db.fetchone("SELECT value FROM bot_state WHERE key=?", (f"TEMP_CMD_{ch}_{clean_cmd}",))
-        if not row: return await ctx.reply(f"⚠️ 找不到名為 !{clean_cmd} 的臨時工商指令。")
-
-        await self.db.execute("DELETE FROM bot_state WHERE key=?", (f"TEMP_CMD_{ch}_{clean_cmd}",))
-        await self.db.execute("DELETE FROM announcements WHERE is_session_only = 1 AND channel=? AND content=?", (ch, f"📢 {row[0]}"))
-        await self._refill_temp_queue(ch)
-
-        await ctx.reply(f"🗑️ 已刪除工商指令【!{clean_cmd}】。")
-
-    @commands.command(name='清空工商', aliases=['clearpromo'])
-    @safe_command
-    async def cmd_clear_promo(self, ctx):
-        ok, ch, _ = await self._verify_custom_cmd_req(ctx)
-        if not ok: return
-
-        await self.db.execute("DELETE FROM bot_state WHERE key LIKE ?", (f"TEMP_CMD_{ch}_%",))
-        await self.db.execute("DELETE FROM announcements WHERE is_session_only = 1 AND channel=? AND content LIKE '📢%'", (ch,))
-        await self._refill_temp_queue(ch)
-
-        await ctx.reply("💥 已清空本場直播的工商指令。")
 
     @commands.command(name='活躍榜', aliases=['top', 'rank', 'ranking', '排行榜', '活躍排行榜'] + [f'top{i}' for i in range(1, 21)])
     @commands.cooldown(1, 10, commands.Bucket.channel)
