@@ -74,7 +74,7 @@ WARMUP_DURATION, TIMEOUT_WARMUP = 1800, 60
 TIMEOUT_STABLE = int(os.getenv("SILENCE_TIMEOUT", 180))
 SILENCE_RECONNECT_LIMIT = int(os.getenv("SILENCE_RECONNECT_LIMIT", 2))
 RESET_DELAY_SECONDS = int(os.getenv("RESET_DELAY_SECONDS", 60))
-INTERVAL_REGULAR, INTERVAL_TEMP = 1200, 800
+INTERVAL_REGULAR = 1200
 API_FAIL_RESTART_SECONDS = int(os.getenv("API_FAIL_RESTART_SECONDS", 600))
 OFFLINE_KEEPALIVE_INTERVAL = int(os.getenv("OFFLINE_KEEPALIVE_INTERVAL", 600))
 CHAT_MESSAGE_API_SCOPE = "user:read:chat user:write:chat user:bot"
@@ -493,7 +493,7 @@ class Bot(commands.Bot):
         self.active_chatters = {}
 
         self.pending_proposals, self.pending_divorces, self.cooldowns = {}, {}, {}
-        self.regular_queue, self.temp_queue = {}, {}
+        self.regular_queue = {}
         self.active_drivers: list = []
         self._donation_send_ts: dict = {}  # 斗內速率限制用時間戳
 
@@ -567,7 +567,7 @@ class Bot(commands.Bot):
         tasks = [
             self.health_watchdog_task, self.track_streams_task, self.monitor_chat_silence, self.daily_reset_task,
             self.monthly_reset_task, self.periodic_mod_refresh, self.announce_regular_task,
-            self.announce_temp_task, self.monitor_ip_change, self.flush_vip_data_task,
+            self.monitor_ip_change, self.flush_vip_data_task,
             self.cleanup_cache_task, self.watch_time_tracker_task, self.update_rates_task
         ]
         for t in tasks:
@@ -1761,15 +1761,8 @@ class Bot(commands.Bot):
             random.shuffle(pool)
             self.regular_queue[ch] = pool
 
-    async def _refill_temp_queue(self, ch):
-        try: pool = [r[0] for r in await self.db.fetchall("SELECT content FROM announcements WHERE is_session_only = 1 AND channel = ?", (ch,))]
-        except Exception as e: logging.error(f"讀取臨時公告失敗: {e}"); pool = []
-        if pool:
-            random.shuffle(pool)
-            self.temp_queue[ch] = pool
-
-    async def _announce_loop_worker(self, interval, q_attr, log_pfx, fail_trigger, is_temp=False):
-        await asyncio.sleep(interval)
+    async def announce_regular_task(self):
+        await asyncio.sleep(INTERVAL_REGULAR)
         strikes = 0
         while True:
             try:
@@ -1778,27 +1771,22 @@ class Bot(commands.Bot):
                     cl = ch.name.lower()
                     if cl in ANNOUNCE_CHANNELS and cl not in self.announce_disabled_channels and self.live_status.get(cl, False):
                         try:
-                            q_dict = getattr(self, q_attr)
-                            if cl not in q_dict or not q_dict[cl]:
-                                if is_temp: await self._refill_temp_queue(cl)
-                                else: await self._refill_regular_queue(cl)
+                            if cl not in self.regular_queue or not self.regular_queue[cl]:
+                                await self._refill_regular_queue(cl)
 
-                            if q_dict.get(cl):
-                                msg = q_dict[cl].pop(0)
+                            if self.regular_queue.get(cl):
+                                msg = self.regular_queue[cl].pop(0)
                                 await self.safe_channel_send(cl, msg)
-                        except Exception as e: logging.warning(f"⚠️ [{cl}] {log_pfx}發送失敗: {e}")
+                        except Exception as e: logging.warning(f"⚠️ [{cl}] 常駐公告發送失敗: {e}")
                 strikes = 0
-                await asyncio.sleep(interval)
+                await asyncio.sleep(INTERVAL_REGULAR)
             except Exception as e:
                 strikes += 1
                 if strikes >= 5:
-                    logging.error(f"💥 偵測到 {log_pfx} 連續 50 秒無回應，啟動自動救援！")
-                    await self.hard_restart(f"Auto_Fix_{fail_trigger}_Fail")
+                    logging.error(f"💥 偵測到 常駐公告 連續 50 秒無回應，啟動自動救援！")
+                    await self.hard_restart("Auto_Fix_Regular_Fail")
                     return
                 await asyncio.sleep(10)
-
-    async def announce_regular_task(self): await self._announce_loop_worker(INTERVAL_REGULAR, "regular_queue", "常駐公告", "Regular")
-    async def announce_temp_task(self): await self._announce_loop_worker(INTERVAL_TEMP, "temp_queue", "臨時公告", "Temp")
 
     async def watch_time_tracker_task(self):
         await asyncio.sleep(15)
@@ -1934,7 +1922,6 @@ class Bot(commands.Bot):
                         await self.db.execute('INSERT OR REPLACE INTO bot_state VALUES (?, ?)', (f"LAST_STREAM_DATE_{cl}", today))
 
                 await self._refill_regular_queue(cl)
-                await self._refill_temp_queue(cl)
 
             elif sid != self.last_stream_ids.get(cl):
                 self.stream_start_times[cl] = actual_start_ts
@@ -1952,11 +1939,9 @@ class Bot(commands.Bot):
             self.stream_start_times.pop(cl, None)
             self._silence_strikes[cl] = 0
             self.regular_queue.pop(cl, None)
-            self.temp_queue.pop(cl, None)
-            logging.info(f"📴 {cl} 關台 - 清除臨時公告與重置觀眾")
+            logging.info(f"📴 {cl} 關台 - 重置觀眾")
 
             if cl not in SILENT_CHANNELS:
-                await self.db.execute("DELETE FROM announcements WHERE is_session_only = 1 AND channel = ?", (cl,))
                 await self.db.execute("UPDATE user_stats SET is_online = 0, last_leave_ts = ? WHERE channel = ? AND is_online = 1", (int(time.time()), cl))
                 if cl in self.active_chatters:
                     self.active_chatters[cl].clear()
@@ -2146,51 +2131,6 @@ class Bot(commands.Bot):
         ch = ctx.channel.name.lower()
         await self.db.execute("INSERT INTO announcements (channel, content, added_at, added_by, is_session_only) VALUES (?, ?, ?, ?, 0)", (ch, content, datetime.datetime.now(LOCAL_TZ).isoformat(), ctx.author.name))
         await ctx.reply(f"✅ 已新增永久公告：{content}")
-
-    @commands.command(name='臨時公告', aliases=['今晚公告'])
-    @require_general_admin
-    @safe_command
-    async def cmd_add_session_announce(self, ctx, *, content: str):
-        ch = ctx.channel.name.lower()
-        await self.db.execute("INSERT INTO announcements (channel, content, added_at, added_by, is_session_only) VALUES (?, ?, ?, ?, 1)", (ch, content, datetime.datetime.now(LOCAL_TZ).isoformat(), ctx.author.name))
-        await self._refill_temp_queue(ch)
-        await ctx.reply(f"✅ 已新增本場臨時公告：{content}")
-
-    @commands.command(name='清除臨時', aliases=['刪除臨時', 'clear_temp'])
-    @require_general_admin
-    @safe_command
-    async def cmd_clear_temp_announce(self, ctx):
-        ch = ctx.channel.name.lower()
-        await self.db.execute("DELETE FROM announcements WHERE is_session_only = 1 AND channel=?", (ch,))
-        self.temp_queue.pop(ch, None)
-        await ctx.reply("🗑️ 已清空【本頻道】的臨時公告。")
-
-    @commands.command(name='刪公告')
-    @require_general_admin
-    @safe_command
-    async def cmd_del_announce(self, ctx, aid: str):
-        ch = ctx.channel.name.lower()
-        if not aid.isdigit(): return await ctx.reply("❌ 請輸入公告 ID")
-        if await self.db.execute("DELETE FROM announcements WHERE id=? AND channel=?", (int(aid), ch)) > 0:
-            await self._refill_regular_queue(ch); await self._refill_temp_queue(ch)
-            await ctx.reply(f"🗑️ 已刪除公告 ID: {aid}")
-        else: await ctx.reply(f"⚠️ 找不到 ID: {aid} (或非本台公告)")
-
-    @commands.command(name='公告列表')
-    @require_general_admin
-    @safe_command
-    async def cmd_list_announce(self, ctx):
-        ch = ctx.channel.name.lower()
-        msg = "📜 目前公告清單：\n" + "".join([f"[固] {t[:20]}...\n" for t in STATIC_ANNOUNCEMENTS]) + "".join([f"{'[臨]' if r[2] == 1 else '[動]'} ID:{r[0]} {r[1][:20]}...\n" for r in await self.db.fetchall("SELECT id, content, is_session_only FROM announcements WHERE channel=?", (ch,))])
-        await ctx.send(msg[:440] + "..." if len(msg) > 450 else msg)
-
-    @commands.command(name='公告')
-    @require_general_admin
-    @safe_command
-    async def cmd_manual_announce(self, ctx):
-        ch = ctx.channel.name.lower()
-        if ch not in self.regular_queue or not self.regular_queue[ch]: await self._refill_regular_queue(ch)
-        await ctx.send(self.regular_queue[ch].pop(0) if self.regular_queue.get(ch) else self.temp_queue[ch].pop(0) if self.temp_queue.get(ch) else "⚠️ 目前無公告。")
 
     @commands.command(name="徽章測試")
     @require_general_admin
