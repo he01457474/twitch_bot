@@ -2666,7 +2666,7 @@ class Bot(commands.Bot):
         )
         await ctx.reply(f"✅ 已綁定本頻道台主的 VALORANT 帳號：{riot_id}")
 
-    @commands.command(name='rank', aliases=['rk', '牌位'])
+    @commands.command(name='rank', aliases=['rk', 'r', '牌位'])
     @commands.cooldown(1, 5, commands.Bucket.user)
     @safe_command
     async def cmd_valorant_rank(self, ctx, *, target: str = None):
