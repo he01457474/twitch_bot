@@ -345,7 +345,8 @@
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
-                    <li class="nav-item"><a class="nav-link" href="#viewer"><i class="fa-solid fa-users"></i><span>觀眾指令</span></a></li>
+                    <li class="nav-item"><a class="nav-link" href="#checkin"><i class="fa-solid fa-calendar-check"></i><span>簽到排行</span></a></li>
+                    <li class="nav-item"><a class="nav-link" href="#lookup"><i class="fa-solid fa-magnifying-glass"></i><span>帳號查詢</span></a></li>
                     <li class="nav-item"><a class="nav-link" href="#fun"><i class="fa-solid fa-gamepad"></i><span>娛樂互動</span></a></li>
                     <li class="nav-item"><a class="nav-link" href="#valorant"><i class="fa-solid fa-crosshairs"></i><span>VALORANT</span></a></li>
                     <li class="nav-item"><a class="nav-link" href="#management"><i class="fa-solid fa-shield-halved"></i><span>管理後台</span></a></li>
@@ -370,10 +371,10 @@
 
     <div class="container">
 
-        <div id="viewer" class="cmd-section">
+        <div id="checkin" class="cmd-section">
             <div class="section-header">
-                <i class="fa-solid fa-users section-icon"></i>
-                <div><h2 class="gradient-text">觀眾常用指令</h2><span class="en-sub-title">VIEWER COMMANDS</span></div>
+                <i class="fa-solid fa-calendar-check section-icon"></i>
+                <div><h2 class="gradient-text">簽到與排行</h2><span class="en-sub-title">CHECK-IN &amp; RANKING</span></div>
             </div>
             <div class="row g-4">
                 <div class="col-md-6 col-lg-4 searchable-item">
@@ -392,6 +393,31 @@
                     </div>
                 </div>
 
+                <div class="col-md-6 col-lg-4 searchable-item">
+                    <div class="glass-card">
+                        <h5 class="card-title" style="color:#fbbf24 !important"><i class="fa-solid fa-trophy me-2"></i>排行榜</h5>
+                        <p class="card-desc">查看本月前五名簽到排行榜，或查詢自己在頻道中的即時排名。</p>
+                        <div class="feature-note note-vip"><i class="fa-solid fa-lock"></i>查詢他人需 MOD+ 權限</div>
+                        <div class="mt-3"><span class="cmd-badge" onclick="copyText('!本月排名')">!本月排名</span> <span class="cmd-badge" onclick="copyText('!我的排名')">!我的排名</span></div>
+                    </div>
+                </div>
+
+                <div class="col-md-6 col-lg-4 searchable-item">
+                    <div class="glass-card">
+                        <h5 class="card-title" style="color:#fb923c !important"><i class="fa-solid fa-clock-rotate-left me-2"></i>歷史榮譽榜</h5>
+                        <p class="card-desc">查詢過去指定月份的前五名簽到排行榜 (格式 YYYY-MM)。</p>
+                        <div class="mt-3"><span class="cmd-badge" onclick="copyText('!月排名 2025-11')">!月排名 YYYY-MM</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="lookup" class="cmd-section">
+            <div class="section-header">
+                <i class="fa-solid fa-magnifying-glass section-icon"></i>
+                <div><h2 class="gradient-text">帳號查詢</h2><span class="en-sub-title">ACCOUNT LOOKUP</span></div>
+            </div>
+            <div class="row g-4">
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
                         <h5 class="card-title" style="color:#a78bfa !important"><i class="fa-solid fa-address-card me-2"></i>個人查詢</h5>
@@ -420,23 +446,6 @@
 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#fbbf24 !important"><i class="fa-solid fa-trophy me-2"></i>排行榜</h5>
-                        <p class="card-desc">查看本月前五名簽到排行榜，或查詢自己在頻道中的即時排名。</p>
-                        <div class="feature-note note-vip"><i class="fa-solid fa-lock"></i>查詢他人需 MOD+ 權限</div>
-                        <div class="mt-3"><span class="cmd-badge" onclick="copyText('!本月排名')">!本月排名</span> <span class="cmd-badge" onclick="copyText('!我的排名')">!我的排名</span></div>
-                    </div>
-                </div>
-
-                <div class="col-md-6 col-lg-4 searchable-item">
-                    <div class="glass-card">
-                        <h5 class="card-title" style="color:#fb923c !important"><i class="fa-solid fa-clock-rotate-left me-2"></i>歷史榮譽榜</h5>
-                        <p class="card-desc">查詢過去指定月份的前五名簽到排行榜 (格式 YYYY-MM)。</p>
-                        <div class="mt-3"><span class="cmd-badge" onclick="copyText('!月排名 2025-11')">!月排名 YYYY-MM</span></div>
-                    </div>
-                </div>
-
-                <div class="col-md-6 col-lg-4 searchable-item">
-                    <div class="glass-card">
                         <h5 class="card-title" style="color:#f472b6 !important"><i class="fa-solid fa-heart me-2"></i>追隨時間</h5>
                         <p class="card-desc">精確計算你的追隨時長，並自動對應中文名稱 (別名：!追隨時間、!followage)。</p>
                         <div class="feature-note note-allow"><i class="fa-solid fa-check"></i>支援查詢他人</div>
@@ -446,13 +455,13 @@
 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#22d3ee !important"><i class="fa-solid fa-cake-candles me-2"></i>帳號生日</h4>
+                        <h5 class="card-title" style="color:#22d3ee !important"><i class="fa-solid fa-cake-candles me-2"></i>帳號生日</h5>
                         <p class="card-desc">查詢你的Twitch 帳號的註冊日，以及帳號註冊了多久 (中文格式)。</p>
                         <div class="feature-note note-vip"><i class="fa-solid fa-lock"></i>查詢他人需 VIP+ 權限</div>
                         <div><span class="cmd-badge" onclick="copyText('!創建多久')">!創建多久</span> <span class="cmd-badge" onclick="copyText('!創建多久 @ID')">!創建多久 @ID</span></div>
                     </div>
                 </div>
-                
+
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
                         <h5 class="card-title" style="color:#e2e8f0 !important"><i class="fa-solid fa-circle-question me-2"></i>指令幫助</h5>
