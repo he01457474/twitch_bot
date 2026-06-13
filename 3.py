@@ -2747,7 +2747,7 @@ class Bot(commands.Bot):
         tier_zh = to_zh(tier)
         peak_zh = to_zh(peak_tier)
         change_str = f" ({'+' if rr_change and rr_change > 0 else ''}{rr_change} 上局)" if rr_change is not None else ""
-        elo_str = f" | MMR {elo}" if elo else ""
+        elo_str = f" | 隱分 {elo}" if elo else ""
         peak_str = f" | 🏆 最高：{peak_zh}" if peak_tier and peak_tier != tier else ""
 
         actual_name = data.get("name") or name
@@ -2861,8 +2861,8 @@ class Bot(commands.Bot):
                 map_name = MAP_ZH.get(map_name, map_name)
 
                 team_data = m.get("teams", {}).get(team, {})
-                won = team_data.get("has_won", False)
-                result = "✅" if won else "❌"
+                has_won = team_data.get("has_won")
+                result = "✅" if has_won is True else "❌" if has_won is False else "▪️"
 
                 parts.append(f"{result}[{mode}]{agent}/{map_name} {k}/{d}/{a} HS{hs_pct}%")
             except Exception:
