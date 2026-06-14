@@ -1116,15 +1116,17 @@ def fix_numeric_ocr_confusions(text):
     return token_re.sub(repl, text)
 
 _OPT_MARKER_RE = re.compile(
-    r'^[\(（;；]?\s*(?:'
+    r'^[\s,，.\(（;；]*(?:'
     r'([1-4１-４]|[Ⅰ-Ⅳ]|[①-④])\s*(?:[\.、:：)）]|\s+)'
     r'|(IV|[IiLl]{1,3})\s*[\.、:：)）]'
+    r'|1([1-4１-４])\s*[\.、:：)）]'
     r')\s*'
 )
 _OPT_INLINE_RE = re.compile(
     r'[\(（;；]?\s*(?:'
     r'([1-4１-４]|[Ⅰ-Ⅳ]|[①-④])\s*(?:[\.、:：)）]|\s+)'
     r'|(IV|[IiLl]{1,3})\s*[\.、:：)）]'
+    r'|1([1-4１-４])\s*[\.、:：)）]'
     r')\s*'
 )
 
@@ -1132,7 +1134,7 @@ def _option_marker_num(text):
     m = _OPT_MARKER_RE.match((text or "").strip())
     if not m:
         return None
-    raw = m.group(1) or m.group(2)
+    raw = m.group(1) or m.group(2) or m.group(3)
     table = {
         "1": 1, "１": 1, "①": 1, "Ⅰ": 1,
         "2": 2, "２": 2, "②": 2, "Ⅱ": 2,
@@ -1401,7 +1403,7 @@ def _option_candidate_score(option, question=""):
     score += len(re.findall(r"[\u4e00-\u9fff\u3400-\u4dbf]", norm)) * 1.0
     score += len(re.findall(r"\d", norm)) * 0.5
     score += len(re.findall(r"[+\-*/=><]", norm)) * 1.2
-    if len(norm) <= 2:
+    if len(norm) <= 1:
         score -= 5
     if len(norm) > 32:
         score -= (len(norm) - 32) * 1.0
@@ -1447,10 +1449,10 @@ def _ocr_options_by_cells(options_img, question="", on_detail=None):
     if w < 80 or h < 24:
         return []
     cells = {
-        1: (0.00, 0.00, 0.52, 0.58),
-        2: (0.45, 0.00, 1.00, 0.58),
-        3: (0.00, 0.42, 0.52, 1.00),
-        4: (0.45, 0.42, 1.00, 1.00),
+        1: (0.00, 0.00, 0.35, 0.55),
+        2: (0.50, 0.00, 1.00, 0.55),
+        3: (0.00, 0.55, 0.35, 1.00),
+        4: (0.50, 0.55, 1.00, 1.00),
     }
     options = []
     for num in range(1, 5):
