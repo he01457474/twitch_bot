@@ -1468,10 +1468,14 @@ def _ocr_options_by_cells(options_img, question="", on_detail=None):
         on_detail("四選一選項已使用分格辨識，提高順序與文字穩定度")
     return options
 
-def _choose_best_quiz_options(question, *option_sets):
+def _choose_best_quiz_options(question, *option_sets, bonus_options=None):
     best = ["", "", "", ""]
     best_scores = [0.0, 0.0, 0.0, 0.0]
     seen = set()
+    bonus_norms = []
+    if bonus_options:
+        for idx, opt in enumerate((bonus_options or [])[:4]):
+            bonus_norms.append(normalize_option_text(clean_option_candidate(opt, expected_num=idx + 1)))
     for options in option_sets:
         for idx, opt in enumerate((options or [])[:4]):
             clean = clean_option_candidate(opt, expected_num=idx + 1)
@@ -1481,6 +1485,8 @@ def _choose_best_quiz_options(question, *option_sets):
             score = _option_candidate_score(clean, question=question)
             if score <= 0:
                 continue
+            if idx < len(bonus_norms) and bonus_norms[idx] and bonus_norms[idx] == norm:
+                score += 3.0
             current_norm = normalize_option_text(best[idx])
             duplicate_elsewhere = norm in seen and norm != current_norm
             if duplicate_elsewhere:
@@ -1766,7 +1772,10 @@ def ocr_parse_quiz(full_img, question_img=None, options_img=None, on_detail=None
                         q_text = clean_question_candidate(q_cand)
 
         q_text = clean_question_candidate(q_text)
-        return q_text, _choose_best_quiz_options(q_text, opts_by_layout, options, cell_options)[:4]
+        bonus_options = options if quiz_option_count(options) == 4 else None
+        return q_text, _choose_best_quiz_options(
+            q_text, opts_by_layout, options, cell_options, bonus_options=bonus_options
+        )[:4]
 
     # fallback：找第一個後面跟著另一個標記的位置切分
     m = None
