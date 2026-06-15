@@ -1082,7 +1082,7 @@ async def cmd_stock(interaction: discord.Interaction,
         lines = ['**目前持股**\n']
         for h in hs:
             p = await asyncio.get_event_loop().run_in_executor(None, fetch_price, h['ticker'])
-            tc = p['today_close'] if p else None
+            tc = (p.get('today_close') or p.get('yesterday_close')) if p else None
             pnl_str = ''
             if tc:
                 pnl = (tc - h['avg_cost']) * h['shares']
@@ -1099,7 +1099,7 @@ async def cmd_stock(interaction: discord.Interaction,
         tc_total = tv_total = 0.0
         for h in hs:
             p = await asyncio.get_event_loop().run_in_executor(None, fetch_price, h['ticker'])
-            tc = p['today_close'] if p else None
+            tc = (p.get('today_close') or p.get('yesterday_close')) if p else None
             cost = h['avg_cost'] * h['shares']
             val  = (tc * h['shares']) if tc else cost
             tc_total += cost; tv_total += val
