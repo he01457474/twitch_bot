@@ -1,4 +1,6 @@
-﻿Unregister-ScheduledTask -TaskName 'SecretaryBotAutoStart' -Confirm:$false -ErrorAction SilentlyContinue
+﻿$startupDir = [Environment]::GetFolderPath('Startup')
+$shortcutPath = Join-Path $startupDir 'SecretaryBotAutoStart.lnk'
+Remove-Item -LiteralPath $shortcutPath -ErrorAction SilentlyContinue
 
 Write-Host ''
 Write-Host '已取消開機自動啟動。' -ForegroundColor Green
