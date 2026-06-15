@@ -4,6 +4,9 @@
 
 $ErrorActionPreference = 'Continue'
 
+. (Join-Path $PSScriptRoot 'irl_settings.ps1')
+$stopFlag = Get-IrlStopFlagPath
+
 $PID | Set-Content -LiteralPath $PidFile -Encoding ASCII
 $updateScript = Join-Path $PSScriptRoot 'update_dynu_ddns.ps1'
 $notifyScript = Join-Path $PSScriptRoot 'send_irl_notification.ps1'
@@ -23,6 +26,7 @@ function Send-AdminNotification {
 }
 
 while ($true) {
+    if (Test-Path -LiteralPath $stopFlag) { exit }
     try {
         & $updateScript | Out-Null
     } catch {

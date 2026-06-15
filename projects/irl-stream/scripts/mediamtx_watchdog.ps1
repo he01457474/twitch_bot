@@ -8,6 +8,9 @@
 # 寫入自己的 PID 讓 stream_stop 能終止這個監控程序
 [System.IO.File]::WriteAllText($PidFile, [System.Diagnostics.Process]::GetCurrentProcess().Id.ToString())
 
+. (Join-Path $PSScriptRoot 'irl_settings.ps1')
+$stopFlag = Get-IrlStopFlagPath
+
 $notifyScript = Join-Path $PSScriptRoot 'send_irl_notification.ps1'
 
 function Send-AdminNotification {
@@ -26,6 +29,7 @@ function Send-AdminNotification {
 
 while ($true) {
     Start-Sleep -Seconds 30
+    if (Test-Path -LiteralPath $stopFlag) { exit }
     $proc = Get-Process 'mediamtx' -ErrorAction SilentlyContinue
     if (-not $proc) {
         $ts = Get-Date -Format 'HH:mm:ss'

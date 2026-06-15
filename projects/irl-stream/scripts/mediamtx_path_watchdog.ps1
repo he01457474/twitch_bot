@@ -8,6 +8,7 @@ $ErrorActionPreference = 'Continue'
 
 $NotifyScript = Join-Path $PSScriptRoot 'send_irl_notification.ps1'
 $UsersFile = Join-Path (Get-IrlConfigDir) 'relay_users.json'
+$stopFlag = Get-IrlStopFlagPath
 $PID | Set-Content -LiteralPath $PidFile -Encoding ASCII
 
 function Send-AdminNotification {
@@ -68,6 +69,7 @@ $previous = @{}
 
 while ($true) {
     Start-Sleep -Seconds 20
+    if (Test-Path -LiteralPath $stopFlag) { exit }
     $enabled = @(Get-EnabledUserIds)
     $current = Get-ActivePathIds -EnabledIds $enabled
 

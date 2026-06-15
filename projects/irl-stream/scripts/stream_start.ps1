@@ -45,6 +45,9 @@ function Send-AdminNotification {
     }
 }
 
+# 清除上次關閉留下的停止旗標，讓背景監控可以正常運作
+Remove-Item (Get-IrlStopFlagPath) -ErrorAction SilentlyContinue
+
 Write-Host "啟動 IRL 中繼伺服器環境..." -ForegroundColor Cyan
 Write-Host "這是管理員端腳本，只負責本機中繼伺服器，不會啟動借用者的 NOALBS。" -ForegroundColor DarkGray
 if (Test-IsAdministrator) {
@@ -138,6 +141,19 @@ if (Test-Path $pathWatchdogScript) {
     }
     Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$pathWatchdogScript`" -PidFile `"$pathWatchdogPidFile`"" -WindowStyle Hidden
     Write-Host "台主推流監控已啟動（開始 / 停止推流通知管理員）" -ForegroundColor Green
+}
+
+# 網路斷線/恢復監控
+$networkWatchdogScript = Join-Path $PSScriptRoot "network_watchdog.ps1"
+$networkWatchdogPidFile = "$env:TEMP\irl_network_watchdog.pid"
+if (Test-Path $networkWatchdogScript) {
+    if (Test-Path $networkWatchdogPidFile) {
+        $oldPid = Get-Content $networkWatchdogPidFile -ErrorAction SilentlyContinue
+        if ($oldPid -and $oldPid -match '^\d+$') { Stop-Process -Id ([int]$oldPid) -Force -ErrorAction SilentlyContinue }
+        Remove-Item $networkWatchdogPidFile -ErrorAction SilentlyContinue
+    }
+    Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$networkWatchdogScript`" -PidFile `"$networkWatchdogPidFile`"" -WindowStyle Hidden
+    Write-Host "網路監控已啟動（斷線恢復後會通知管理員）" -ForegroundColor Green
 }
 
 # Discord 指令監聽（背景，收到 /狀態 就查狀態）

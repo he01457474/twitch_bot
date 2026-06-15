@@ -30,6 +30,10 @@ function Get-IrlRelayHost {
     return Get-IrlDefaultRelayHost
 }
 
+function Get-IrlStopFlagPath {
+    return "$env:TEMP\irl_relay_stopping.flag"
+}
+
 function Set-IrlRelayHost {
     param(
         [Parameter(Mandatory = $true)]

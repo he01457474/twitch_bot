@@ -2,6 +2,11 @@
 Write-Host '關閉 IRL 中繼伺服器環境...' -ForegroundColor Cyan
 Write-Host ''
 
+. (Join-Path $PSScriptRoot 'irl_settings.ps1')
+
+# 先建立停止旗標，所有背景監控程式偵測到後會直接結束，不會把手動關閉判斷成當機重啟
+New-Item -ItemType File -Path (Get-IrlStopFlagPath) -Force | Out-Null
+
 $notifyScript = Join-Path $PSScriptRoot 'send_irl_notification.ps1'
 
 function Send-AdminNotification {
@@ -53,6 +58,17 @@ if (Test-Path $pathWatchdogPidFile) {
     Write-Host '台主推流監控已關閉' -ForegroundColor Green
 } else {
     Write-Host '台主推流監控未在執行' -ForegroundColor DarkGray
+}
+
+# 網路斷線/恢復監控
+$networkWatchdogPidFile = "$env:TEMP\irl_network_watchdog.pid"
+if (Test-Path $networkWatchdogPidFile) {
+    $nPid = Get-Content $networkWatchdogPidFile -ErrorAction SilentlyContinue
+    if ($nPid -and $nPid -match '^\d+$') { Stop-Process -Id ([int]$nPid) -Force -ErrorAction SilentlyContinue }
+    Remove-Item $networkWatchdogPidFile -ErrorAction SilentlyContinue
+    Write-Host '網路監控已關閉' -ForegroundColor Green
+} else {
+    Write-Host '網路監控未在執行' -ForegroundColor DarkGray
 }
 
 # Discord 指令監聽
