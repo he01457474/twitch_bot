@@ -1,9 +1,22 @@
 ﻿$ErrorActionPreference = 'Continue'
 
 $PidFile = "$env:TEMP\secretary_bot.pid"
+$WatchdogPidFile = "$env:TEMP\secretary_watchdog.pid"
+$StopFlag = "$env:TEMP\secretary_stopping.flag"
 
 Write-Host ''
 Write-Host '關閉私人秘書 Bot...' -ForegroundColor Cyan
+
+# 先建立停止旗標並關閉監控程式，避免關閉後被自動重啟
+New-Item -ItemType File -Path $StopFlag -Force | Out-Null
+if (Test-Path -LiteralPath $WatchdogPidFile) {
+    $wdPid = Get-Content -LiteralPath $WatchdogPidFile -ErrorAction SilentlyContinue
+    if ($wdPid -and $wdPid -match '^\d+$') {
+        Stop-Process -Id ([int]$wdPid) -Force -ErrorAction SilentlyContinue
+    }
+    Remove-Item -LiteralPath $WatchdogPidFile -ErrorAction SilentlyContinue
+    Write-Host '監控程式已關閉' -ForegroundColor Green
+}
 
 $stopped = $false
 if (Test-Path -LiteralPath $PidFile) {
