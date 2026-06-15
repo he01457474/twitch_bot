@@ -1,5 +1,3 @@
 @echo off
-schtasks /delete /tn "SecretaryBotAutoStart" /f
-echo.
-echo 已取消開機自動啟動。
-pause
+set "PROJECT_DIR=%~dp0.."
+powershell -ExecutionPolicy Bypass -NoProfile -File "%PROJECT_DIR%\scripts\cancel_autostart.ps1"
