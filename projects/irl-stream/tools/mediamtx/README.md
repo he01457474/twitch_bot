@@ -199,7 +199,7 @@ http://筆電內網IP:9997/v3/paths/get/<Twitch ID>
 ```text
 1. 筆電：雙擊 啟動直播環境.bat
 2. 桌電：開 OBS
-3. 桌電：雙擊 啟動_NOALBS.bat
+3. 桌電或台主電腦：雙擊 直播輔助.bat，選 1 啟動 NOALBS + BRB
 4. 手機：開始 SRT 推流
 5. Twitch 聊天室：輸入 !start
 ```
@@ -207,7 +207,7 @@ http://筆電內網IP:9997/v3/paths/get/<Twitch ID>
 關閉時：
 
 ```text
-1. 桌電：關掉 noalbs.exe 視窗
+1. 桌電或台主電腦：雙擊 直播輔助.bat，選 2 關閉 NOALBS + BRB
 2. 桌電：OBS 停止直播
 3. 筆電：需要關中繼伺服器時，雙擊 關閉直播環境.bat
 ```

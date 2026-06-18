@@ -206,15 +206,22 @@ OBS 其他建議：
 開始：
 1. 管理員確認中繼伺服器已啟動
 2. 你先開 OBS
-3. 雙擊「啟動_NOALBS.bat」
+3. 雙擊「直播輔助.bat」後選 1，啟動 NOALBS + BRB
 4. 手機開始推流
 5. Twitch 聊天室打 !start
 
 結束：
 1. Twitch 聊天室打 !stop
 2. 手機停止推流
-3. 雙擊「關閉_NOALBS.bat」
+3. 雙擊「直播輔助.bat」後選 2，關閉 NOALBS + BRB
 4. 關閉 OBS
+
+BRB 畫面：
+如果你想在 OBS 裡播 BRB，請新增「瀏覽器來源」：
+http://localhost:8080/brb-clips.html
+
+建議場景名稱叫 BRB，寬度 1920，高度 1080。
+只有手機推流、沒有電腦 OBS 的情況，不能使用這個 BRB 網頁畫面。
 
 提醒
 ----
@@ -404,6 +411,8 @@ function Export-UserBundle {
     $legacySettingsFile = Join-Path $ExportDir $settingsFileName
 
     $installBat = Join-Path $ProjectRoot 'launchers\install_noalbs.bat'
+    $brbScript  = Join-Path $ProjectRoot 'scripts\brb_server.ps1'
+    $brbHtml    = Join-Path $ProjectRoot 'tools\brb-clips.html'
     $zipFile    = Join-Path $ExportDir "$TwitchId-irl-bundle.zip"
     $tempDir    = Join-Path $env:TEMP "irl_bundle_$TwitchId"
 
@@ -418,6 +427,16 @@ function Export-UserBundle {
     } else {
         Write-NoalbsInstaller -Path (Join-Path $tempDir 'install_noalbs.bat')
         Write-Host '  找不到專案內 install_noalbs.bat，已自動產生標準安裝檔。' -ForegroundColor Yellow
+    }
+    if (Test-Path $brbScript) {
+        Copy-Item -LiteralPath $brbScript -Destination (Join-Path $tempDir 'brb_server.ps1')
+    } else {
+        Write-Host '  找不到 brb_server.ps1，台主安裝時會改從 GitHub 下載。' -ForegroundColor Yellow
+    }
+    if (Test-Path $brbHtml) {
+        Copy-Item -LiteralPath $brbHtml -Destination (Join-Path $tempDir 'brb-clips.html')
+    } else {
+        Write-Host '  找不到 brb-clips.html，台主安裝時會改從 GitHub 下載。' -ForegroundColor Yellow
     }
 
     Compress-Archive -Path "$tempDir\*" -DestinationPath $zipFile -Force

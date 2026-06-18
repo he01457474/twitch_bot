@@ -13,6 +13,8 @@ if (Test-Path $settingsScript) {
 }
 
 $noalbsUrl = 'https://github.com/NOALBS/nginx-obs-automatic-low-bitrate-switching/releases/download/v2.16.1/noalbs-v2.16.1-x86_64-pc-windows-msvc.zip'
+$brbScriptUrl = 'https://raw.githubusercontent.com/he01457474/twitch_bot/master/projects/irl-stream/scripts/brb_server.ps1'
+$brbHtmlUrl = 'https://raw.githubusercontent.com/he01457474/twitch_bot/master/projects/irl-stream/tools/brb-clips.html'
 $tokenUrl  = 'https://irlhosting.com/tmi/'
 
 function Read-WithDefault {
@@ -79,6 +81,124 @@ function Flatten-NoalbsInstallDir {
     return $Dir
 }
 
+function Install-TextAsset {
+    param(
+        [string]$SourcePath,
+        [string]$SourceUrl,
+        [string]$DestinationPath,
+        [System.Text.Encoding]$Encoding
+    )
+
+    if ($SourcePath -and (Test-Path -LiteralPath $SourcePath -PathType Leaf)) {
+        Copy-Item -LiteralPath $SourcePath -Destination $DestinationPath -Force
+        return
+    }
+
+    try {
+        $content = (Invoke-WebRequest -Uri $SourceUrl -UseBasicParsing).Content
+        if ($content.StartsWith([char]0xFEFF)) { $content = $content.Substring(1) }
+        [System.IO.File]::WriteAllText($DestinationPath, $content, $Encoding)
+    } catch {
+        throw "下載 BRB 檔案失敗：$SourceUrl"
+    }
+}
+
+function Install-BrbFiles {
+    param(
+        [string]$NoalbsPath,
+        [string]$TwitchId,
+        [System.Text.Encoding]$Encoding
+    )
+
+    Write-Host '正在安裝 BRB 畫面...' -ForegroundColor Cyan
+
+    $localBrbScript = if ($InstallDir) { Join-Path $InstallDir 'brb_server.ps1' } else { '' }
+    $localBrbHtml = if ($InstallDir) { Join-Path $InstallDir 'brb-clips.html' } else { '' }
+
+    Install-TextAsset -SourcePath $localBrbScript -SourceUrl $brbScriptUrl -DestinationPath (Join-Path $NoalbsPath 'brb_server.ps1') -Encoding $Encoding
+    Install-TextAsset -SourcePath $localBrbHtml -SourceUrl $brbHtmlUrl -DestinationPath (Join-Path $NoalbsPath 'brb-clips.html') -Encoding $Encoding
+
+    $brbConfig = [pscustomobject]@{
+        channel = $TwitchId
+        volume = 0.2
+    } | ConvertTo-Json -Depth 3
+    [System.IO.File]::WriteAllText((Join-Path $NoalbsPath 'brb-config.json'), $brbConfig, $Encoding)
+
+    $helperBat = @'
+@echo off
+chcp 65001 >nul
+setlocal
+cd /d "%~dp0"
+set "BRB_PID=%TEMP%\flycat_brb_%USERNAME%.pid"
+cls
+echo =============================
+echo       IRL 直播輔助工具
+echo =============================
+echo.
+echo 1. 啟動 NOALBS + BRB
+echo 2. 關閉 NOALBS + BRB
+echo.
+set /p choice=請輸入 1 或 2：
+if "%choice%"=="1" goto start
+if "%choice%"=="2" goto stop
+echo 輸入錯誤。
+pause
+exit /b 1
+
+:start
+if exist "%~dp0brb_server.ps1" (
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = Start-Process powershell -ArgumentList @('-ExecutionPolicy','Bypass','-NoProfile','-File','%~dp0brb_server.ps1') -WindowStyle Minimized -PassThru; $p.Id | Set-Content -LiteralPath '%BRB_PID%' -Encoding ASCII"
+    echo BRB 已啟動：http://localhost:8080/brb-clips.html
+) else (
+    echo 找不到 brb_server.ps1，略過 BRB。
+)
+if exist "%~dp0noalbs.exe" (
+    powershell -NoProfile -WindowStyle Hidden -Command "Start-Process '%~dp0noalbs.exe' -WorkingDirectory '%~dp0' -WindowStyle Hidden"
+    echo NOALBS 已啟動。
+) else (
+    echo 找不到 noalbs.exe。
+)
+echo.
+echo OBS 的 BRB 瀏覽器來源請填：http://localhost:8080/brb-clips.html
+echo 直播結束時，重新打開這個檔案選 2 關閉。
+timeout /t 8 >nul
+exit /b 0
+
+:stop
+taskkill /F /IM noalbs.exe /T >nul 2>&1
+if exist "%BRB_PID%" (
+    for /f %%p in ('type "%BRB_PID%"') do powershell -NoProfile -Command "Stop-Process -Id %%p -Force -ErrorAction SilentlyContinue"
+    del "%BRB_PID%" >nul 2>&1
+) else (
+    taskkill /F /FI "WINDOWTITLE eq FlyCat BRB*" /T >nul 2>&1
+)
+echo 已送出關閉指令。
+timeout /t 3 >nul
+exit /b 0
+'@
+    [System.IO.File]::WriteAllText((Join-Path $NoalbsPath '直播輔助.bat'), $helperBat, $Encoding)
+
+    $readme = @"
+BRB OBS 設定
+============
+
+如果你要在 OBS 裡使用 BRB 畫面：
+
+1. 先雙擊「直播輔助.bat」
+2. 選 1 啟動 NOALBS + BRB
+3. OBS 新增「瀏覽器來源」
+4. URL 填：
+   http://localhost:8080/brb-clips.html
+5. 建議寬度 1920、高度 1080
+6. 場景名稱建議叫 BRB，和 NOALBS 的離線場景名稱一致
+
+提醒：
+- 只有手機推流、沒有電腦 OBS 的情況，不能使用這個 BRB 網頁畫面。
+- 直播結束後，重新打開「直播輔助.bat」選 2 關閉 NOALBS + BRB。
+"@
+    [System.IO.File]::WriteAllText((Join-Path $NoalbsPath 'BRB_OBS設定.txt'), $readme, [System.Text.UTF8Encoding]::new($true))
+}
+
 Write-Host ''
 Write-Host '=============================' -ForegroundColor Cyan
 Write-Host '   戶外直播一條龍設定工具   ' -ForegroundColor Cyan
@@ -129,7 +249,18 @@ if ($existingExe) {
     } while ($action -notin @('1','2'))
 
     if ($action -eq '2') {
-        $noalbsFiles = @('noalbs.exe', 'config.json', '.env', '啟動_NOALBS.bat', '關閉_NOALBS.bat')
+        $noalbsFiles = @(
+            'noalbs.exe',
+            'config.json',
+            '.env',
+            '啟動_NOALBS.bat',
+            '關閉_NOALBS.bat',
+            '直播輔助.bat',
+            'brb_server.ps1',
+            'brb-clips.html',
+            'brb-config.json',
+            'BRB_OBS設定.txt'
+        )
         Write-Host ''
         Write-Host "即將刪除 $noalbsPath 裡的 NOALBS 檔案" -ForegroundColor Yellow
         $confirm = (Read-Host '確認刪除？（輸入 y 確認）').Trim().ToLower()
@@ -331,25 +462,9 @@ $configContent = @"
 "@
 [System.IO.File]::WriteAllText("$noalbsPath\config.json", $configContent, $utf8NoBom)
 
-$batContent = @"
-@echo off
-powershell -NoProfile -WindowStyle Hidden -Command "Start-Process 'noalbs.exe' -WorkingDirectory '%~dp0' -WindowStyle Hidden"
-echo NOALBS 已啟動。
-timeout /t 15 >nul
-"@
-[System.IO.File]::WriteAllText((Join-Path $noalbsPath "啟動_NOALBS.bat"), $batContent, $utf8NoBom)
-
-$stopBatContent = @"
-@echo off
-taskkill /F /IM noalbs.exe /T >nul 2>&1
-if errorlevel 1 (
-    echo NOALBS 未在執行中。
-) else (
-    echo NOALBS 已關閉。
-)
-timeout /t 2 >nul
-"@
-[System.IO.File]::WriteAllText((Join-Path $noalbsPath "關閉_NOALBS.bat"), $stopBatContent, $utf8NoBom)
+Remove-Item -LiteralPath (Join-Path $noalbsPath '啟動_NOALBS.bat') -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath (Join-Path $noalbsPath '關閉_NOALBS.bat') -Force -ErrorAction SilentlyContinue
+Install-BrbFiles -NoalbsPath $noalbsPath -TwitchId $twitchId -Encoding $utf8NoBom
 
 Write-Host ''
 Write-Host '=============================' -ForegroundColor Green
@@ -360,9 +475,10 @@ Write-Host "設定檔位置：$noalbsPath" -ForegroundColor Cyan
 Write-Host ''
 Write-Host '接下來：' -ForegroundColor Yellow
 Write-Host '  1. 照網頁教學設定手機和 OBS'
-Write-Host '  2. 之後每次直播，先開 OBS，再雙擊「啟動_NOALBS.bat」'
+Write-Host '  2. 之後每次直播，先開 OBS，再雙擊「直播輔助.bat」選 1'
 Write-Host '  3. 手機開始推流後，到 Twitch 聊天室打 !start'
-Write-Host '  4. 要關閉 NOALBS，就關掉 noalbs.exe 視窗；看不到視窗時到工作管理員結束 noalbs.exe'
+Write-Host '  4. 要關閉 NOALBS + BRB，重新雙擊「直播輔助.bat」選 2'
+Write-Host '  5. BRB 的 OBS 瀏覽器來源 URL： http://localhost:8080/brb-clips.html'
 Write-Host ''
 
 Start-Process explorer.exe $noalbsPath

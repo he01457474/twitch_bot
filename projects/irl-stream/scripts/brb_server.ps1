@@ -1,5 +1,10 @@
 ﻿$port       = 8080
-$root       = (Resolve-Path "$PSScriptRoot\..\tools").Path
+$projectTools = Resolve-Path "$PSScriptRoot\..\tools" -ErrorAction SilentlyContinue
+if ($projectTools) {
+    $root = $projectTools.Path
+} else {
+    $root = $PSScriptRoot
+}
 $configPath = Join-Path $root "brb-config.json"
 $gqlUrl     = "https://gql.twitch.tv/gql"
 $clientId   = "kimne78kx3ncx6brgo4mv6wki5h1ko"
