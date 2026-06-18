@@ -68,7 +68,7 @@ function Get-ActivePathIds {
 $previous = @{}
 
 while ($true) {
-    Start-Sleep -Seconds 20
+    Start-Sleep -Seconds 5
     if (Test-Path -LiteralPath $stopFlag) { exit }
     $enabled = @(Get-EnabledUserIds)
     $current = Get-ActivePathIds -EnabledIds $enabled
