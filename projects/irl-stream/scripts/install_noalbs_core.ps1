@@ -24,6 +24,26 @@ function Read-WithDefault {
     return $input
 }
 
+function Read-KeyValueFile {
+    param([string]$Path)
+    $values = @{}
+    if (-not (Test-Path -LiteralPath $Path)) { return $values }
+
+    foreach ($line in Get-Content -LiteralPath $Path -Encoding UTF8) {
+        if ($line -match '^\s*([^=]+)=(.*)$') {
+            $values[$matches[1].Trim()] = $matches[2].Trim()
+        }
+    }
+    return $values
+}
+
+function Read-JsonFile {
+    param([string]$Path)
+    if (-not (Test-Path -LiteralPath $Path)) { return $null }
+    try { return Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json }
+    catch { return $null }
+}
+
 function Get-StatsUrl {
     param([string]$ServerType, [string]$HostName, [string]$Path)
     switch ($ServerType) {
@@ -224,21 +244,54 @@ $searchDirs += Get-ChildItem $env:USERPROFILE -Directory -ErrorAction SilentlyCo
                Select-Object -ExpandProperty FullName
 
 $existingExe = $searchDirs | ForEach-Object { Find-ExeInDir $_ } | Where-Object { $_ } | Select-Object -First 1
+$existingTwitchToken = ''
+$existingObsPassword = ''
+$existingSceneNormal = ''
+$existingSceneLow = ''
+$existingSceneOffline = ''
+$existingServerType = ''
+$existingStatsUrl = ''
 
 # ── 已有安裝 ──────────────────────────────────────────────
 if ($existingExe) {
     $noalbsPath = Split-Path $existingExe
 
-    # 從 .env 讀出 Twitch ID
+    # 從舊設定讀出可沿用的資料，避免台主更新時重打。
     $twitchId = ''
     $envFile = Join-Path $noalbsPath '.env'
-    if (Test-Path $envFile) {
-        $line = Get-Content $envFile | Where-Object { $_ -match '^TWITCH_BOT_USERNAME=' }
-        if ($line) { $twitchId = ($line -replace '^TWITCH_BOT_USERNAME=', '').Trim() }
+    $envValues = Read-KeyValueFile $envFile
+    if ($envValues.ContainsKey('TWITCH_BOT_USERNAME')) {
+        $twitchId = [string]$envValues['TWITCH_BOT_USERNAME']
+    }
+    if ($envValues.ContainsKey('TWITCH_BOT_OAUTH')) {
+        $existingTwitchToken = [string]$envValues['TWITCH_BOT_OAUTH']
+    }
+
+    $oldConfig = Read-JsonFile (Join-Path $noalbsPath 'config.json')
+    if ($oldConfig) {
+        if ($oldConfig.software -and $oldConfig.software.password) {
+            $existingObsPassword = [string]$oldConfig.software.password
+        }
+        if ($oldConfig.switcher -and $oldConfig.switcher.switchingScenes) {
+            $existingSceneNormal = [string]$oldConfig.switcher.switchingScenes.normal
+            $existingSceneLow = [string]$oldConfig.switcher.switchingScenes.low
+            $existingSceneOffline = [string]$oldConfig.switcher.switchingScenes.offline
+        }
+        try {
+            $oldServer = @($oldConfig.switcher.streamServers)[0]
+            if ($oldServer.streamServer) {
+                $existingServerType = [string]$oldServer.streamServer.type
+                $existingStatsUrl = [string]$oldServer.streamServer.statsUrl
+            }
+        } catch {
+        }
     }
 
     Write-Host "偵測到已安裝：$noalbsPath" -ForegroundColor Green
     if ($twitchId) { Write-Host "Twitch ID：$twitchId" -ForegroundColor DarkGray }
+    if ($existingTwitchToken) { Write-Host '已找到舊的 Twitch Bot Token，更新時會沿用。' -ForegroundColor DarkGray }
+    if ($existingObsPassword) { Write-Host '已找到舊的 OBS WebSocket 密碼，更新時會沿用。' -ForegroundColor DarkGray }
+    if ($existingStatsUrl) { Write-Host "已找到舊的中繼監測網址：$existingStatsUrl" -ForegroundColor DarkGray }
     Write-Host ''
     Write-Host '  1. 更新設定'
     Write-Host '  2. 移除安裝'
@@ -312,72 +365,102 @@ if ($existingExe) {
 
 # ── 安裝 / 更新共用流程 ────────────────────────────────────
 Write-Host ''
-Write-Host '請準備好：Twitch Bot Token、OBS WebSocket 密碼' -ForegroundColor Cyan
-Write-Host ''
+if (-not $existingTwitchToken -or -not $existingObsPassword) {
+    Write-Host '請準備好：Twitch Bot Token、OBS WebSocket 密碼' -ForegroundColor Cyan
+    Write-Host ''
+} else {
+    Write-Host '已偵測到舊 Token 與 OBS 密碼，這次更新會直接沿用。' -ForegroundColor Green
+}
 
 # Bot Token
-Write-Host '請到下面這個網址，用你的 Twitch 帳號登入後按 Connect，複製 oauth:... 這段' -ForegroundColor Yellow
-Write-Host "   $tokenUrl" -ForegroundColor Cyan
-Start-Process $tokenUrl
-do {
-    $twitchToken = (Read-Host '貼上你的 Token（oauth:xxxxxxxxxx）').Trim()
-    if (-not $twitchToken) {
-        Write-Host '  請填入 Token' -ForegroundColor Red
-    } elseif ($twitchToken -notlike 'oauth:*') {
-        Write-Host '  Token 應該要以 oauth: 開頭' -ForegroundColor Red
-    }
-} while (-not $twitchToken -or $twitchToken -notlike 'oauth:*')
+if ($existingTwitchToken -and $existingTwitchToken -like 'oauth:*') {
+    $twitchToken = $existingTwitchToken
+    Write-Host 'Twitch Bot Token：沿用舊設定' -ForegroundColor Green
+} else {
+    Write-Host '請到下面這個網址，用你的 Twitch 帳號登入後按 Connect，複製 oauth:... 這段' -ForegroundColor Yellow
+    Write-Host "   $tokenUrl" -ForegroundColor Cyan
+    Start-Process $tokenUrl
+    do {
+        $twitchToken = (Read-Host '貼上你的 Token（oauth:xxxxxxxxxx）').Trim()
+        if (-not $twitchToken) {
+            Write-Host '  請填入 Token' -ForegroundColor Red
+        } elseif ($twitchToken -notlike 'oauth:*') {
+            Write-Host '  Token 應該要以 oauth: 開頭' -ForegroundColor Red
+        }
+    } while (-not $twitchToken -or $twitchToken -notlike 'oauth:*')
+}
 
 # 伺服器選擇
-Write-Host ''
-Write-Host '選擇中繼伺服器' -ForegroundColor Yellow
-Write-Host '  1. flycat 伺服器（管理員 flycat 提供，預設選這個）'
-Write-Host '  2. 自訂伺服器（其他管理員提供的伺服器位址）'
-do {
-    $serverChoice = (Read-Host '   請輸入 1 或 2').Trim()
-    if ($serverChoice -notin @('1','2')) { Write-Host '  請輸入 1 或 2' -ForegroundColor Red }
-} while ($serverChoice -notin @('1','2'))
-
-if ($serverChoice -eq '1') {
-    $serverHost = Get-IrlRelayHost
-    $serverType = 'Mediamtx'
-    $statsUrl   = Get-StatsUrl -ServerType $serverType -HostName $serverHost -Path $twitchId
-    Write-Host "  伺服器：$serverHost（MediaMTX）" -ForegroundColor Green
+if ($existingStatsUrl) {
+    $serverType = if ($existingServerType) { $existingServerType } else { 'Mediamtx' }
+    $statsUrl = $existingStatsUrl
+    Write-Host "中繼伺服器設定：沿用舊設定（$serverType / $statsUrl）" -ForegroundColor Green
 } else {
     Write-Host ''
+    Write-Host '選擇中繼伺服器' -ForegroundColor Yellow
+    Write-Host '  1. flycat 伺服器（管理員 flycat 提供，預設選這個）'
+    Write-Host '  2. 自訂伺服器（其他管理員提供的伺服器位址）'
     do {
-        $serverHost = (Read-Host '   伺服器位址（例如 abc.ddns.net 或 192.168.1.1）').Trim()
-        if (-not $serverHost) { Write-Host '  請填入伺服器位址' -ForegroundColor Red }
-    } while (-not $serverHost)
-    Write-Host ''
-    Write-Host '   伺服器類型（不確定的話問管理員）：' -ForegroundColor Yellow
-    Write-Host '   1. MediaMTX（最常見）'
-    Write-Host '   2. RTMP'
-    Write-Host '   3. NodeMediaServer'
-    Write-Host '   4. SRT Live Server'
-    do {
-        $typeChoice = (Read-Host '   請輸入 1-4').Trim()
-        if ($typeChoice -notin @('1','2','3','4')) { Write-Host '  請輸入 1 到 4' -ForegroundColor Red }
-    } while ($typeChoice -notin @('1','2','3','4'))
-    $serverType = @{ '1'='Mediamtx'; '2'='NginxRtmp'; '3'='NodeMediaServer'; '4'='SrtLiveServer' }[$typeChoice]
-    $statsUrl   = Get-StatsUrl -ServerType $serverType -HostName $serverHost -Path $twitchId
-    Write-Host "  伺服器：$serverHost（$serverType）" -ForegroundColor Green
+        $serverChoice = (Read-Host '   請輸入 1 或 2').Trim()
+        if ($serverChoice -notin @('1','2')) { Write-Host '  請輸入 1 或 2' -ForegroundColor Red }
+    } while ($serverChoice -notin @('1','2'))
+
+    if ($serverChoice -eq '1') {
+        $serverHost = Get-IrlRelayHost
+        $serverType = 'Mediamtx'
+        $statsUrl   = Get-StatsUrl -ServerType $serverType -HostName $serverHost -Path $twitchId
+        Write-Host "  伺服器：$serverHost（MediaMTX）" -ForegroundColor Green
+    } else {
+        Write-Host ''
+        do {
+            $serverHost = (Read-Host '   伺服器位址（例如 abc.ddns.net 或 192.168.1.1）').Trim()
+            if (-not $serverHost) { Write-Host '  請填入伺服器位址' -ForegroundColor Red }
+        } while (-not $serverHost)
+        Write-Host ''
+        Write-Host '   伺服器類型（不確定的話問管理員）：' -ForegroundColor Yellow
+        Write-Host '   1. MediaMTX（最常見）'
+        Write-Host '   2. RTMP'
+        Write-Host '   3. NodeMediaServer'
+        Write-Host '   4. SRT Live Server'
+        do {
+            $typeChoice = (Read-Host '   請輸入 1-4').Trim()
+            if ($typeChoice -notin @('1','2','3','4')) { Write-Host '  請輸入 1 到 4' -ForegroundColor Red }
+        } while ($typeChoice -notin @('1','2','3','4'))
+        $serverType = @{ '1'='Mediamtx'; '2'='NginxRtmp'; '3'='NodeMediaServer'; '4'='SrtLiveServer' }[$typeChoice]
+        $statsUrl   = Get-StatsUrl -ServerType $serverType -HostName $serverHost -Path $twitchId
+        Write-Host "  伺服器：$serverHost（$serverType）" -ForegroundColor Green
+    }
 }
 
 # OBS WebSocket 密碼
-Write-Host ''
-Write-Host 'OBS WebSocket 密碼在 OBS → 工具 → WebSocket 伺服器設定。' -ForegroundColor Yellow
-do {
-    $obsPassword = (Read-Host '   貼上你的 OBS WebSocket 密碼').Trim()
-    if (-not $obsPassword) { Write-Host '  請填入 OBS WebSocket 密碼' -ForegroundColor Red }
-} while (-not $obsPassword)
+if ($existingObsPassword) {
+    $obsPassword = $existingObsPassword
+    Write-Host 'OBS WebSocket 密碼：沿用舊設定' -ForegroundColor Green
+} else {
+    Write-Host ''
+    Write-Host 'OBS WebSocket 密碼在 OBS → 工具 → WebSocket 伺服器設定。' -ForegroundColor Yellow
+    do {
+        $obsPassword = (Read-Host '   貼上你的 OBS WebSocket 密碼').Trim()
+        if (-not $obsPassword) { Write-Host '  請填入 OBS WebSocket 密碼' -ForegroundColor Red }
+    } while (-not $obsPassword)
+}
 
 # OBS 場景名稱
-Write-Host ''
-Write-Host 'OBS 場景名稱（直接按 Enter 使用括號內的預設值）' -ForegroundColor Yellow
-$sceneNormal  = Read-WithDefault '   正常畫面場景名稱' 'IRL'
-$sceneLow     = Read-WithDefault '   低畫質場景名稱' 'lowB'
-$sceneOffline = Read-WithDefault '   離線場景名稱' 'BRB'
+if ($existingSceneNormal -and $existingSceneLow -and $existingSceneOffline) {
+    $sceneNormal = $existingSceneNormal
+    $sceneLow = $existingSceneLow
+    $sceneOffline = $existingSceneOffline
+    Write-Host "OBS 場景名稱：沿用舊設定（正常：$sceneNormal、低畫質：$sceneLow、離線：$sceneOffline）" -ForegroundColor Green
+} else {
+    Write-Host ''
+    Write-Host 'OBS 場景名稱（直接按 Enter 使用括號內的預設值）' -ForegroundColor Yellow
+    $sceneNormalDefault = if ($existingSceneNormal) { $existingSceneNormal } else { 'IRL' }
+    $sceneLowDefault = if ($existingSceneLow) { $existingSceneLow } else { 'lowB' }
+    $sceneOfflineDefault = if ($existingSceneOffline) { $existingSceneOffline } else { 'BRB' }
+    $sceneNormal  = Read-WithDefault '   正常畫面場景名稱' $sceneNormalDefault
+    $sceneLow     = Read-WithDefault '   低畫質場景名稱' $sceneLowDefault
+    $sceneOffline = Read-WithDefault '   離線場景名稱' $sceneOfflineDefault
+}
 
 # 下載（若尚未安裝）
 $zipPath = "$env:TEMP\noalbs.zip"
