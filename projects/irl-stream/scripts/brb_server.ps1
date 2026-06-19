@@ -8,6 +8,10 @@ if ($projectTools) {
 $configPath = Join-Path $root "brb-config.json"
 $gqlUrl     = "https://gql.twitch.tv/gql"
 $clientId   = "kimne78kx3ncx6brgo4mv6wki5h1ko"
+$maxClipCount = 20
+$initialClipCount = 3
+$preferredQuality = "480"
+$refreshMinutes = 60
 $clipAccessQuery = 'query VideoAccessToken_Clip($slug: ID!) { clip(slug: $slug) { playbackAccessToken(params: {platform: "web", playerBackend: "mediaplayer", playerType: "site"}) { signature value } videoQualities { quality sourceURL } } }'
 $nodeFetchScriptContent = @'
 const https = require("https");
@@ -84,12 +88,12 @@ function Get-ClipSlugs($channel) {
     $cursor = $null
     do {
         $afterClause = if ($cursor) { ",after:`"$cursor`"" } else { "" }
-        $d = Invoke-GQL "{ user(login:`"$channel`"){clips(first:50$afterClause){pageInfo{hasNextPage endCursor}edges{node{slug}}}} }"
+        $d = Invoke-GQL "{ user(login:`"$channel`"){clips(first:$maxClipCount$afterClause){pageInfo{hasNextPage endCursor}edges{node{slug}}}} }"
         $clips = $d.data.user.clips
         $slugs += @($clips.edges | ForEach-Object { $_.node.slug })
-        $cursor = if ($clips.pageInfo.hasNextPage -and $slugs.Count -lt 50) { $clips.pageInfo.endCursor } else { $null }
+        $cursor = if ($clips.pageInfo.hasNextPage -and $slugs.Count -lt $maxClipCount) { $clips.pageInfo.endCursor } else { $null }
     } while ($cursor)
-    return $slugs
+    return ($slugs | Select-Object -First $maxClipCount)
 }
 
 function Get-SignedUrl($slug) {
@@ -107,7 +111,7 @@ function Get-SignedUrl($slug) {
     $sig     = $d.playbackAccessToken.signature
     $token   = $d.playbackAccessToken.value
     $qs      = $d.videoQualities
-    $srcUrl  = ($qs | Where-Object { $_.quality -eq "1080" } | Select-Object -First 1).sourceURL
+    $srcUrl  = ($qs | Where-Object { $_.quality -eq $preferredQuality } | Select-Object -First 1).sourceURL
     if (-not $srcUrl) { $srcUrl = ($qs | Select-Object -First 1).sourceURL }
     if (-not $srcUrl -or -not $sig -or -not $token) { throw "Twitch 剪輯影片網址不完整：$slug" }
     $tokenEnc = [System.Uri]::EscapeDataString($token)
@@ -126,7 +130,7 @@ function Start-BgFetch($slugs) {
     $cache.allDone = $false
     $ps = [powershell]::Create()
     $ps.AddScript({
-        param($slugs, $cache, $gqlUrl, $clientId, $clipAccessQuery, $nodeFetchScriptContent)
+        param($slugs, $cache, $gqlUrl, $clientId, $clipAccessQuery, $preferredQuality, $nodeFetchScriptContent)
         function Invoke-TwitchGqlBody($body) {
             [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
             try {
@@ -161,7 +165,7 @@ function Start-BgFetch($slugs) {
             $sig    = $d.playbackAccessToken.signature
             $token  = $d.playbackAccessToken.value
             $qs     = $d.videoQualities
-            $srcUrl = ($qs | Where-Object { $_.quality -eq "1080" } | Select-Object -First 1).sourceURL
+            $srcUrl = ($qs | Where-Object { $_.quality -eq $preferredQuality } | Select-Object -First 1).sourceURL
             if (-not $srcUrl) { $srcUrl = ($qs | Select-Object -First 1).sourceURL }
             if (-not $srcUrl -or -not $sig -or -not $token) { throw "Twitch 剪輯影片網址不完整：$slug" }
             $tokenEnc = [System.Uri]::EscapeDataString($token)
@@ -178,7 +182,7 @@ function Start-BgFetch($slugs) {
         }
         $cache.allDone   = $true
         $cache.lastFetch = [datetime]::UtcNow
-    }).AddArgument($slugs).AddArgument($cache).AddArgument($gqlUrl).AddArgument($clientId).AddArgument($clipAccessQuery).AddArgument($nodeFetchScriptContent) | Out-Null
+    }).AddArgument($slugs).AddArgument($cache).AddArgument($gqlUrl).AddArgument($clientId).AddArgument($clipAccessQuery).AddArgument($preferredQuality).AddArgument($nodeFetchScriptContent) | Out-Null
     $rs = [System.Management.Automation.Runspaces.RunspaceFactory]::CreateRunspace()
     $rs.Open()
     $ps.Runspace = $rs
@@ -194,18 +198,18 @@ function Refresh-Clips($channel) {
     $cache.urls.Clear()
     $cache.channel = $channel
 
-    # 先同步抓前 5 支，馬上可以播
-    $first5 = $slugs | Select-Object -First 5
+    # 先同步抓少量剪輯，讓 OBS 可以快速出畫面，剩下背景補。
+    $first5 = $slugs | Select-Object -First $initialClipCount
     foreach ($slug in $first5) {
         try {
             $url = Get-SignedUrl $slug
             if ($url) { $cache.urls[$slug] = $url }
         } catch {}
     }
-    Write-Host "[BRB] 前 5 支已就緒，開始背景載入其餘 $($slugs.Count - 5) 支..."
+    Write-Host "[BRB] 前 $initialClipCount 支已就緒，開始背景載入其餘 $($slugs.Count - $initialClipCount) 支..."
 
     # 剩下的背景抓
-    $rest = $slugs | Select-Object -Skip 5
+    $rest = $slugs | Select-Object -Skip $initialClipCount
     if ($rest.Count -gt 0) { Start-BgFetch $rest }
     else { $cache.allDone = $true; $cache.lastFetch = [datetime]::UtcNow }
 }
@@ -248,7 +252,7 @@ while ($listener.IsListening) {
         if ($latestCfg.channel -ne $cache.channel) {
             $channel = $latestCfg.channel
             Refresh-Clips $channel
-        } elseif ($cache.allDone -and ([datetime]::UtcNow - $cache.lastFetch).TotalMinutes -gt 30) {
+        } elseif ($cache.allDone -and ([datetime]::UtcNow - $cache.lastFetch).TotalMinutes -gt $refreshMinutes) {
             Refresh-Clips $cache.channel
         }
         # 回傳目前已有的 URL（包含背景還在跑的進度）
