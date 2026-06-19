@@ -134,15 +134,25 @@ function Install-BrbFiles {
 
     $localBrbScript = if ($InstallDir) { Join-Path $InstallDir 'brb_server.ps1' } else { '' }
     $localBrbHtml = if ($InstallDir) { Join-Path $InstallDir 'brb-clips.html' } else { '' }
+    $localBrbConfig = if ($InstallDir) { Join-Path $InstallDir 'brb-config.json' } else { '' }
+    $destBrbConfig = Join-Path $NoalbsPath 'brb-config.json'
 
     Install-TextAsset -SourcePath $localBrbScript -SourceUrl $brbScriptUrl -DestinationPath (Join-Path $NoalbsPath 'brb_server.ps1') -Encoding $Encoding
     Install-TextAsset -SourcePath $localBrbHtml -SourceUrl $brbHtmlUrl -DestinationPath (Join-Path $NoalbsPath 'brb-clips.html') -Encoding $Encoding
 
-    $brbConfig = [pscustomobject]@{
-        channel = $TwitchId
-        volume = 0.2
-    } | ConvertTo-Json -Depth 3
-    [System.IO.File]::WriteAllText((Join-Path $NoalbsPath 'brb-config.json'), $brbConfig, $Encoding)
+    if ($localBrbConfig -and (Test-Path -LiteralPath $localBrbConfig -PathType Leaf)) {
+        Copy-Item -LiteralPath $localBrbConfig -Destination $destBrbConfig -Force
+        Write-Host 'BRB 頻道設定：套用台主包內的設定。' -ForegroundColor Green
+    } elseif (Test-Path -LiteralPath $destBrbConfig -PathType Leaf) {
+        Write-Host 'BRB 頻道設定：沿用舊設定。' -ForegroundColor Green
+    } else {
+        $brbConfig = [pscustomobject]@{
+            channel = $TwitchId
+            volume = 0.2
+        } | ConvertTo-Json -Depth 3
+        [System.IO.File]::WriteAllText($destBrbConfig, $brbConfig, $Encoding)
+        Write-Host "BRB 頻道設定：預設使用 $TwitchId。" -ForegroundColor Green
+    }
 
     $helperBat = @'
 @echo off

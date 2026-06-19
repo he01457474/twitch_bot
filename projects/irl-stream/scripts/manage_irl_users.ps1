@@ -105,6 +105,25 @@ function Read-TwitchId {
     return $id
 }
 
+function Read-OptionalTwitchId {
+    param(
+        [string]$Prompt,
+        [string]$Default
+    )
+
+    do {
+        $raw = Read-Host "$Prompt（Enter 使用 $Default）"
+        $id = if ($null -eq $raw) { '' } else { $raw.Trim().ToLower() }
+        if (-not $id) { return $Default }
+        if ($id -notmatch '^[a-z0-9_]{3,25}$') {
+            Write-Host '請輸入 3-25 個英文小寫、數字或底線。' -ForegroundColor Red
+            $id = $null
+        }
+    } while (-not $id)
+
+    return $id
+}
+
 function Select-UserFromList {
     param(
         [pscustomobject]$State,
@@ -153,9 +172,21 @@ function New-UserEntry {
         publishKey = New-Secret
         readUser = "read_$TwitchId"
         readKey = New-Secret
+        brbChannel = $TwitchId
         createdAt = $now
         updatedAt = $now
     }
+}
+
+function Get-UserBrbChannel {
+    param(
+        [string]$TwitchId,
+        [pscustomobject]$Entry
+    )
+    if ($Entry -and $Entry.PSObject.Properties['brbChannel'] -and $Entry.brbChannel) {
+        return [string]$Entry.brbChannel
+    }
+    return $TwitchId
 }
 
 function Update-UserTimestamp {
@@ -168,6 +199,8 @@ function Get-UserSettingsText {
         [string]$TwitchId,
         [pscustomobject]$Entry
     )
+
+    $brbChannel = Get-UserBrbChannel -TwitchId $TwitchId -Entry $Entry
 
     @"
 戶外直播連線資料
@@ -219,6 +252,9 @@ OBS 其他建議：
 BRB 畫面：
 如果你想在 OBS 裡播 BRB，請新增「瀏覽器來源」：
 http://localhost:8080/brb-clips.html
+
+目前 BRB 剪輯頻道：
+$brbChannel
 
 建議場景名稱叫 BRB，寬度 1920，高度 1080。
 只有手機推流、沒有電腦 OBS 的情況，不能使用這個 BRB 網頁畫面。
@@ -407,6 +443,7 @@ function Export-UserBundle {
 
     Ensure-Directories
     $text = Get-UserSettingsText -TwitchId $TwitchId -Entry $entry
+    $brbChannel = Get-UserBrbChannel -TwitchId $TwitchId -Entry $entry
     $settingsFileName = "$TwitchId-settings.txt"
     $legacySettingsFile = Join-Path $ExportDir $settingsFileName
 
@@ -422,6 +459,11 @@ function Export-UserBundle {
     New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
 
     Set-Content -LiteralPath (Join-Path $tempDir $settingsFileName) -Value $text -Encoding UTF8
+    $brbConfig = [pscustomobject]@{
+        channel = $brbChannel
+        volume = 0.2
+    } | ConvertTo-Json -Depth 3
+    [System.IO.File]::WriteAllText((Join-Path $tempDir 'brb-config.json'), $brbConfig, [System.Text.UTF8Encoding]::new($false))
     if (Test-Path $installBat) {
         Copy-Item -LiteralPath $installBat -Destination (Join-Path $tempDir 'install_noalbs.bat')
     } else {
@@ -512,6 +554,27 @@ function Rotate-UserKeys {
     Apply-RunningMediaMtx
 }
 
+function Set-UserBrbChannel {
+    $state = Load-State
+    $id = Select-UserFromList $state '要設定 BRB 頻道的台主編號'
+    if (-not $id) { return }
+    $entry = Get-UserEntry $state $id
+    if (-not $entry) {
+        Write-Host "找不到 $id。" -ForegroundColor Red
+        return
+    }
+
+    $current = Get-UserBrbChannel -TwitchId $id -Entry $entry
+    $brbChannel = Read-OptionalTwitchId -Prompt 'BRB 要播放哪個 Twitch 頻道的剪輯' -Default $current
+    $entry | Add-Member -NotePropertyName brbChannel -NotePropertyValue $brbChannel -Force
+    Update-UserTimestamp $entry
+    Save-State $state
+
+    Write-Host "已設定 $id 的 BRB 頻道：$brbChannel" -ForegroundColor Green
+    Write-Host '請再匯出台主包，台主更新後就會套用這個 BRB 頻道。' -ForegroundColor Yellow
+    Send-AdminNotification -Title '白名單更新 BRB 頻道' -Message "Twitch ID：$id`nBRB 頻道：$brbChannel" -Level Info -Key "whitelist-brb-$id" -CooldownMinutes 0
+}
+
 function List-Users {
     $state = Load-State
     $users = Get-UserProperties $state
@@ -525,7 +588,8 @@ function List-Users {
     foreach ($prop in $users) {
         $status = if ($prop.Value.enabled) { '啟用' } else { '停用' }
         $ts = try { [datetime]::Parse($prop.Value.updatedAt).ToString('yyyy-MM-dd HH:mm') } catch { $prop.Value.updatedAt }
-        Write-Host ("  {0,-25}  {1,-4}  更新：{2}" -f $prop.Name, $status, $ts)
+        $brb = Get-UserBrbChannel -TwitchId $prop.Name -Entry $prop.Value
+        Write-Host ("  {0,-25}  {1,-4}  BRB：{2,-25}  更新：{3}" -f $prop.Name, $status, $brb, $ts)
     }
 }
 
@@ -582,6 +646,7 @@ function Show-Menu {
     Write-Host '6. 套用白名單到 MediaMTX 設定'
     Write-Host '7. 套用並重啟 MediaMTX'
     Write-Host '8. 刪除台主（完全移除）'
+    Write-Host '9. 設定台主 BRB 頻道'
     Write-Host '0. 離開'
     Write-Host ''
 }
@@ -605,6 +670,7 @@ do {
         '6' { Apply-Config }
         '7' { Apply-Config; Restart-MediaMtx }
         '8' { Remove-User }
+        '9' { Set-UserBrbChannel }
         '0' { break }
         default { Write-Host '沒有這個功能。' -ForegroundColor Red }
     }
