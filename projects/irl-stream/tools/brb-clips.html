@@ -47,36 +47,40 @@
   }
   #pause-icon.show { opacity: 1; }
 
-  /* 音量控制（右下，滑鼠靠近才顯示） */
+  /* 音量控制（右下，預設可見） */
   #vol-wrap {
     position: fixed;
-    bottom: 22px; right: 60px;
+    bottom: 28px; right: 36px;
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 12px;
+    padding: 10px 14px;
+    border: 1px solid rgba(255,255,255,0.22);
+    border-radius: 6px;
+    background: rgba(0,0,0,0.48);
     z-index: 10;
-    opacity: 0;
+    opacity: 0.72;
     transition: opacity 0.3s;
   }
   body:hover #vol-wrap { opacity: 1; }
 
   #vol-icon {
     color: rgba(255,255,255,0.7);
-    font-size: 14px;
+    font-size: 28px;
     cursor: pointer;
     user-select: none;
   }
   #vol-slider {
     -webkit-appearance: none;
-    width: 80px; height: 4px;
+    width: 170px; height: 8px;
     background: rgba(255,255,255,0.3);
-    border-radius: 2px;
+    border-radius: 4px;
     outline: none;
     cursor: pointer;
   }
   #vol-slider::-webkit-slider-thumb {
     -webkit-appearance: none;
-    width: 12px; height: 12px;
+    width: 22px; height: 22px;
     border-radius: 50%;
     background: #9147ff;
     cursor: pointer;
@@ -203,6 +207,34 @@
     skipTimer = setTimeout(advance, 3 * 60 * 1000);
   }
 
+  function syncQueueFromData(data) {
+    const latestEntries = Object.entries(data);
+    if (latestEntries.length === 0) return false;
+
+    const latestSlugs = new Set(latestEntries.map(([slug]) => slug));
+    const currentSlug = queue[current]?.slug ?? null;
+
+    if (queue.length === 0) {
+      queue = shuffle(latestEntries.map(([slug, url]) => ({ slug, url })));
+      current = 0;
+      return true;
+    }
+
+    queue = queue.filter((item, idx) => idx === current || latestSlugs.has(item.slug));
+    current = Math.max(0, queue.findIndex(item => item.slug === currentSlug));
+
+    const existing = new Set(queue.map(item => item.slug));
+    const newItems = latestEntries
+      .filter(([slug]) => !existing.has(slug))
+      .map(([slug, url]) => ({ slug, url }));
+
+    if (newItems.length > 0) {
+      queue.splice(current + 1, 0, ...shuffle(newItems));
+    }
+
+    return newItems.length > 0;
+  }
+
   player.addEventListener("loadedmetadata", () => {
     // 直式影片從清單移除並跳過
     if (player.videoWidth > 0 && player.videoHeight > 0 && player.videoHeight > player.videoWidth) {
@@ -279,9 +311,7 @@
     try {
       loadTxt.textContent = "正在取得剪輯清單...";
       const data = await (await fetch("/api/clips")).json();
-      const entries = Object.entries(data);
-      if (entries.length > 0) {
-        queue = shuffle(entries.map(([slug, url]) => ({ slug, url })));
+      if (syncQueueFromData(data)) {
         loading.classList.add("hide");
         playItem(0);
         return;
@@ -297,15 +327,7 @@
   setInterval(async () => {
     try {
       const data = await (await fetch("/api/clips")).json();
-      const existing = new Set(queue.map(c => c.slug));
-      const newItems = Object.entries(data)
-        .filter(([slug]) => !existing.has(slug))
-        .map(([slug, url]) => ({ slug, url }));
-      if (newItems.length > 0) {
-        // 打亂後插入剩餘位置，不影響當前正在播的
-        const shuffled = shuffle(newItems);
-        queue.splice(current + 1, 0, ...shuffled);
-      }
+      syncQueueFromData(data);
     } catch (e) {}
   }, 60000);
 </script>
