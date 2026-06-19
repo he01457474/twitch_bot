@@ -8,6 +8,62 @@ if ($projectTools) {
 $configPath = Join-Path $root "brb-config.json"
 $gqlUrl     = "https://gql.twitch.tv/gql"
 $clientId   = "kimne78kx3ncx6brgo4mv6wki5h1ko"
+$clipAccessQuery = 'query VideoAccessToken_Clip($slug: ID!) { clip(slug: $slug) { playbackAccessToken(params: {platform: "web", playerBackend: "mediaplayer", playerType: "site"}) { signature value } videoQualities { quality sourceURL } } }'
+$nodeFetchScriptContent = @'
+const https = require("https");
+
+const url = process.argv[2];
+const clientId = process.argv[3];
+const body = Buffer.from(process.argv[4], "base64");
+
+const req = https.request(url, {
+  method: "POST",
+  headers: {
+    "Client-Id": clientId,
+    "Content-Type": "application/json",
+    "Content-Length": body.length
+  }
+}, (res) => {
+  const chunks = [];
+  res.on("data", (chunk) => chunks.push(chunk));
+  res.on("end", () => {
+    const text = Buffer.concat(chunks).toString("utf8");
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      console.error(text || res.statusMessage || ("HTTP " + res.statusCode));
+      process.exit(1);
+    }
+    process.stdout.write(text);
+  });
+});
+
+req.on("error", (error) => {
+  console.error(error && error.message ? error.message : String(error));
+  process.exit(1);
+});
+
+req.write(body);
+req.end();
+'@
+
+function Invoke-TwitchGqlBody($body) {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    try {
+        $r = Invoke-WebRequest -Uri $gqlUrl -Method POST -UseBasicParsing -ErrorAction Stop `
+            -Headers @{ "Client-Id" = $clientId; "Content-Type" = "application/json" } `
+            -Body ([System.Text.Encoding]::UTF8.GetBytes($body))
+        return $r.Content
+    } catch {
+        $node = Get-Command node.exe -ErrorAction SilentlyContinue
+        if (-not $node) { throw }
+
+        $body64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($body))
+        $output = ($nodeFetchScriptContent | & $node.Source - $gqlUrl $clientId $body64 2>&1 | Out-String).Trim()
+        if ($LASTEXITCODE -ne 0) {
+            throw "Twitch GQL 連線失敗：$output"
+        }
+        return $output
+    }
+}
 
 function Read-Config {
     if (Test-Path $configPath) {
@@ -20,10 +76,7 @@ function Invoke-GQL($query) {
     $body = [System.Text.Encoding]::UTF8.GetBytes(
         (ConvertTo-Json @{ query = $query } -Compress)
     )
-    $r = Invoke-WebRequest -Uri $gqlUrl -Method POST -UseBasicParsing `
-        -Headers @{ "Client-Id" = $clientId; "Content-Type" = "application/json" } `
-        -Body $body
-    return ($r.Content | ConvertFrom-Json)
+    return ((Invoke-TwitchGqlBody ([System.Text.Encoding]::UTF8.GetString($body))) | ConvertFrom-Json)
 }
 
 function Get-ClipSlugs($channel) {
@@ -40,22 +93,23 @@ function Get-ClipSlugs($channel) {
 }
 
 function Get-SignedUrl($slug) {
-    $body = ConvertTo-Json @(
+    $payload = @(
         @{
             operationName = "VideoAccessToken_Clip"
             variables     = @{ slug = $slug }
-            extensions    = @{ persistedQuery = @{ version = 1; sha256Hash = "36b89d2507fce29e5ca551df756d27c1cfe079e2609642b4390aa4c35796eb11" } }
+            query         = $clipAccessQuery
         }
-    ) -Compress -Depth 5
-    $r = Invoke-WebRequest -Uri $gqlUrl -Method POST -UseBasicParsing `
-        -Headers @{ "Client-Id" = $clientId; "Content-Type" = "application/json" } `
-        -Body ([System.Text.Encoding]::UTF8.GetBytes($body))
-    $d       = ($r.Content | ConvertFrom-Json)[0].data.clip
+    )
+    $body = ConvertTo-Json -InputObject $payload -Compress -Depth 8
+    $json    = (Invoke-TwitchGqlBody $body) | ConvertFrom-Json
+    $d       = $json[0].data.clip
+    if (-not $d) { throw "找不到 Twitch 剪輯資料：$slug" }
     $sig     = $d.playbackAccessToken.signature
     $token   = $d.playbackAccessToken.value
     $qs      = $d.videoQualities
     $srcUrl  = ($qs | Where-Object { $_.quality -eq "1080" } | Select-Object -First 1).sourceURL
     if (-not $srcUrl) { $srcUrl = ($qs | Select-Object -First 1).sourceURL }
+    if (-not $srcUrl -or -not $sig -or -not $token) { throw "Twitch 剪輯影片網址不完整：$slug" }
     $tokenEnc = [System.Uri]::EscapeDataString($token)
     return "$srcUrl`?sig=$sig&token=$tokenEnc"
 }
@@ -72,18 +126,44 @@ function Start-BgFetch($slugs) {
     $cache.allDone = $false
     $ps = [powershell]::Create()
     $ps.AddScript({
-        param($slugs, $cache, $gqlUrl, $clientId)
+        param($slugs, $cache, $gqlUrl, $clientId, $clipAccessQuery, $nodeFetchScriptContent)
+        function Invoke-TwitchGqlBody($body) {
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+            try {
+                $r = Invoke-WebRequest -Uri $gqlUrl -Method POST -UseBasicParsing -ErrorAction Stop `
+                    -Headers @{ "Client-Id" = $clientId; "Content-Type" = "application/json" } `
+                    -Body ([System.Text.Encoding]::UTF8.GetBytes($body))
+                return $r.Content
+            } catch {
+                $node = Get-Command node.exe -ErrorAction SilentlyContinue
+                if (-not $node) { throw }
+
+                $body64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($body))
+                $output = ($nodeFetchScriptContent | & $node.Source - $gqlUrl $clientId $body64 2>&1 | Out-String).Trim()
+                if ($LASTEXITCODE -ne 0) {
+                    throw "Twitch GQL 連線失敗：$output"
+                }
+                return $output
+            }
+        }
         function Get-SignedUrl($slug) {
-            $body = '[{"operationName":"VideoAccessToken_Clip","variables":{"slug":"' + $slug + '"},"extensions":{"persistedQuery":{"version":1,"sha256Hash":"36b89d2507fce29e5ca551df756d27c1cfe079e2609642b4390aa4c35796eb11"}}}]'
-            $r = Invoke-WebRequest -Uri $gqlUrl -Method POST -UseBasicParsing `
-                -Headers @{ "Client-Id" = $clientId; "Content-Type" = "application/json" } `
-                -Body ([System.Text.Encoding]::UTF8.GetBytes($body))
-            $d      = ($r.Content | ConvertFrom-Json)[0].data.clip
+            $payload = @(
+                @{
+                    operationName = "VideoAccessToken_Clip"
+                    variables     = @{ slug = $slug }
+                    query         = $clipAccessQuery
+                }
+            )
+            $body = ConvertTo-Json -InputObject $payload -Compress -Depth 8
+            $json   = (Invoke-TwitchGqlBody $body) | ConvertFrom-Json
+            $d      = $json[0].data.clip
+            if (-not $d) { throw "找不到 Twitch 剪輯資料：$slug" }
             $sig    = $d.playbackAccessToken.signature
             $token  = $d.playbackAccessToken.value
             $qs     = $d.videoQualities
             $srcUrl = ($qs | Where-Object { $_.quality -eq "1080" } | Select-Object -First 1).sourceURL
             if (-not $srcUrl) { $srcUrl = ($qs | Select-Object -First 1).sourceURL }
+            if (-not $srcUrl -or -not $sig -or -not $token) { throw "Twitch 剪輯影片網址不完整：$slug" }
             $tokenEnc = [System.Uri]::EscapeDataString($token)
             return ($srcUrl + "?sig=" + $sig + "&token=" + $tokenEnc)
         }
@@ -98,7 +178,7 @@ function Start-BgFetch($slugs) {
         }
         $cache.allDone   = $true
         $cache.lastFetch = [datetime]::UtcNow
-    }).AddArgument($slugs).AddArgument($cache).AddArgument($gqlUrl).AddArgument($clientId) | Out-Null
+    }).AddArgument($slugs).AddArgument($cache).AddArgument($gqlUrl).AddArgument($clientId).AddArgument($clipAccessQuery).AddArgument($nodeFetchScriptContent) | Out-Null
     $rs = [System.Management.Automation.Runspaces.RunspaceFactory]::CreateRunspace()
     $rs.Open()
     $ps.Runspace = $rs
