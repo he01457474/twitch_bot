@@ -25,13 +25,27 @@ function Send-AdminNotification {
     }
 }
 
+$hadFailure = $false
+$lastFailureMessage = ''
+
 while ($true) {
     if (Test-Path -LiteralPath $stopFlag) { exit }
     try {
         & $updateScript | Out-Null
+        if ($hadFailure) {
+            $message = 'Dynu DDNS 背景更新已恢復成功。'
+            if ($lastFailureMessage) {
+                $message += "`n前一次錯誤：$lastFailureMessage"
+            }
+            Send-AdminNotification -Title 'Dynu DDNS 背景更新已恢復' -Message $message -Level Success -Key 'dynu-watchdog-recovered' -CooldownMinutes 0
+        }
+        $hadFailure = $false
+        $lastFailureMessage = ''
     } catch {
         # Keep retrying while the IRL environment is open.
-        Send-AdminNotification -Title 'Dynu DDNS 背景更新失敗' -Message $_.Exception.Message -Level Error -Key 'dynu-watchdog-failed' -CooldownMinutes 10
+        $hadFailure = $true
+        $lastFailureMessage = $_.Exception.Message
+        Send-AdminNotification -Title 'Dynu DDNS 背景更新失敗' -Message $lastFailureMessage -Level Error -Key 'dynu-watchdog-failed' -CooldownMinutes 10
     }
     Start-Sleep -Seconds 300
 }
