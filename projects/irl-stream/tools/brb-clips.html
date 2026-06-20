@@ -47,7 +47,7 @@
   }
   #pause-icon.show { opacity: 1; }
 
-  /* 音量控制（右下，預設可見） */
+  /* 音量控制（右下，滑鼠互動時顯示） */
   #vol-wrap {
     position: fixed;
     bottom: 28px; right: 36px;
@@ -59,7 +59,7 @@
     border-radius: 6px;
     background: rgba(0,0,0,0.48);
     z-index: 10;
-    opacity: 0.72;
+    opacity: 0;
     transition: opacity 0.3s;
   }
   body:hover #vol-wrap { opacity: 1; }
