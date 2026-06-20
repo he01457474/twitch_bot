@@ -2731,7 +2731,6 @@ class Bot(commands.Bot):
         tier = current.get("currenttierpatched") or "Unranked"
         rr = current.get("ranking_in_tier", 0)
         rr_change = current.get("mmr_change_to_last_game")
-        elo = current.get("elo")
         peak = data.get("highest_rank", {})
         peak_tier = peak.get("patched_tier", "")
 
@@ -2746,13 +2745,12 @@ class Bot(commands.Bot):
         tier_zh = to_zh(tier)
         peak_zh = to_zh(peak_tier)
         change_str = f" ({'+' if rr_change and rr_change > 0 else ''}{rr_change} 上局)" if rr_change is not None else ""
-        elo_str = f" | 隱分 {elo}" if elo else ""
         peak_str = f" | 🏆 最高：{peak_zh}" if peak_tier and peak_tier != tier else ""
 
         actual_name = data.get("name") or name
         actual_tag = data.get("tag") or tag
         display_id = f"{actual_name}#{actual_tag}"
-        msg = f"【{display_id}】 {emoji} {tier_zh} | {rr} RR{change_str}{elo_str}{peak_str}"
+        msg = f"【{display_id}】 {emoji} {tier_zh} | {rr} RR{change_str}{peak_str}"
         self._val_cache[cache_key] = (msg, time.time())
         await ctx.reply(msg)
 
@@ -2799,8 +2797,33 @@ class Bot(commands.Bot):
             "competitive": "天梯", "unrated": "普通", "spikerush": "急速",
             "deathmatch": "死鬥", "teamdeathmatch": "小隊死鬥", "escalation": "升級",
             "replication": "複製", "custom": "自訂", "premier": "菁英聯賽",
+            "swiftplay": "超速衝點", "swift": "超速衝點", "snowballfight": "雪球戰",
             "hurm": "超英模式", "newmap": "新地圖"
         }
+
+        def normalize_mode(raw):
+            mode_key = re.sub(r"[^a-z0-9]", "", str(raw or "").lower())
+            if mode_key in MODE_ZH:
+                return MODE_ZH[mode_key]
+            return str(raw or "?").strip() or "?"
+
+        def iter_player_dicts(value):
+            if isinstance(value, dict):
+                if any(k in value for k in ("name", "game_name", "tag", "tag_line", "character", "stats")):
+                    yield value
+                for child in value.values():
+                    yield from iter_player_dicts(child)
+            elif isinstance(value, list):
+                for child in value:
+                    yield from iter_player_dicts(child)
+
+        def same_riot_id(player):
+            p_name = str(player.get("name") or player.get("game_name") or "").lower()
+            p_tag = str(player.get("tag") or player.get("tag_line") or "").lower()
+            if p_name == name.lower() and p_tag == tag.lower():
+                return True
+            riot_id = str(player.get("riot_id") or player.get("player_card") or "").lower()
+            return riot_id == f"{name.lower()}#{tag.lower()}"
 
         cache_key = f"matches:{name.lower()}#{tag.lower()}"
         cached = self._val_cache.get(cache_key)
@@ -2835,16 +2858,12 @@ class Bot(commands.Bot):
                 meta = m.get("metadata", {})
                 map_name = meta.get("map", "?")
                 rounds = meta.get("rounds_played", 0)
-                mode_raw = meta.get("mode", "").lower().replace(" ", "")
-                mode = MODE_ZH.get(mode_raw, mode_raw or "?")
+                mode = normalize_mode(meta.get("mode") or meta.get("queue") or meta.get("mode_id"))
 
                 # 找自己的資料
-                player = next(
-                    (p for p in m.get("players", {}).get("all_players", [])
-                     if p.get("name", "").lower() == name.lower() and p.get("tag", "").lower() == tag.lower()),
-                    None
-                )
+                player = next((p for p in iter_player_dicts(m.get("players", {})) if same_riot_id(p)), None)
                 if not player:
+                    logging.debug(f"VAL matches: player not found in match {meta.get('matchid') or meta.get('match_id') or '?'} mode={mode}")
                     continue
 
                 stats = player.get("stats", {})
