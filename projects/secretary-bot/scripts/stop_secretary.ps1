@@ -32,8 +32,9 @@ if (Test-Path -LiteralPath $PidFile) {
     Remove-Item -LiteralPath $PidFile -ErrorAction SilentlyContinue
 }
 
-# 防呆：掃描可能殘留、命令列含 secretary_bot.py 的 pythonw 程序
-$strays = Get-CimInstance Win32_Process -Filter "Name='pythonw.exe'" -ErrorAction SilentlyContinue |
+# 防呆：掃描可能殘留、命令列含 secretary_bot.py 的 python/pythonw 程序
+$strays = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -in @('python.exe', 'pythonw.exe') } |
     Where-Object { $_.CommandLine -and $_.CommandLine -match 'secretary_bot\.py' }
 foreach ($s in $strays) {
     Stop-Process -Id $s.ProcessId -Force -ErrorAction SilentlyContinue

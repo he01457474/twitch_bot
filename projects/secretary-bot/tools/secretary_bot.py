@@ -155,22 +155,85 @@ def set_cfg(key: str, value: str):
 # ── 股票名稱對照 ──────────────────────────────────────────────
 _ticker_map: dict[str, str] = {}        # name → ticker
 _ticker_map_ts: datetime.date | None = None
+_stock_meta_map: dict[str, dict] = {}
+_stock_meta_ts: datetime.date | None = None
+
+_NAME_NORMALIZE = str.maketrans({
+    '臺': '台',
+})
+
+def _stock_name_key(text: str) -> str:
+    return re.sub(r'\s+', '', text.strip().translate(_NAME_NORMALIZE).upper())
+
+def _stock_fuzzy_score(query: str, name: str) -> int | None:
+    """名稱近似比對分數；數字越小越接近，None 表示不相近。"""
+    q = _stock_name_key(query)
+    n = _stock_name_key(name)
+    if not q or not n:
+        return None
+    if q == n:
+        return 0
+    if len(q) >= 2 and n.startswith(q):
+        return 3
+    if len(q) >= 2 and q in n:
+        return 4
+    if len(q) >= 2 and len(q) == len(n) and sorted(q) == sorted(n):
+        return 6
+    if len(q) >= 2 and set(q).issubset(set(n)):
+        return 7
+    return None
+
+def _load_stock_meta() -> dict[str, dict]:
+    """從 FinMind 載入全市場股票基本資料，包含上市、上櫃、興櫃。"""
+    global _stock_meta_map, _stock_meta_ts
+    today = datetime.date.today()
+    if _stock_meta_map and _stock_meta_ts == today:
+        return _stock_meta_map
+
+    meta: dict[str, dict] = {}
+    try:
+        r = requests.get(FINMIND_BASE, params={'dataset': 'TaiwanStockInfo'}, timeout=15)
+        for item in r.json().get('data', []):
+            code = str(item.get('stock_id') or '').strip()
+            name = str(item.get('stock_name') or '').strip()
+            if code and name:
+                meta[code] = {
+                    'ticker': code,
+                    'name': name,
+                    'industry_category': str(item.get('industry_category') or '').strip(),
+                    'market_type': str(item.get('type') or '').strip(),
+                }
+    except Exception as e:
+        log.warning(f'載入 FinMind 股票基本資料失敗: {e}')
+
+    if meta:
+        _stock_meta_map = meta
+        _stock_meta_ts = today
+    return _stock_meta_map
 
 def _load_ticker_map() -> dict[str, str]:
-    """從 TWSE + TPEX OpenAPI 載入「名稱→代號」對照表，每天快取一次。"""
+    """載入「名稱→代號」對照表，每天快取一次；FinMind 可涵蓋上市、上櫃、興櫃。"""
     global _ticker_map, _ticker_map_ts
     today = datetime.date.today()
     if _ticker_map and _ticker_map_ts == today:
         return _ticker_map
 
     mapping: dict[str, str] = {}
+    for code, item in _load_stock_meta().items():
+        if item.get('name'):
+            mapping[item['name']] = code
+
     sources = [
         'https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL',
         'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_peratio_analysis',
     ]
     for url in sources:
         try:
-            r = requests.get(url, timeout=10)
+            try:
+                r = requests.get(url, timeout=10)
+            except requests.exceptions.SSLError:
+                requests.packages.urllib3.disable_warnings()
+                r = requests.get(url, timeout=10, verify=False)
             for item in r.json():
                 code = (item.get('Code') or item.get('SecuritiesCompanyCode') or '').strip()
                 name = (item.get('Name') or item.get('CompanyName') or '').strip()
@@ -190,36 +253,107 @@ def resolve_ticker(query: str) -> tuple[str, str] | tuple[None, None]:
     找不到回傳 (None, None)。
     """
     query = query.strip()
+    if not query:
+        return None, None
 
-    # 若看起來就是代號（純數字或 6 碼以內英數字）直接用，但要設法找到正確中文名稱
-    # 注意：不能用 str.isalnum()，中文字也會被判定為 True，導致中文名稱被誤判成代號
-    if re.fullmatch(r'[A-Za-z0-9]{1,6}', query):
-        # 先從持股 DB 取中文名
-        for h in get_holdings():
-            if h['ticker'] == query:
-                return query, h['name']
-        # 從全市場清單反查代號對應的中文名稱（避免名稱直接存成代號本身）
-        mapping = _load_ticker_map()
-        for name, code in mapping.items():
-            if code == query:
-                return query, name
-        return query, query
-
-    # 從持股 DB 模糊比對
-    for h in get_holdings():
-        if query in h['name'] or h['name'] in query:
-            return h['ticker'], h['name']
-
-    # 從全市場清單精確 / 模糊比對
     mapping = _load_ticker_map()
+    holdings = get_holdings()
+
+    # 代號走嚴格路徑：持股精準、官方精準；查不到就拒絕，避免 AI 拿裸代號亂編公司名稱。
+    if re.fullmatch(r'[A-Za-z0-9]{4,6}', query):
+        q = query.upper()
+        for h in holdings:
+            if h['ticker'].upper() == q:
+                return h['ticker'], h['name']
+        for name, code in mapping.items():
+            if code.upper() == q:
+                return code, name
+        return None, None
+
+    # 名稱先做精準比對，避免「台」這種短字直接抓到既有持股。
+    for h in holdings:
+        if query == h['name']:
+            return h['ticker'], h['name']
     if query in mapping:
         return mapping[query], query
-    # 模糊：找名稱包含 query 的第一筆
-    for name, code in mapping.items():
-        if query in name:
+
+    # 部分名稱至少 2 個字，且只能命中一檔；多檔命中就要求使用者輸入更完整。
+    if len(query) >= 2:
+        official_matches = [(name, code) for name, code in mapping.items() if query in name]
+        if len(official_matches) == 1:
+            name, code = official_matches[0]
+            return code, name
+
+        holding_matches = [h for h in holdings if query in h['name']]
+        if len(holding_matches) == 1:
+            h = holding_matches[0]
+            return h['ticker'], h['name']
+
+        fuzzy_matches: dict[str, tuple[int, str, str]] = {}
+        for h in holdings:
+            score = _stock_fuzzy_score(query, h['name'])
+            if score is not None:
+                fuzzy_matches[h['ticker']] = (score, h['ticker'], h['name'])
+        for name, code in mapping.items():
+            score = _stock_fuzzy_score(query, name)
+            if score is not None and (code not in fuzzy_matches or score < fuzzy_matches[code][0]):
+                fuzzy_matches[code] = (score, code, name)
+        ranked = sorted(fuzzy_matches.values(), key=lambda item: (item[0], len(item[2]), item[1]))
+        if ranked and (len(ranked) == 1 or ranked[0][0] < ranked[1][0]):
+            _, code, name = ranked[0]
             return code, name
 
     return None, None
+
+def find_ticker_candidates(query: str, limit: int = 10) -> list[tuple[str, str]]:
+    """回傳相近股票候選 [(ticker, name)]，給錯誤提示與 slash command autocomplete 使用。"""
+    raw = query.strip()
+    q = raw.upper()
+    mapping = _load_ticker_map()
+    holdings = get_holdings()
+
+    candidates: dict[str, tuple[int, str, str]] = {}
+
+    def add(code: str, name: str, score: int):
+        if not code:
+            return
+        current = candidates.get(code)
+        if current is None or score < current[0]:
+            candidates[code] = (score, code, name or code)
+
+    if not raw:
+        for h in holdings[:limit]:
+            add(h['ticker'], h['name'], 0)
+        return [(code, name) for _, code, name in sorted(candidates.values())[:limit]]
+
+    for h in holdings:
+        code = h['ticker']
+        name = h['name']
+        code_u = code.upper()
+        if code_u == q or name == raw:
+            add(code, name, 0)
+        elif len(q) >= 2 and code_u.startswith(q):
+            add(code, name, 2)
+        else:
+            score = _stock_fuzzy_score(raw, name)
+            if score is not None:
+                add(code, name, score)
+
+    for name, code in mapping.items():
+        code_u = code.upper()
+        if code_u == q or name == raw:
+            add(code, name, 0)
+        elif len(q) >= 2 and code_u.startswith(q):
+            add(code, name, 2)
+        else:
+            score = _stock_fuzzy_score(raw, name)
+            if score is not None:
+                add(code, name, score)
+
+    return [
+        (code, name)
+        for _, code, name in sorted(candidates.values(), key=lambda item: (item[0], len(item[2]), item[1]))[:limit]
+    ]
 
 def parse_shares(text: str) -> int | None:
     """解析股數輸入，支援「張」為單位（1 張 = 1000 股）；小數無條件捨去（不四捨五入），失敗回傳 None。"""
@@ -262,7 +396,11 @@ def fetch_realtime_price(ticker: str) -> dict | None:
     """盤中即時報價，使用 yfinance（約 15 分鐘延遲）"""
     try:
         import yfinance as yf
-        for suffix in ('.TW', '.TWO'):
+        suffixes = ('.TW', '.TWO')
+        meta = _load_stock_meta().get(ticker)
+        if meta and meta.get('market_type') in ('tpex', 'emerging'):
+            suffixes = ('.TWO', '.TW')
+        for suffix in suffixes:
             try:
                 yt = yf.Ticker(f'{ticker}{suffix}')
                 fi = yt.fast_info
@@ -331,6 +469,10 @@ def fetch_price(ticker: str) -> dict | None:
                     'today_close': closes[-1][1], 'yesterday_close': closes[-2][1], 'is_realtime': False}
     except Exception as e:
         log.warning(f'TWSE price {ticker}: {e}')
+
+    result = fetch_realtime_price(ticker)
+    if result:
+        return result
     return None
 
 def fetch_institutional(ticker: str) -> dict | None:
@@ -378,6 +520,55 @@ def fetch_market_inst() -> dict:
     except Exception as e:
         log.warning(f'Market institutional: {e}')
         return {}
+
+def fetch_stock_profile(ticker: str, display_name: str = '') -> dict:
+    """補足個股基本資料，來源：FinMind 股票基本資料 + yfinance 公司摘要。"""
+    profile = {
+        'ticker': ticker,
+        'name': display_name or ticker,
+        'industry_category': '',
+        'market_type': '',
+        'english_name': '',
+        'sector': '',
+        'industry': '',
+        'summary': '',
+        'website': '',
+    }
+    meta = _load_stock_meta().get(ticker)
+    if meta:
+        profile.update({
+            'name': meta.get('name') or profile['name'],
+            'industry_category': meta.get('industry_category') or '',
+            'market_type': meta.get('market_type') or '',
+        })
+
+    try:
+        import yfinance as yf
+        suffixes = ['.TW', '.TWO']
+        if profile.get('market_type') in ('tpex', 'emerging'):
+            suffixes = ['.TWO', '.TW']
+        for suffix in suffixes:
+            try:
+                info = yf.Ticker(f'{ticker}{suffix}').info
+            except Exception:
+                continue
+            if not info:
+                continue
+            profile.update({
+                'english_name': info.get('longName') or info.get('shortName') or profile['english_name'],
+                'sector': info.get('sector') or profile['sector'],
+                'industry': info.get('industry') or profile['industry'],
+                'summary': info.get('longBusinessSummary') or profile['summary'],
+                'website': info.get('website') or profile['website'],
+            })
+            if profile['summary'] or profile['industry']:
+                break
+    except ImportError:
+        log.warning('yfinance 未安裝，無法補足公司基本資料')
+    except Exception as e:
+        log.warning(f'yfinance profile {ticker}: {e}')
+
+    return profile
 
 # ── 持股計算 ──────────────────────────────────────────────────
 def _is_etf(ticker: str) -> bool:
@@ -463,11 +654,20 @@ def scrape_hot_themes() -> list[str]:
     except Exception:
         return []
 
-def scrape_intl_news(limit=6) -> list[str]:
+def scrape_intl_news(limit=10) -> list[str]:
     """爬國際股市/焦點新聞，作為大盤情勢背景（地緣政治、關稅、Fed利率、AI巨頭動向等），
     分類來源較容易隨 cnyes 調整，所以多抓幾類合併、互相備援。"""
     seen, titles = set(), []
-    for cat in ('wd_stock', 'headline', 'tw_macro'):
+    categories = (
+        'headline',
+        'wd_stock',
+        'us_stock',
+        'tw_macro',
+        'forex',
+        'commodity',
+        'cn_stock',
+    )
+    for cat in categories:
         try:
             r = requests.get(
                 f'https://api.cnyes.com/media/api/v1/newslist/category/{cat}?limit=10&page=1',
@@ -529,9 +729,16 @@ def ai_holding_analysis(enriched: list[dict], insts: dict | None = None, market_
     etfs   = [h for h in enriched if _is_etf(h['ticker'])]
 
     def _line(h: dict) -> str:
-        bits = [f"{h['name']}（{h['ticker']}）：均價{h['avg_cost']:.2f}元，現價{h.get('today_close') or '未知'}元"]
+        bits = [
+            f"{h['name']}（{h['ticker']}）：股數{h['shares']:,}股，"
+            f"均價{h['avg_cost']:.2f}元，現價{h.get('today_close') or '未知'}元"
+        ]
         if h.get('day_pct') is not None:
             bits.append(f"今日{signed(h['day_pct'], '.2f')}%")
+            if h['day_pct'] >= 9.5:
+                bits.append('接近漲停')
+            elif h['day_pct'] <= -9.5:
+                bits.append('接近跌停')
         if h.get('pnl_pct') is not None:
             bits.append(f"目前損益{signed(h['pnl_pct'], '.1f')}%")
         inst = insts.get(h['ticker'])
@@ -545,42 +752,44 @@ def ai_holding_analysis(enriched: list[dict], insts: dict | None = None, market_
 
     summary = '\n'.join(_line(h) for h in stocks)
     etf_str = '、'.join(f"{h['name']}（{h['ticker']}）" for h in etfs) if etfs else ''
-    # 持股檔數越多，給 AI 的字數額度跟著放大，避免每檔被壓縮成「漲」「跌」這種空泛單詞
-    word_limit = max(150, 30 * len(stocks))
+    # 這段只做總結與處置方向，逐檔明細已經在持股區塊顯示。
+    word_limit = max(180, 35 * max(len(stocks), 3))
     prompt = (
-        f"你是資深台股分析師，根據以下資料用繁體中文寫出今日持股分析，總字數控制在 {word_limit} 字內，"
+        f"你是資深台股分析師，根據以下資料用繁體中文寫出今日持股摘要，總字數控制在 {word_limit} 字內，"
         f"不要寫沒有數據佐證的空泛敘述（例如「受惠產業成長」「基本面良好」這類套話），不要重複說免責聲明。\n\n"
         + (f"近期市場情勢／題材參考：\n{market_context}\n\n" if market_context else '') +
         f"個股數據：\n{summary or '（無）'}\n"
         + (f"ETF（不需分析）：{etf_str}\n" if etf_str else '') +
         f"\n請按照以下格式輸出：\n\n"
-        + ("【今日情勢】用1-2句話總結上面的市場情勢／題材對台股大盤或相關族群可能的影響，"
-           "如果跟手上持股有關聯就點出是哪幾檔，沒有明顯關聯就不用硬扯\n\n" if market_context else '') +
-        f"【個股解讀】每一檔各一行，格式「・名稱（代號）：一句話」，"
-        f"點出今日漲跌、法人買賣超、目前損益之間的關聯，每行控制在30字內；"
-        f"上面數據裡沒列出的項目（沒有今日漲跌、沒有法人買賣超）就跳過、不要寫「未知」「不明」「無法得知」\n\n"
-        f"【操作建議】每一檔各一行，格式「・名稱（代號）：一句話具體建議」"
-        f"（加碼、減碼、停利、停損、續抱觀察等），控制在20字內，理由要連結個股解讀的內容"
+        + ("【今日情勢】用 1-2 句話總結近期世界趨勢對台股可能的影響。不要只圍繞台積電，"
+           "可以納入 AI 基建、利率、匯率、能源、軍工、關稅、地緣政治、消費景氣等脈絡；"
+           "如果跟手上持股沒有明顯關聯，就直接說目前關聯有限。\n\n" if market_context else '') +
+        f"【持股處置】用 2-4 點摘要即可，不要逐檔重複解讀。優先提到：部位股數較大、"
+        f"接近漲停/跌停、法人買賣超明顯、損益幅度較大的股票。每點格式「・名稱（代號）：具體動作＋原因」，"
+        f"動作可用續抱、觀察、分批停利、減碼、停損、等待回測等；資料不足就不要硬下結論。"
     )
     return ask_ai(prompt, max_tokens=min(1800, 200 + 60 * len(stocks)))
 
 def ai_recommend_tickers(held_tickers: list[str], market_context: str = '') -> list[dict]:
-    """請 AI 推薦股票代號，回傳 [{ticker, name, sector, tsmc_rel, reason, action}]"""
+    """請 AI 推薦股票代號，回傳 [{ticker, name, sector, trend_rel, reason, action}]"""
     exclude = '、'.join(held_tickers) if held_tickers else '無'
     raw = ask_ai(
-        f"你是台股投資顧問，請用繁體中文推薦 2 檔目前基本面良好、股價相對低估的台股。\n\n"
+        f"你是台股投資顧問，請用繁體中文推薦 2 檔值得觀察的台股，重點是貼近近期世界趨勢，"
+        f"不一定要跟台積電或半導體供應鏈有關。\n\n"
         + (f"近期市場情勢／題材參考：\n{market_context}\n\n"
-           f"請優先挑選跟上述情勢／題材相關、可能受惠的標的；如果情勢跟某些族群無關就不用硬扯。\n\n"
+           f"請先從上述新聞找出可能影響台股的主題，再挑選跟主題合理相關的標的；"
+           f"如果某個題材跟台股沒有清楚連結，就不要硬扯。\n\n"
            if market_context else '') +
         f"排除以下已持有股票（代號）：{exclude}\n\n"
         f"推薦條件：\n"
-        f"・第 1 檔：必須與台積電有供應鏈關聯（供應商、客戶或上下游）\n"
-        f"・第 2 檔：必須與台積電無直接關聯（不同產業或生態系）\n\n"
+        f"・兩檔盡量來自不同產業，不要都押同一個題材。\n"
+        f"・可以考慮 AI 基建、電力/能源、軍工航太、網通、金融、原物料、消費、運輸等方向。\n"
+        f"・不要為了推薦而推薦台積電；若沒有更好理由，避開市值最大、新聞最多的熱門股。\n\n"
         f"每一檔請嚴格按照以下格式輸出，不要加任何額外說明：\n"
         f"代號：XXXX\n"
         f"名稱：股票中文名稱\n"
-        f"產業：例如半導體、IC設計、電子零件、電腦周邊、金融等\n"
-        f"台積電關聯：一句話說明關聯方式，或填「無直接關聯」\n"
+        f"產業：例如電力、軍工航太、網通、金融、原物料、半導體設備、散熱等\n"
+        f"趨勢關聯：一句話說明對應哪個近期世界趨勢\n"
         f"理由：一句話\n"
         f"操作：一句話建議\n\n"
         f"只輸出兩檔，每檔之間空一行，不要加股價。",
@@ -594,7 +803,7 @@ def ai_recommend_tickers(held_tickers: list[str], market_context: str = '') -> l
                 ('ticker',   ['代號：', '代號:']),
                 ('name',     ['名稱：', '名稱:']),
                 ('sector',   ['產業：', '產業:']),
-                ('tsmc_rel', ['台積電關聯：', '台積電關聯:']),
+                ('trend_rel', ['趨勢關聯：', '趨勢關聯:', '台積電關聯：', '台積電關聯:']),
                 ('reason',   ['理由：', '理由:']),
                 ('action',   ['操作：', '操作:']),
             ]:
@@ -717,8 +926,8 @@ def build_report() -> discord.Embed:
         parts = [f"**{item.get('name', item['ticker'])} {item['ticker']}**（{price_str}）"]
         if item.get('sector'):
             parts.append(f"產業：{item['sector']}")
-        if item.get('tsmc_rel'):
-            parts.append(f"台積電：{item['tsmc_rel']}")
+        if item.get('trend_rel'):
+            parts.append(f"趨勢關聯：{item['trend_rel']}")
         parts.append(f"理由：{item.get('reason', '')}")
         parts.append(f"操作：{item.get('action', '')}")
         recommend_lines.append('\n'.join(parts))
@@ -732,6 +941,7 @@ def build_report() -> discord.Embed:
         is_rt = e.get('is_realtime', False)
         price_label = '即時' if is_rt else '今收'
         lines = [f'**{e["name"]} {e["ticker"]}**']
+        lines.append(f'股數 {e["shares"]:,} 股')
         # 第一行：收盤價
         if tc and yc:
             lines.append(f'昨收 {yc:.0f} → {price_label} {tc:.0f}元 {arrow(dc) if dc else ""}')
@@ -739,7 +949,12 @@ def build_report() -> discord.Embed:
             lines.append(f'收盤 {yc:.0f}元（今日資料待更新）')
         # 第二行：日漲跌
         if dc is not None and dp is not None:
-            lines.append(f'日漲跌 {signed(dc)}元（{signed(dp, ".2f")}%）{color(dc)}')
+            limit_note = ''
+            if dp >= 9.5:
+                limit_note = '｜接近漲停'
+            elif dp <= -9.5:
+                limit_note = '｜接近跌停'
+            lines.append(f'日漲跌 {signed(dc)}元（{signed(dp, ".2f")}%）{color(dc)}{limit_note}')
         # 第三行：成本對照（pnl/pp 已在 enriched 用 cur 算好）
         cur = tc or yc
         if cur is not None and pnl is not None:
@@ -1314,17 +1529,20 @@ def build_stock_analysis(ticker: str, display_name: str = '') -> discord.Embed |
     ticker = ticker.strip().upper()
     label  = display_name or ticker
 
-    with ThreadPoolExecutor(max_workers=3) as ex:
+    with ThreadPoolExecutor(max_workers=4) as ex:
         price_fut = ex.submit(fetch_price, ticker)
         inst_fut  = ex.submit(fetch_institutional, ticker)
         news_fut  = ex.submit(scrape_stock_news, ticker, label, 4)
+        profile_fut = ex.submit(fetch_stock_profile, ticker, label)
 
     p    = price_fut.result()
     inst = inst_fut.result()
     news = news_fut.result()
+    profile = profile_fut.result()
 
-    if not p:
+    if not p and not profile.get('name'):
         return None
+    p = p or {}
 
     tc   = p.get('today_close')
     yc   = p.get('yesterday_close')
@@ -1341,6 +1559,18 @@ def build_stock_analysis(ticker: str, display_name: str = '') -> discord.Embed |
 
     # AI 分析
     price_info = f"目前價格 {cur:.0f} 元（{price_label}）" if cur else "目前無價格資料"
+    profile_bits = []
+    if profile.get('industry_category'):
+        profile_bits.append(f"FinMind 產業分類：{profile['industry_category']}")
+    if profile.get('market_type'):
+        profile_bits.append(f"市場別：{profile['market_type']}")
+    if profile.get('english_name'):
+        profile_bits.append(f"英文名稱：{profile['english_name']}")
+    if profile.get('sector') or profile.get('industry'):
+        profile_bits.append(f"Yahoo 分類：{profile.get('sector') or '未知'} / {profile.get('industry') or '未知'}")
+    if profile.get('summary'):
+        profile_bits.append(f"Yahoo 公司摘要：{profile['summary'][:700]}")
+    profile_info = '；'.join(profile_bits) if profile_bits else '暫無基本資料'
     inst_info  = ''
     if inst and any(v != 0 for v in inst.values()):
         inst_info = (f"外資 {inst['foreign']/1e8:+.2f}億、"
@@ -1348,14 +1578,16 @@ def build_stock_analysis(ticker: str, display_name: str = '') -> discord.Embed |
                      f"自營 {inst['dealer']/1e8:+.2f}億")
     news_info = '、'.join(news[:3]) if news else '暫無新聞'
     ai_text = ask_ai(
-        f"你是台股投資顧問，請用繁體中文分析台股 {ticker}（約 200 字）。\n\n"
-        f"資料：{price_info}{'；法人：' + inst_info if inst_info else ''}；近期新聞：{news_info}\n\n"
+        f"你是台股投資顧問，請用繁體中文分析台股 {label}({ticker})（約 200 字）。\n"
+        f"股票官方名稱是「{label}」，代號是「{ticker}」。不得改成其他公司名稱，也不得把代號解讀成別家公司。\n\n"
+        f"基本資料：{profile_info}\n"
+        f"市場資料：{price_info}{'；法人：' + inst_info if inst_info else ''}；近期新聞：{news_info}\n\n"
         f"請包含：\n"
-        f"1.【產業定位】這檔股票屬於哪個產業、主要業務\n"
-        f"2.【台積電關聯】是否為供應商/客戶/無關，一句話\n"
-        f"3.【近況分析】結合新聞和法人動向\n"
-        f"4.【操作提示】短線/長線建議，一句話\n\n"
-        f"語氣適合新手，不要加免責聲明。",
+        f"1.【產業定位】根據基本資料說明產業和主要業務，英文摘要可以翻成自然繁體中文\n"
+        f"2.【台積電關聯】根據產業和業務判斷是否為供應商/客戶/無直接關聯；不確定就寫無明確資料\n"
+        f"3.【近況分析】只根據上方價格、法人、新聞資料分析；沒有資料不要補財報或市場趨勢\n"
+        f"4.【操作提示】短線/長線建議一句話，理由必須連結上方已提供資料\n\n"
+        f"語氣適合新手，不要加免責聲明，不要編造未提供的財報、產品或新聞。",
         max_tokens=500,
     )
 
@@ -1365,6 +1597,18 @@ def build_stock_analysis(ticker: str, display_name: str = '') -> discord.Embed |
         title=f'🔍 個股分析｜{label} {ticker}　{title_price}',
         color=0x2ECC71 if (dc and dc > 0) else (0xE74C3C if (dc and dc < 0) else 0x95A5A6)
     )
+
+    basic_lines = []
+    if profile.get('market_type'):
+        basic_lines.append(f"市場別：{profile['market_type']}")
+    if profile.get('industry_category'):
+        basic_lines.append(f"產業：{profile['industry_category']}")
+    if profile.get('industry'):
+        basic_lines.append(f"Yahoo：{profile['industry']}")
+    if profile.get('website'):
+        basic_lines.append(f"網站：{profile['website']}")
+    if basic_lines:
+        embed.add_field(name='🏢 基本資料', value='\n'.join(basic_lines)[:1024], inline=False)
 
     # 價格區
     price_lines = []
@@ -1412,11 +1656,26 @@ def build_stock_analysis(ticker: str, display_name: str = '') -> discord.Embed |
     embed.set_footer(text='⚠️ 以上為 AI 輔助參考，不構成投資建議。')
     return embed
 
+async def stock_query_autocomplete(
+    interaction: discord.Interaction,
+    current: str,
+) -> list[app_commands.Choice[str]]:
+    if not _guild_allowed(interaction.guild_id or 0):
+        return []
+    loop = asyncio.get_running_loop()
+    candidates = await loop.run_in_executor(None, find_ticker_candidates, current, 20)
+    return [
+        app_commands.Choice(name=f'{name} ({code})'[:100], value=code)
+        for code, name in candidates[:20]
+    ]
+
 @tree.command(name='分析', description='分析指定股票的產業定位、法人動向與 AI 建議')
 @app_commands.describe(查詢='股票代號或名稱，例如 2330 或 台積電')
+@app_commands.autocomplete(查詢=stock_query_autocomplete)
 async def cmd_analyze(interaction: discord.Interaction, 查詢: str):
     if not await _check_guild(interaction): return
-    await interaction.response.defer(ephemeral=True)
+    await interaction.response.defer()
+    loop = asyncio.get_event_loop()
 
     def _run():
         ticker, name = resolve_ticker(查詢.strip())
@@ -1424,13 +1683,22 @@ async def cmd_analyze(interaction: discord.Interaction, 查詢: str):
             return None, 查詢
         return build_stock_analysis(ticker, name or ticker), None
 
-    embed, bad_query = await asyncio.get_event_loop().run_in_executor(None, _run)
+    embed, bad_query = await loop.run_in_executor(None, _run)
     if embed is None:
+        candidates = await loop.run_in_executor(None, find_ticker_candidates, 查詢, 8)
+        if candidates:
+            candidate_lines = '\n'.join(f'`{code}` {name}' for code, name in candidates)
+            msg = (
+                f'找不到唯一股票「{bad_query}」。請改用更完整名稱或代號，例如：\n'
+                f'{candidate_lines}'
+            )
+        else:
+            msg = f'找不到股票「{bad_query}」，請確認代號或名稱是否正確。'
         await interaction.followup.send(
-            f'找不到股票「{bad_query}」，請確認代號或名稱是否正確。', ephemeral=True
+            msg, ephemeral=True
         )
     else:
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed)
 
 # ── 定時推送 ──────────────────────────────────────────────────
 @tasks.loop(minutes=1)

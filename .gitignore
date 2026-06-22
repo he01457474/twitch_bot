@@ -28,6 +28,8 @@ fishing_records.csv
 # AI 翻唱歌詞工具：個人設定與輸出
 projects/cover-maker/config.json
 projects/cover-maker/output/
+projects/secretary-bot/logs/
+projects/secretary-bot/data/*.bak*
 tools/fishing_records.csv
 *.pyc
 *.pyo

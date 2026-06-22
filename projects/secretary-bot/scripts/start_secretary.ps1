@@ -2,11 +2,14 @@
 
 $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $BotScript   = Join-Path $ProjectRoot 'tools\secretary_bot.py'
-$PythonW     = Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path '.tools\python-3.13.3-embed\pythonw.exe'
+$PythonExe   = Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path '.tools\python-3.13.3-embed\python.exe'
 $PidFile     = "$env:TEMP\secretary_bot.pid"
 $StopFlag    = "$env:TEMP\secretary_stopping.flag"
 $WatchdogScript = Join-Path $PSScriptRoot 'secretary_watchdog.ps1'
 $WatchdogPidFile = "$env:TEMP\secretary_watchdog.pid"
+$LogDir      = Join-Path $ProjectRoot 'logs'
+$StdoutLog   = Join-Path $LogDir 'secretary_stdout.log'
+$StderrLog   = Join-Path $LogDir 'secretary_stderr.log'
 
 # 清除上次關閉留下的停止旗標，讓監控程式可以正常運作
 Remove-Item -LiteralPath $StopFlag -ErrorAction SilentlyContinue
@@ -14,8 +17,8 @@ Remove-Item -LiteralPath $StopFlag -ErrorAction SilentlyContinue
 Write-Host ''
 Write-Host '啟動私人秘書 Bot（背景執行）...' -ForegroundColor Cyan
 
-if (-not (Test-Path -LiteralPath $PythonW)) {
-    Write-Host "[錯誤] 找不到 pythonw.exe：$PythonW" -ForegroundColor Red
+if (-not (Test-Path -LiteralPath $PythonExe)) {
+    Write-Host "[錯誤] 找不到 python.exe：$PythonExe" -ForegroundColor Red
     Read-Host '按 Enter 關閉'
     exit 1
 }
@@ -34,7 +37,8 @@ if (Test-Path -LiteralPath $PidFile) {
     Remove-Item -LiteralPath $PidFile -ErrorAction SilentlyContinue
 }
 
-Start-Process -FilePath $PythonW -ArgumentList "`"$BotScript`"" -WorkingDirectory $ProjectRoot -WindowStyle Hidden
+New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
+Start-Process -FilePath $PythonExe -ArgumentList "`"$BotScript`"" -WorkingDirectory $ProjectRoot -WindowStyle Hidden -RedirectStandardOutput $StdoutLog -RedirectStandardError $StderrLog
 
 Start-Sleep -Seconds 2
 if (Test-Path -LiteralPath $PidFile) {
