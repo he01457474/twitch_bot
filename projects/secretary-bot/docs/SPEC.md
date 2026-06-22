@@ -13,7 +13,7 @@
 | 語言 | Python 3.x |
 | 框架 | discord.py 2.x |
 | 資料庫 | SQLite（todos、transactions、config、learned_terms、memories） |
-| 股票資料 | FinMind API（主）+ TWSE 官方 API（備） |
+| 股票資料 | FinMind API（主）+ TWSE / TPEx 官方 API（備）+ yfinance 盤中備援 |
 | AI 分析 | Gemini API（gemini-2.0-flash） |
 | 新聞來源 | 鉅亨網 / Yahoo Finance TW（爬蟲） |
 | 專案路徑 | `projects/secretary-bot/` |

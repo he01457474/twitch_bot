@@ -42,6 +42,10 @@ GROQ_MODEL  = 'llama-3.3-70b-versatile'
 
 FINMIND_BASE = 'https://api.finmindtrade.com/api/v4/data'
 TWSE_BASE    = 'https://www.twse.com.tw/exchangeReport/STOCK_DAY'
+TPEX_DAILY_URLS = (
+    'https://www.tpex.org.tw/www/zh-tw/afterTrading/dailyQuotes',
+    'https://www.tpex.org.tw/web/stock/aftertrading/daily_close_quotes/stk_quote_result.php',
+)
 
 # ── 術語字典 ──────────────────────────────────────────────────
 TERMS: dict[str, str] = {
@@ -460,6 +464,116 @@ def _is_trading_hours() -> bool:
     t = now.time()
     return datetime.time(9, 0) <= t <= datetime.time(13, 30)
 
+def _num(value) -> float | None:
+    if value is None:
+        return None
+    text = str(value).strip().replace(',', '').replace(' ', '')
+    if not text or text in {'--', '---', '-', 'X', '除權息'}:
+        return None
+    text = text.replace('+', '')
+    try:
+        return float(text)
+    except Exception:
+        return None
+
+def _roc_date(d: datetime.date) -> str:
+    return f'{d.year - 1911}/{d.month:02d}/{d.day:02d}'
+
+def _find_tpex_quote(payload, ticker: str) -> tuple[str, float] | None:
+    rows: list = []
+    headers: list[str] = []
+
+    def collect(obj):
+        nonlocal headers
+        if isinstance(obj, list):
+            if obj and all(isinstance(x, str) for x in obj) and any('收盤' in x for x in obj):
+                headers = obj
+            for item in obj:
+                if isinstance(item, (list, dict)):
+                    rows.append(item)
+                    collect(item)
+        elif isinstance(obj, dict):
+            for key in ('fields', 'headers', 'columns'):
+                val = obj.get(key)
+                if isinstance(val, list) and any('收盤' in str(x) for x in val):
+                    headers = [str(x) for x in val]
+            for key in ('aaData', 'data', 'rows'):
+                val = obj.get(key)
+                if isinstance(val, list):
+                    rows.extend(val)
+            for val in obj.values():
+                if isinstance(val, (list, dict)):
+                    collect(val)
+
+    collect(payload)
+
+    for row in rows:
+        if isinstance(row, dict):
+            code = str(
+                row.get('SecuritiesCompanyCode')
+                or row.get('Code')
+                or row.get('stock_id')
+                or row.get('代號')
+                or row.get('股票代號')
+                or ''
+            ).strip()
+            if code != ticker:
+                continue
+            name = str(row.get('CompanyName') or row.get('Name') or row.get('stock_name') or row.get('名稱') or ticker).strip()
+            for key in ('Close', 'close', 'ClosingPrice', '收盤', '收盤價'):
+                close = _num(row.get(key))
+                if close is not None:
+                    return name or ticker, close
+        elif isinstance(row, list) and row and str(row[0]).strip() == ticker:
+            name = str(row[1]).strip() if len(row) > 1 else ticker
+            close_index = None
+            for i, header in enumerate(headers):
+                if '收盤' in str(header):
+                    close_index = i
+                    break
+            candidates = [close_index] if close_index is not None else [2, 3, 6]
+            for idx in candidates:
+                if idx is None or idx >= len(row):
+                    continue
+                close = _num(row[idx])
+                if close is not None:
+                    return name or ticker, close
+    return None
+
+def fetch_tpex_daily_price(ticker: str, trading_days: list[datetime.date]) -> dict | None:
+    """TPEx 官方日成交備援；主要補上櫃/特殊交易狀態股票。"""
+    day_quotes: list[tuple[datetime.date, str, float]] = []
+    for d in trading_days:
+        for url in TPEX_DAILY_URLS:
+            params = {'response': 'json'}
+            if 'www/zh-tw' in url:
+                params.update({'date': d.strftime('%Y/%m/%d'), 'type': 'EW'})
+            else:
+                params.update({'l': 'zh-tw', 'd': _roc_date(d)})
+            try:
+                r = requests.get(url, params=params, headers=_HEADERS, timeout=10)
+                quote = _find_tpex_quote(r.json(), ticker)
+                if quote:
+                    name, close = quote
+                    day_quotes.append((d, name, close))
+                    break
+            except Exception:
+                continue
+        if len(day_quotes) >= 2:
+            break
+    if not day_quotes:
+        return None
+    today_close = day_quotes[0][2]
+    yesterday_close = day_quotes[1][2] if len(day_quotes) > 1 else None
+    return {
+        'ticker': ticker,
+        'name': day_quotes[0][1],
+        'today_close': today_close,
+        'yesterday_close': yesterday_close,
+        'is_realtime': False,
+        'source': 'tpex',
+    }
+
 def fetch_realtime_price(ticker: str) -> dict | None:
     """盤中即時報價，使用 yfinance（約 15 分鐘延遲）"""
     try:
@@ -537,6 +651,10 @@ def fetch_price(ticker: str) -> dict | None:
                     'today_close': closes[-1][1], 'yesterday_close': closes[-2][1], 'is_realtime': False}
     except Exception as e:
         log.warning(f'TWSE price {ticker}: {e}')
+
+    result = fetch_tpex_daily_price(ticker, trading_days)
+    if result:
+        return result
 
     result = fetch_realtime_price(ticker)
     if result:
