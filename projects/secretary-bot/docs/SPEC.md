@@ -12,7 +12,7 @@
 | 主要功能 | 待辦事項管理 + 台股追蹤與每日推送 |
 | 語言 | Python 3.x |
 | 框架 | discord.py 2.x |
-| 資料庫 | SQLite（todos、transactions、config、learned_terms） |
+| 資料庫 | SQLite（todos、transactions、config、learned_terms、memories） |
 | 股票資料 | FinMind API（主）+ TWSE 官方 API（備） |
 | AI 分析 | Gemini API（gemini-2.0-flash） |
 | 新聞來源 | 鉅亨網 / Yahoo Finance TW（爬蟲） |
@@ -73,6 +73,8 @@ projects/secretary-bot/
 | 指令 | 說明 |
 |------|------|
 | `/config push_time <HH:MM>` | 設定每日推送時間（例：`08:30`） |
+| `/config weekly_time <HH:MM>` | 設定週報推送時間（預設：`18:00`） |
+| `/config weekly_day <星期>` | 設定週報推送星期（預設：`週日`；可填 `週日`、`禮拜日`、`日`、`0`、`7`） |
 | `/config channel <頻道ID>` | 設定推送頻道 |
 
 ### 學習模組
@@ -323,7 +325,9 @@ SpaceX Starlink 持續擴張，台廠天線模組出貨量增加。
 
 ## 六、週末推送格式
 
-發送時機：週六上午（時間同 `/config push_time`）
+發送時機：預設週日 18:00，可用 `/config weekly_day` 和 `/config weekly_time` 調整。
+
+週報資料固定抓最近 7 天的市場新聞、持股相關新聞、持股近幾日收盤、三大法人與既有秘書記憶，避免只看最後一天造成分析太籠統。
 
 ```
 📅 本週市場回顧｜2025/05/18 週
@@ -424,12 +428,22 @@ CREATE TABLE config (
     key      TEXT PRIMARY KEY,
     value    TEXT
 );
--- key: 'push_time', 'channel_id'
+-- key: 'push_time', 'weekly_time', 'weekly_day', 'channel_id'
 
 -- 已學術語（新手模式）
 CREATE TABLE learned_terms (
     term     TEXT PRIMARY KEY,
     learned  TEXT DEFAULT (datetime('now'))
+);
+
+-- 秘書記憶：每日/週報重點，後續報告會納入參考
+CREATE TABLE memories (
+    id          INTEGER PRIMARY KEY,
+    kind        TEXT NOT NULL,   -- daily_report | weekly_report
+    content     TEXT NOT NULL,
+    source_date TEXT NOT NULL,
+    created     TEXT DEFAULT (datetime('now')),
+    UNIQUE(kind, source_date)
 );
 ```
 

@@ -138,6 +138,16 @@ def init_db():
                 term    TEXT PRIMARY KEY,
                 learned TEXT DEFAULT (datetime('now','localtime'))
             );
+            CREATE TABLE IF NOT EXISTS memories (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                kind        TEXT NOT NULL,
+                content     TEXT NOT NULL,
+                source_date TEXT NOT NULL,
+                created     TEXT DEFAULT (datetime('now','localtime')),
+                UNIQUE(kind, source_date)
+            );
+            CREATE INDEX IF NOT EXISTS idx_memories_kind_date
+                ON memories(kind, source_date);
         ''')
 
 def db():
@@ -151,6 +161,64 @@ def get_cfg(key: str, default='') -> str:
 def set_cfg(key: str, value: str):
     with db() as c:
         c.execute('INSERT OR REPLACE INTO config (key,value) VALUES (?,?)', (key, value))
+
+def remember(kind: str, content: str, source_date: str | None = None, keep: int = 80):
+    text = re.sub(r'\s+', ' ', content or '').strip()
+    if not text:
+        return
+    text = text[:1200]
+    source_date = source_date or datetime.date.today().isoformat()
+    with db() as c:
+        c.execute(
+            'INSERT OR REPLACE INTO memories (kind, content, source_date) VALUES (?,?,?)',
+            (kind, text, source_date),
+        )
+        c.execute(
+            '''
+            DELETE FROM memories
+            WHERE id NOT IN (
+                SELECT id FROM memories ORDER BY source_date DESC, id DESC LIMIT ?
+            )
+            ''',
+            (keep,),
+        )
+
+def get_recent_memories(limit: int = 6, kind: str = '') -> list[str]:
+    sql = 'SELECT source_date, kind, content FROM memories'
+    params: tuple = ()
+    if kind:
+        sql += ' WHERE kind=?'
+        params = (kind,)
+    sql += ' ORDER BY source_date DESC, id DESC LIMIT ?'
+    params = (*params, limit)
+    with db() as c:
+        rows = c.execute(sql, params).fetchall()
+    return [f'{d} {k}：{content}' for d, k, content in rows]
+
+_WEEKDAY_ALIASES = {
+    '1': 0, '一': 0, '週一': 0, '星期一': 0, '禮拜一': 0, 'mon': 0, 'monday': 0,
+    '2': 1, '二': 1, '週二': 1, '星期二': 1, '禮拜二': 1, 'tue': 1, 'tuesday': 1,
+    '3': 2, '三': 2, '週三': 2, '星期三': 2, '禮拜三': 2, 'wed': 2, 'wednesday': 2,
+    '4': 3, '四': 3, '週四': 3, '星期四': 3, '禮拜四': 3, 'thu': 3, 'thursday': 3,
+    '5': 4, '五': 4, '週五': 4, '星期五': 4, '禮拜五': 4, 'fri': 4, 'friday': 4,
+    '6': 5, '六': 5, '週六': 5, '星期六': 5, '禮拜六': 5, 'sat': 5, 'saturday': 5,
+    '0': 6, '7': 6, '日': 6, '天': 6, '週日': 6, '週天': 6, '星期日': 6, '星期天': 6,
+    '禮拜日': 6, '禮拜天': 6, 'sun': 6, 'sunday': 6,
+}
+_WEEKDAY_LABELS = ['週一', '週二', '週三', '週四', '週五', '週六', '週日']
+
+def _valid_hhmm(value: str) -> bool:
+    if not re.match(r'^\d{2}:\d{2}$', value):
+        return False
+    h, m = map(int, value.split(':'))
+    return 0 <= h <= 23 and 0 <= m <= 59
+
+def _parse_weekday(value: str) -> int | None:
+    key = value.strip().lower().replace(' ', '')
+    return _WEEKDAY_ALIASES.get(key)
+
+def _weekday_label(index: int) -> str:
+    return _WEEKDAY_LABELS[index] if 0 <= index <= 6 else '週日'
 
 # ── 股票名稱對照 ──────────────────────────────────────────────
 _ticker_map: dict[str, str] = {}        # name → ticker
@@ -475,6 +543,30 @@ def fetch_price(ticker: str) -> dict | None:
         return result
     return None
 
+def fetch_recent_closes(ticker: str, days: int = 7) -> list[float]:
+    """取最近幾個交易日收盤價，用於週報估算週漲跌。"""
+    try:
+        import yfinance as yf
+        suffixes = ['.TW', '.TWO']
+        meta = _load_stock_meta().get(ticker)
+        if meta and meta.get('market_type') in ('tpex', 'emerging'):
+            suffixes = ['.TWO', '.TW']
+        for suffix in suffixes:
+            try:
+                hist = yf.Ticker(f'{ticker}{suffix}').history(period='10d', interval='1d')
+                if hist is None or hist.empty or 'Close' not in hist:
+                    continue
+                closes = [float(v) for v in hist['Close'].dropna().tail(days).tolist()]
+                if len(closes) >= 2:
+                    return closes
+            except Exception:
+                continue
+    except ImportError:
+        log.warning('yfinance 未安裝，無法取得週報收盤資料')
+    except Exception as e:
+        log.warning(f'yfinance weekly closes {ticker}: {e}')
+    return []
+
 def fetch_institutional(ticker: str) -> dict | None:
     """回傳今日 {foreign, trust, dealer}（元），失敗回傳 None"""
     if not FINMIND_TOKEN:
@@ -684,6 +776,73 @@ def scrape_intl_news(limit=10) -> list[str]:
             break
     return titles[:limit]
 
+def _news_timestamp(item: dict) -> datetime.datetime | None:
+    for key in ('publishAt', 'createdAt', 'updatedAt', 'newsTime', 'startAt'):
+        value = item.get(key)
+        if value is None:
+            continue
+        try:
+            ts = int(value)
+            if ts > 10_000_000_000:
+                ts = ts // 1000
+            return datetime.datetime.fromtimestamp(ts)
+        except Exception:
+            pass
+        if isinstance(value, str):
+            try:
+                return datetime.datetime.fromisoformat(value.replace('Z', '+00:00')).replace(tzinfo=None)
+            except Exception:
+                continue
+    return None
+
+def _collect_cnyes_titles(category: str, days: int = 7, limit: int = 20, pages: int = 3) -> list[str]:
+    cutoff = datetime.datetime.now() - datetime.timedelta(days=days)
+    seen, titles, fallback = set(), [], []
+    for page in range(1, pages + 1):
+        try:
+            r = requests.get(
+                f'https://api.cnyes.com/media/api/v1/newslist/category/{category}?limit=20&page={page}',
+                headers=_HEADERS,
+                timeout=8,
+            )
+            items = r.json().get('items', {}).get('data', [])
+            if not items:
+                items = r.json().get('data', {}).get('items', [])
+            for item in items:
+                title = (item.get('title') or '').strip()
+                if not title or title in seen:
+                    continue
+                seen.add(title)
+                ts = _news_timestamp(item)
+                short = title[:70]
+                if ts is None:
+                    fallback.append(short)
+                elif ts >= cutoff:
+                    titles.append(short)
+                if len(titles) >= limit:
+                    return titles[:limit]
+        except Exception:
+            continue
+    return (titles or fallback)[:limit]
+
+def scrape_weekly_market_news(days: int = 7, limit: int = 35) -> list[str]:
+    """固定抓最近一週市場新聞，給週報使用。"""
+    categories = ('headline', 'wd_stock', 'us_stock', 'tw_macro', 'forex', 'commodity', 'cn_stock')
+    seen, titles = set(), []
+    per_cat = max(4, limit // len(categories) + 1)
+    for cat in categories:
+        for title in _collect_cnyes_titles(cat, days=days, limit=per_cat, pages=4):
+            if title not in seen:
+                seen.add(title)
+                titles.append(title)
+            if len(titles) >= limit:
+                return titles[:limit]
+    return titles[:limit]
+
+def scrape_stock_weekly_news(ticker: str, name: str, days: int = 7, limit: int = 5) -> list[str]:
+    titles = _collect_cnyes_titles(f'TWS:{ticker}:STOCK', days=days, limit=limit, pages=4)
+    return titles or scrape_stock_news(ticker, name, limit=limit)
+
 # ── Gemini ────────────────────────────────────────────────────
 def ask_ai(prompt: str, max_tokens=800) -> str:
     if not groq_client:
@@ -877,6 +1036,9 @@ def build_report() -> discord.Embed:
         market_context_lines.append('國際情勢：' + '；'.join(intl_news[:5]))
     if themes:
         market_context_lines.append('台股焦點題材：' + '；'.join(themes))
+    recent_memories = get_recent_memories(limit=5)
+    if recent_memories:
+        market_context_lines.append('秘書近期記憶：' + '；'.join(recent_memories))
     market_context = '\n'.join(market_context_lines)
 
     # 計算損益
@@ -1049,6 +1211,104 @@ def build_report() -> discord.Embed:
         embed.add_field(name='📖 今日新詞', value=term_text[:1024], inline=False)
     embed.set_footer(text='⚠️ 以上為 AI 輔助參考，不構成投資建議，請依自身判斷操作。')
 
+    remember('daily_report', f'{ai_text}\n{recommend_text}', today.isoformat())
+    return embed
+
+def build_weekly_report() -> discord.Embed:
+    today = datetime.date.today()
+    week_start = today - datetime.timedelta(days=6)
+    date_range = f"{week_start.strftime('%Y/%m/%d')} - {today.strftime('%Y/%m/%d')}"
+    holdings = get_holdings()
+    non_etf = [h for h in holdings if not _is_etf(h['ticker'])][:6]
+
+    with ThreadPoolExecutor(max_workers=16) as ex:
+        price_futs = {h['ticker']: ex.submit(fetch_price, h['ticker']) for h in holdings}
+        close_futs = {h['ticker']: ex.submit(fetch_recent_closes, h['ticker'], 7) for h in holdings}
+        inst_futs  = {h['ticker']: ex.submit(fetch_institutional, h['ticker']) for h in holdings}
+        news_futs  = [(h, ex.submit(scrape_stock_weekly_news, h['ticker'], h['name'], 7, 5)) for h in non_etf]
+        weekly_market_fut = ex.submit(scrape_weekly_market_news, 7, 35)
+        mkt_fut    = ex.submit(fetch_market_inst)
+
+    prices = {t: f.result() for t, f in price_futs.items()}
+    closes = {t: f.result() for t, f in close_futs.items()}
+    insts  = {t: f.result() for t, f in inst_futs.items()}
+    news_results = [(h, f.result()) for h, f in news_futs]
+    weekly_market_news = weekly_market_fut.result()[:35]
+    mkt = mkt_fut.result()
+    recent_memories = get_recent_memories(limit=8)
+
+    holding_lines = []
+    for h in holdings:
+        ticker = h['ticker']
+        p = prices.get(ticker) or {}
+        recent = closes.get(ticker) or []
+        cur = p.get('today_close') or p.get('yesterday_close') or (recent[-1] if recent else None)
+        week_pct = None
+        if len(recent) >= 2 and recent[0]:
+            week_pct = (recent[-1] - recent[0]) / recent[0] * 100
+        day_pct = None
+        if p.get('today_close') and p.get('yesterday_close'):
+            day_pct = (p['today_close'] - p['yesterday_close']) / p['yesterday_close'] * 100
+        pnl_pct = (cur - h['avg_cost']) / h['avg_cost'] * 100 if cur else None
+        inst = insts.get(ticker) or {}
+        flow = []
+        if inst.get('foreign'): flow.append(f"外資{signed(inst['foreign']/1e8, '.2f')}億")
+        if inst.get('trust'): flow.append(f"投信{signed(inst['trust']/1e8, '.2f')}億")
+        if inst.get('dealer'): flow.append(f"自營{signed(inst['dealer']/1e8, '.2f')}億")
+        cur_str = f'{cur:.0f}' if cur else '未知'
+        week_str = f'{signed(week_pct, ".2f")}%' if week_pct is not None else '缺資料'
+        day_str = f'{signed(day_pct, ".2f")}%' if day_pct is not None else '缺資料'
+        pnl_str = f'{signed(pnl_pct, ".1f")}%' if pnl_pct is not None else '缺資料'
+        holding_lines.append(
+            f"{h['name']}({ticker})：股數{h['shares']:,}股，均價{h['avg_cost']:.2f}，"
+            f"現價{cur_str}，"
+            f"近週{week_str}，"
+            f"單日{day_str}，"
+            f"持股損益{pnl_str}，"
+            f"法人{'、'.join(flow) if flow else '無明顯資料'}"
+        )
+
+    news_lines = []
+    for h, items in news_results:
+        for item in items:
+            news_lines.append(f"{h['name']}({h['ticker']})：{item}")
+    market_lines = []
+    if weekly_market_news:
+        market_lines.append('最近 7 天市場新聞：' + '；'.join(weekly_market_news))
+    if mkt:
+        fnet = sum(v for k, v in mkt.items() if '外資' in k)
+        tnet = sum(v for k, v in mkt.items() if '投信' in k)
+        market_lines.append(f"最近一日大盤法人：外資{signed(fnet/1e8, '.0f')}億，投信{signed(tnet/1e8, '.0f')}億")
+    if recent_memories:
+        market_lines.append('秘書過去記憶：' + '；'.join(recent_memories))
+
+    prompt = (
+        f"你是台股週報分析師，請用繁體中文寫本週市場週報，總字數 500-700 字。"
+        f"不要籠統說『市場震盪』『題材輪動』，每個判斷都要連到下面的持股數據、法人資料或新聞。\n\n"
+        f"週報區間：{date_range}。新聞資料固定抓最近 7 天，請用整週脈絡分析，不要只看最後一天。\n\n"
+        f"持股數據：\n{chr(10).join(holding_lines) if holding_lines else '目前沒有持股'}\n\n"
+        f"近期市場/世界趨勢：\n{chr(10).join(market_lines) if market_lines else '新聞資料不足'}\n\n"
+        f"持股相關新聞：\n{chr(10).join(news_lines[:12]) if news_lines else '無明確持股新聞'}\n\n"
+        f"請完全照下面格式輸出：\n\n"
+        f"**📊 持股週績效**\n"
+        f"用數字點出本週表現最好/最弱、部位較大的持股，資料不足就明說是以目前損益和近週資料判斷。\n\n"
+        f"**🏦 三大法人與資金方向**\n"
+        f"結合個股法人和大盤法人，說明資金偏向哪些族群，避免只列買超賣超。\n\n"
+        f"**📰 本週關鍵事件 TOP5**\n"
+        f"條列 5 點，每點要說明可能影響的台股族群或持股。\n\n"
+        f"**🔮 下週觀察重點**\n"
+        f"列 3 點，包含要觀察的題材、風險和持股操作方向。\n\n"
+        f"**📖 新手學習提醒**\n"
+        f"用一句話解釋一個本週內容用得到的台股術語。"
+    )
+    result = ask_ai(prompt, max_tokens=1400)
+    embed = discord.Embed(
+        title=f'📅 本週市場回顧｜{today.strftime("%Y/%m/%d")}',
+        description=result[:4096],
+        color=0x3498DB
+    )
+    embed.set_footer(text='⚠️ 以上為 AI 輔助分析，不構成投資建議。')
+    remember('weekly_report', result, today.isoformat())
     return embed
 
 # ── Bot ───────────────────────────────────────────────────────
@@ -1087,6 +1347,8 @@ async def on_ready():
     log.info(f'Bot 已上線：{bot.user}，共加入 {len(bot.guilds)} 個伺服器')
     if not daily_push.is_running():
         daily_push.start()
+    if not weekly_push.is_running():
+        weekly_push.start()
 
 # ── 待辦指令 ──────────────────────────────────────────────────
 @tree.command(name='待辦', description='待辦事項管理')
@@ -1411,26 +1673,43 @@ async def cmd_stock(interaction: discord.Interaction,
         await interaction.followup.send('可用：`buy` / `sell` / `batch` / `list` / `pnl` / `calc_buy` / `calc_sell` / `delete`', ephemeral=True)
 
 # ── 設定指令 ──────────────────────────────────────────────────
-@tree.command(name='設定', description='設定推送時間與頻道')
+@tree.command(name='設定', description='設定推送時間、週報時間與頻道')
 @app_commands.rename(key='項目', value='數值')
-@app_commands.describe(key='選擇要設定的項目', value='推送時間填 HH:MM（例如 08:30）；頻道填頻道 ID')
+@app_commands.describe(
+    key='選擇要設定的項目',
+    value='時間填 HH:MM；週報星期可填 週日/禮拜日/日/0/7；頻道填頻道 ID'
+)
 @app_commands.choices(key=[
-    app_commands.Choice(name='推送時間', value='push_time'),
+    app_commands.Choice(name='每日推送時間', value='push_time'),
+    app_commands.Choice(name='週報時間', value='weekly_time'),
+    app_commands.Choice(name='週報星期', value='weekly_day'),
     app_commands.Choice(name='推送頻道', value='channel'),
 ])
 async def cmd_config(interaction: discord.Interaction, key: str, value: str):
     if not await _check_guild(interaction): return
     k = key.lower().strip()
     if k == 'push_time':
-        if not re.match(r'^\d{2}:\d{2}$', value):
-            await interaction.response.send_message('格式：HH:MM，例如 `08:30`', ephemeral=True); return
+        if not _valid_hhmm(value):
+            await interaction.response.send_message('格式：HH:MM，例如 `08:30`，小時 00-23、分鐘 00-59。', ephemeral=True); return
         set_cfg('push_time', value)
-        await interaction.response.send_message(f'✅ 推送時間設為 {value}', ephemeral=True)
+        await interaction.response.send_message(f'✅ 每日推送時間設為 {value}', ephemeral=True)
+    elif k == 'weekly_time':
+        if not _valid_hhmm(value):
+            await interaction.response.send_message('格式：HH:MM，例如 `18:00`，小時 00-23、分鐘 00-59。', ephemeral=True); return
+        set_cfg('weekly_time', value)
+        day = _parse_weekday(get_cfg('weekly_day', '日'))
+        await interaction.response.send_message(f'✅ 週報時間設為 {_weekday_label(day if day is not None else 6)} {value}', ephemeral=True)
+    elif k == 'weekly_day':
+        day = _parse_weekday(value)
+        if day is None:
+            await interaction.response.send_message('週報星期格式可填：`週日`、`禮拜日`、`日`、`0` 或 `7`（週日），也可填 `1` 到 `6`。', ephemeral=True); return
+        set_cfg('weekly_day', _weekday_label(day))
+        await interaction.response.send_message(f'✅ 週報星期設為 {_weekday_label(day)}', ephemeral=True)
     elif k == 'channel':
         set_cfg('channel_id', value)
         await interaction.response.send_message(f'✅ 推送頻道設為 <#{value}>', ephemeral=True)
     else:
-        await interaction.response.send_message('可設定：`push_time` / `channel`', ephemeral=True)
+        await interaction.response.send_message('可設定：`push_time` / `weekly_time` / `weekly_day` / `channel`', ephemeral=True)
 
 # ── 學習指令 ──────────────────────────────────────────────────
 @tree.command(name='學習', description='查詢台股術語，填 reset 重置學習紀錄')
@@ -1493,28 +1772,9 @@ async def cmd_push(interaction: discord.Interaction):
 async def cmd_weekly(interaction: discord.Interaction):
     if not await _check_guild(interaction): return
     await interaction.response.defer(ephemeral=True)
-    hs = get_holdings()
-    holdings_str = '、'.join(f"{h['name']}({h['ticker']})" for h in hs) if hs else '無'
-    today = datetime.date.today().strftime('%Y/%m/%d')
-    result = await asyncio.get_event_loop().run_in_executor(None, ask_ai,
-        f"你是台股週報分析師，請用繁體中文寫本週市場週報，總字數約 300 字。\n"
-        f"今日：{today}，持股：{holdings_str}\n\n"
-        f"請完全照下面的格式輸出（標題自成一行、內容另起一行、段落之間空一行，"
-        f"不要保留括號內的提示文字，提到股票一律寫成「公司名稱(代號)」格式）：\n\n"
-        f"**📊 持股週績效**\n(一兩句話描述本週持股表現)\n\n"
-        f"**🏦 三大法人動向**\n(一兩句話描述外資/投信買賣超趨勢)\n\n"
-        f"**📰 重要新聞 TOP3**\n(條列 3 則重要新聞，每則一行)\n\n"
-        f"**🔮 下週題材預覽**\n(一兩句話預告下週可能熱門的題材)\n\n"
-        f"**📖 新手學習提醒**\n(用一句話介紹一個台股術語)"
-    )
+    embed = await asyncio.get_event_loop().run_in_executor(None, build_weekly_report)
     channel_id = int(get_cfg('channel_id') or str(PUSH_CHANNEL_ID))
     channel = bot.get_channel(channel_id)
-    embed = discord.Embed(
-        title=f'📅 本週市場回顧｜{today}',
-        description=result[:4096],
-        color=0x3498DB
-    )
-    embed.set_footer(text='⚠️ 以上為 AI 輔助分析，不構成投資建議。')
     if channel:
         await channel.send(embed=embed)
         await interaction.followup.send('✅ 週報已發送。', ephemeral=True)
@@ -1705,6 +1965,9 @@ async def cmd_analyze(interaction: discord.Interaction, 查詢: str):
 async def daily_push():
     now = datetime.datetime.now()
     push_time = get_cfg('push_time', '08:30')
+    if not _valid_hhmm(push_time):
+        log.warning(f'每日推送時間格式錯誤：{push_time}')
+        return
     h, m = map(int, push_time.split(':'))
     if now.hour != h or now.minute != m or now.weekday() > 4:
         return
@@ -1717,8 +1980,42 @@ async def daily_push():
     except Exception as e:
         log.error(f'定時推送失敗: {e}', exc_info=True)
 
+@tasks.loop(minutes=1)
+async def weekly_push():
+    now = datetime.datetime.now()
+    weekly_time = get_cfg('weekly_time', '18:00')
+    weekly_day = _parse_weekday(get_cfg('weekly_day', '日'))
+    if weekly_day is None:
+        log.warning(f'週報星期格式錯誤：{get_cfg("weekly_day", "日")}')
+        return
+    if not _valid_hhmm(weekly_time):
+        log.warning(f'週報時間格式錯誤：{weekly_time}')
+        return
+    h, m = map(int, weekly_time.split(':'))
+    if now.weekday() != weekly_day or now.hour != h or now.minute != m:
+        return
+
+    today_key = now.date().isoformat()
+    if get_cfg('weekly_last_push_date') == today_key:
+        return
+
+    channel_id = int(get_cfg('channel_id') or str(PUSH_CHANNEL_ID))
+    channel = bot.get_channel(channel_id)
+    if not channel:
+        return
+    try:
+        embed = await asyncio.get_event_loop().run_in_executor(None, build_weekly_report)
+        await channel.send(embed=embed)
+        set_cfg('weekly_last_push_date', today_key)
+    except Exception as e:
+        log.error(f'週報定時推送失敗: {e}', exc_info=True)
+
 @daily_push.before_loop
 async def before_daily_push():
+    await bot.wait_until_ready()
+
+@weekly_push.before_loop
+async def before_weekly_push():
     await bot.wait_until_ready()
 
 # ── 主程式 ────────────────────────────────────────────────────
