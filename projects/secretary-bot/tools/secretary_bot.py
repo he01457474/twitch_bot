@@ -829,8 +829,12 @@ def get_holdings() -> list[dict]:
 
 # ── 新聞爬蟲 ──────────────────────────────────────────────────
 _HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+DAILY_NEWS_DAYS = 3
 
-def scrape_stock_news(ticker: str, name: str, limit=2) -> list[str]:
+def scrape_stock_news(ticker: str, name: str, limit=2, days: int = DAILY_NEWS_DAYS) -> list[str]:
+    titles = _collect_cnyes_titles(f'TWS:{ticker}:STOCK', days=days, limit=limit, pages=3)
+    if titles:
+        return titles
     try:
         r = requests.get(
             f'https://api.cnyes.com/media/api/v1/newslist/category/TWS:{ticker}:STOCK'
@@ -858,7 +862,10 @@ def scrape_stock_news(ticker: str, name: str, limit=2) -> list[str]:
         except Exception:
             return []
 
-def scrape_hot_themes() -> list[str]:
+def scrape_hot_themes(days: int = DAILY_NEWS_DAYS, limit: int = 6) -> list[str]:
+    titles = _collect_cnyes_titles('tw_stock', days=days, limit=limit, pages=3)
+    if titles:
+        return titles
     try:
         r = requests.get(
             'https://api.cnyes.com/media/api/v1/newslist/category/tw_stock?limit=8&page=1',
@@ -884,9 +891,8 @@ def scrape_hot_themes() -> list[str]:
     except Exception:
         return []
 
-def scrape_intl_news(limit=10) -> list[str]:
-    """爬國際股市/焦點新聞，作為大盤情勢背景（地緣政治、關稅、Fed利率、AI巨頭動向等），
-    分類來源較容易隨 cnyes 調整，所以多抓幾類合併、互相備援。"""
+def scrape_intl_news(limit=10, days: int = DAILY_NEWS_DAYS) -> list[str]:
+    """爬前天到今天的國際/總經新聞，作為日報情勢背景。"""
     seen, titles = set(), []
     categories = (
         'headline',
@@ -897,21 +903,14 @@ def scrape_intl_news(limit=10) -> list[str]:
         'commodity',
         'cn_stock',
     )
+    per_cat = max(3, limit // len(categories) + 1)
     for cat in categories:
-        try:
-            r = requests.get(
-                f'https://api.cnyes.com/media/api/v1/newslist/category/{cat}?limit=10&page=1',
-                headers=_HEADERS, timeout=8
-            )
-            for item in r.json().get('items', {}).get('data', []):
-                t = (item.get('title') or '')[:50]
-                if t and t not in seen:
-                    seen.add(t)
-                    titles.append(t)
-        except Exception:
-            continue
-        if len(titles) >= limit:
-            break
+        for title in _collect_cnyes_titles(cat, days=days, limit=per_cat, pages=3):
+            if title not in seen:
+                seen.add(title)
+                titles.append(title[:70])
+            if len(titles) >= limit:
+                return titles[:limit]
     return titles[:limit]
 
 def _news_timestamp(item: dict) -> datetime.datetime | None:
@@ -1176,9 +1175,9 @@ def build_report() -> discord.Embed:
     # AI 用的市場情勢背景：國際情勢 + 台股焦點題材
     market_context_lines = []
     if intl_news:
-        market_context_lines.append('國際情勢：' + '；'.join(intl_news[:5]))
+        market_context_lines.append('前天到今天國際/總經情勢：' + '；'.join(intl_news[:5]))
     if themes:
-        market_context_lines.append('台股焦點題材：' + '；'.join(themes))
+        market_context_lines.append('前天到今天台股焦點題材：' + '；'.join(themes))
     recent_memories = get_recent_memories(limit=5)
     if recent_memories:
         market_context_lines.append('秘書近期記憶：' + '；'.join(recent_memories))
