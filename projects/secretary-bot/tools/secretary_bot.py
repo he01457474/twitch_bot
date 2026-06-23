@@ -166,7 +166,27 @@ def set_cfg(key: str, value: str):
     with db() as c:
         c.execute('INSERT OR REPLACE INTO config (key,value) VALUES (?,?)', (key, value))
 
+_LOW_VALUE_MEMORY_PATTERNS = (
+    '影響有限',
+    '直接影響不大',
+    '主要取決於本身的基本面',
+    '主要取決於基本面',
+    '市場供求',
+)
+
+def _clean_memory_text(content: str) -> str:
+    lines = []
+    for raw in (content or '').splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if any(pattern in line for pattern in _LOW_VALUE_MEMORY_PATTERNS):
+            continue
+        lines.append(line)
+    return '\n'.join(lines)
+
 def remember(kind: str, content: str, source_date: str | None = None, keep: int = 80):
+    content = _clean_memory_text(content)
     text = re.sub(r'\s+', ' ', content or '').strip()
     if not text:
         return
@@ -1033,14 +1053,16 @@ def ai_holding_analysis(enriched: list[dict], insts: dict | None = None, market_
     word_limit = max(180, 35 * max(len(stocks), 3))
     prompt = (
         f"你是資深台股分析師，根據以下資料用繁體中文寫出今日持股摘要，總字數控制在 {word_limit} 字內，"
-        f"不要寫沒有數據佐證的空泛敘述（例如「受惠產業成長」「基本面良好」這類套話），不要重複說免責聲明。\n\n"
+        f"不要寫沒有數據佐證的空泛敘述（例如「受惠產業成長」「基本面良好」「市場供需」「影響有限」這類套話），"
+        f"不要重複說免責聲明。\n\n"
         + (f"近期市場情勢／題材參考：\n{market_context}\n\n" if market_context else '') +
         f"個股數據：\n{summary or '（無）'}\n"
         + (f"ETF（不需分析）：{etf_str}\n" if etf_str else '') +
         f"\n請按照以下格式輸出：\n\n"
-        + ("【今日情勢】用 1-2 句話總結近期世界趨勢對台股可能的影響。不要只圍繞台積電，"
-           "可以納入 AI 基建、利率、匯率、能源、軍工、關稅、地緣政治、消費景氣等脈絡；"
-           "如果跟手上持股沒有明顯關聯，就直接說目前關聯有限。\n\n" if market_context else '') +
+        + ("【今日情勢】只寫 1-2 句有資訊量的判斷：必須點名至少一個具體新聞、題材或變數，"
+           "並說明它可能影響哪個台股族群或哪一檔持股。嚴禁寫「影響有限」「直接影響不大」"
+           "「主要取決於基本面和市場供求」這類沒有操作價值的句子；如果資料不足以連結，"
+           "就寫「今日新聞沒有明確可連結持股的事件，先看持股處置。」\n\n" if market_context else '') +
         f"【持股處置】用 2-4 點摘要即可，不要逐檔重複解讀。優先提到：部位股數較大、"
         f"接近漲停/跌停、法人買賣超明顯、損益幅度較大的股票。每點格式「・名稱（代號）：具體動作＋原因」，"
         f"動作可用續抱、觀察、分批停利、減碼、停損、等待回測等；資料不足就不要硬下結論。"
