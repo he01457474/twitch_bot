@@ -73,6 +73,7 @@ DEFAULT_CONFIG = {
     "popup_recognition_cooldown": 1.0,
     "popup_same_signature_threshold": 0.01,
     "popup_ignore_signature_threshold": 0.002,
+    "quiz4_post_ocr_signature_threshold": 0.14,
     "monitor_idle_interval": 0.45,
     "monitor_active_interval": 0.25,
     "ocr_engine": "windows",  # windows / paddle / auto
@@ -1985,6 +1986,14 @@ def _capture_region_path(capture_path, region="question"):
         return capture_path[:-10] + "_options.png"
     return ""
 
+def _capture_short_id(capture_path, fallback=0):
+    if capture_path:
+        base = os.path.basename(capture_path)
+        m = re.match(r"\d{6}_[^_]+_[^_]+_([0-9a-f]{8})_", base)
+        if m:
+            return m.group(1)
+    return f"{int(fallback or 0) & 0xffffffff:08x}"
+
 def _load_capture_region(capture_path, region="question"):
     path = _capture_region_path(capture_path, region)
     if not path or not os.path.exists(path):
@@ -2113,12 +2122,17 @@ class Quiz4Database:
         if not found:
             return False
         entry, score = found
+        old_phash = entry.get("phash")
+        same_image = bool(phash and old_phash and phash_distance(phash, old_phash) < 8)
+        strong_text = score >= max(0.88, threshold)
+        if not same_image and not strong_text:
+            return False
         old_count = quiz_option_count(entry.get("options", []))
         new_count = quiz_option_count(options)
         if phash:
             entry["phash"] = phash
         question_updated = len(normalize_question_text(question)) > len(normalize_question_text(entry.get("question", "")))
-        options_updated = new_count > old_count
+        options_updated = new_count > old_count and (same_image or score >= 0.92 or old_count == 0)
         if question_updated:
             entry["question"] = question
         if options_updated:
@@ -2334,6 +2348,29 @@ class GameDetector:
     def ignore_current_popup(self):
         self._ignored_sig_bits = self._last_sig_bits
         self._last_recognition_time = time.time()
+
+    def _quiz4_signature_still_current(self, expected_sig_bits, on_status):
+        if not expected_sig_bits or not self.hwnd:
+            return True
+        try:
+            if not (win32gui.IsWindow(self.hwnd) and win32gui.IsWindowVisible(self.hwnd)):
+                return False
+            img, w, h = capture_window(self.hwnd)
+            if not self.is_popup_visible(img, w, h):
+                on_status("題目已消失，略過這次辨識結果")
+                return False
+            q_img = self._crop(img, w, h, self._question_region_key())
+            opt_img = self._crop(img, w, h, "options_region")
+            current_bits = _text_signature_bits(self._quiz_signature_image(q_img, opt_img))
+            distance = _signature_distance(expected_sig_bits, current_bits)
+            threshold = float(self.config.get("quiz4_post_ocr_signature_threshold", 0.14))
+            if distance > threshold:
+                on_status(f"題目已切換，丟棄舊辨識結果（差異 {distance:.0%}）")
+                return False
+            return True
+        except Exception as e:
+            self._on_detail(f"OCR 後畫面比對失敗，保留本次結果：{type(e).__name__}: {e}")
+            return True
 
     def find_window(self):
         result = []
@@ -2782,8 +2819,17 @@ class GameDetector:
             day_dir = os.path.join(CAPTURE_DIR, now.strftime("%Y%m%d"))
             os.makedirs(day_dir, exist_ok=True)
             text_part = _safe_filename_part(question or reason)
+            thumb = full_img.convert("RGB")
+            tw = 128
+            th = max(1, int(thumb.height * (tw / max(1, thumb.width))))
+            thumb = thumb.resize((tw, th), Image.Resampling.BILINEAR)
+            image_hash = hashlib.sha1(thumb.tobytes()).hexdigest()[:8]
             short_hash = hashlib.sha1(
-                json.dumps(key, ensure_ascii=False, default=str).encode("utf-8", errors="ignore")
+                (
+                    json.dumps(key, ensure_ascii=False, default=str)
+                    + "|"
+                    + image_hash
+                ).encode("utf-8", errors="ignore")
             ).hexdigest()[:8]
             base = f"{now.strftime('%H%M%S')}_{mode}_{reason}_{short_hash}_{text_part}"
             popup_path = os.path.join(day_dir, base + "_popup.png")
@@ -2969,6 +3015,8 @@ class GameDetector:
                 on_status("Claude API 辨識中…")
                 q_text, options = claude_read_popup(full, api_key, on_detail=self._on_detail)
             self._record_api_call(ph)
+        if not self._quiz4_signature_still_current(self._last_sig_bits, on_status):
+            return None
         if not q_text:
             nonempty_options = [o for o in options if o.strip()]
             pending_panel_threshold = float(self.config.get("quiz4_option_panel_pending_threshold", 0.78))
@@ -2982,7 +3030,7 @@ class GameDetector:
                 "quiz4", ph, full, q_img, opt_img,
                 question="", options=options, reason="ocr_failed",
             )
-            fallback_q = f"[OCR失敗] 四選一待校正 {ph & 0xffffffff:08x}"
+            fallback_q = f"[OCR失敗] 四選一待校正 {_capture_short_id(capture_path, ph)}"
             on_status("題目辨識失敗，已存待校正截圖")
             return {
                 "question": fallback_q,
@@ -3002,7 +3050,7 @@ class GameDetector:
             )
             pending_q = (
                 q_text if self.config.get("trust_ocr_text_for_pending", 0)
-                else f"[待校正] 四選一選項不足 {ph & 0xffffffff:08x}"
+                else f"[待校正] 四選一選項不足 {_capture_short_id(capture_path, ph)}"
             )
             on_status("選項不足，已存待校正截圖")
             return {
@@ -3032,7 +3080,7 @@ class GameDetector:
         )
         pending_q = (
             q_text if self.config.get("trust_ocr_text_for_pending", 0)
-            else f"[待校正] 四選一 {ph & 0xffffffff:08x}"
+            else f"[待校正] 四選一 {_capture_short_id(capture_path, ph)}"
         )
         return {"question": pending_q, "answer_idx": None, "answer_text": "",
                 "options": options, "source": "待校正截圖", "phash": ph,
