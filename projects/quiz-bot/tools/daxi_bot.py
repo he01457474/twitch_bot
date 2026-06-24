@@ -67,6 +67,7 @@ DEFAULT_CONFIG = {
     "popup_brightness_margin": 18,
     "quiz4_popup_frame_threshold": 0.35,
     "quiz4_popup_bottom_frame_threshold": 0.35,
+    "quiz4_option_panel_threshold": 0.78,
     "sidestand_popup_frame_threshold": 0.35,
     "popup_recognition_cooldown": 2.0,
     "popup_same_signature_threshold": 0.01,
@@ -2463,6 +2464,35 @@ class GameDetector:
             return 0.0
         return density
 
+    def quiz4_option_panel_signal(self, options_img):
+        """Estimate whether the options crop is inside the dark quiz dialog panel."""
+        if options_img is None or options_img.width < 40 or options_img.height < 18:
+            return 0.0
+        crop = options_img.convert("RGB")
+        x_pad = max(1, int(crop.width * 0.015))
+        y_pad = max(1, int(crop.height * 0.08))
+        if crop.width > x_pad * 2 and crop.height > y_pad * 2:
+            crop = crop.crop((x_pad, y_pad, crop.width - x_pad, crop.height - y_pad))
+        scale = min(1.0, 260 / max(1, crop.width))
+        if scale < 1.0:
+            crop = crop.resize((max(1, int(crop.width * scale)), max(1, int(crop.height * scale))), Image.Resampling.BILINEAR)
+        pixels = list(crop.getdata())
+        if not pixels:
+            return 0.0
+        dark_panel = 0
+        colorful = 0
+        for r, g, b in pixels:
+            mx, mn = max(r, g, b), min(r, g, b)
+            if mx <= 96 and mx - mn <= 58:
+                dark_panel += 1
+            if mx >= 125 and mx - mn >= 85:
+                colorful += 1
+        dark_ratio = dark_panel / len(pixels)
+        colorful_ratio = colorful / len(pixels)
+        if colorful_ratio > 0.10:
+            dark_ratio *= max(0.0, 1.0 - (colorful_ratio - 0.10) * 3.0)
+        return dark_ratio
+
     def is_popup_visible(self, img, w, h):
         frame_key = "sidestand_popup_frame_threshold" if self.mode == "sidestand" else "quiz4_popup_frame_threshold"
         frame_signal = self.popup_frame_signal(img, w, h)
@@ -2498,11 +2528,6 @@ class GameDetector:
         frame_threshold = max(0.28, float(self.config.get(frame_key, 0.35)) - 0.08)
         if frame_signal < frame_threshold:
             return False
-        if self.mode != "sidestand":
-            bottom_signal = probe.popup_bottom_frame_signal(crop_img, w, h)
-            bottom_threshold = max(0.42, float(self.config.get("quiz4_popup_bottom_frame_threshold", 0.35)) + 0.07)
-            if bottom_signal < bottom_threshold:
-                return False
         return True
 
     def _map_grace_seconds(self):
@@ -2902,6 +2927,11 @@ class GameDetector:
         opt_img = self._crop(img, w, h, "options_region")
         if not self.is_cropped_popup_visible(full):
             on_status("四選一裁切區不像完整問答框，略過")
+            return None
+        option_panel_signal = self.quiz4_option_panel_signal(opt_img)
+        option_panel_threshold = float(self.config.get("quiz4_option_panel_threshold", 0.78))
+        if option_panel_signal < option_panel_threshold:
+            on_status(f"四選一選項區不像問答框暗底，略過（{option_panel_signal:.0%}/{option_panel_threshold:.0%}）")
             return None
 
         image_entry = self.db4.find_by_question_image(
@@ -5817,6 +5847,11 @@ class DaxiApp:
                         bottom_signal = self.detector.popup_bottom_frame_signal(img, w, h)
                         bottom_threshold = float(self.config.get("quiz4_popup_bottom_frame_threshold", 0.35))
                         bottom_info = f"底框：{bottom_signal:.2f}/{bottom_threshold:.2f}  " if mode != "sidestand" else ""
+                        option_panel_info = ""
+                        if mode == "quiz4":
+                            option_panel_signal = self.detector.quiz4_option_panel_signal(opt_img)
+                            option_panel_threshold = float(self.config.get("quiz4_option_panel_threshold", 0.78))
+                            option_panel_info = f"選項暗底：{option_panel_signal:.0%}/{option_panel_threshold:.0%}  "
                         margin = float(self.config.get("popup_brightness_margin", 18))
                         text_signal = self.detector.popup_text_signal(img, w, h)
                         popup_ok = self.detector.is_popup_visible(img, w, h)
@@ -5825,6 +5860,7 @@ class DaxiApp:
                             f"框線：{edge:.1f}/{edge_threshold:.1f}  "
                             f"框體：{frame_signal:.2f}/{frame_threshold:.2f}  "
                             f"{bottom_info}"
+                            f"{option_panel_info}"
                             f"文字參考：{text_signal:.3f}  強制通過：{margin}\n"
                         )
                         _append("→ 彈窗已偵測到\n","ok") if popup_ok else _append("→ 未偵測到彈窗\n","warn")
