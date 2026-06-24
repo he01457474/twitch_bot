@@ -67,13 +67,14 @@ DEFAULT_CONFIG = {
     "popup_brightness_margin": 18,
     "quiz4_popup_frame_threshold": 0.35,
     "quiz4_popup_bottom_frame_threshold": 0.35,
-    "quiz4_option_panel_threshold": 0.78,
+    "quiz4_option_panel_threshold": 0.66,
+    "quiz4_option_panel_pending_threshold": 0.78,
     "sidestand_popup_frame_threshold": 0.35,
-    "popup_recognition_cooldown": 2.0,
+    "popup_recognition_cooldown": 1.0,
     "popup_same_signature_threshold": 0.01,
     "popup_ignore_signature_threshold": 0.002,
-    "monitor_idle_interval": 0.70,
-    "monitor_active_interval": 0.35,
+    "monitor_idle_interval": 0.45,
+    "monitor_active_interval": 0.25,
     "ocr_engine": "windows",  # windows / paddle / auto
     "question_region":  {"left": 0.17, "top": 0.12, "right": 0.74, "bottom": 0.27},
     "options_region":   {"left": 0.17, "top": 0.27, "right": 0.74, "bottom": 0.34},
@@ -2473,7 +2474,7 @@ class GameDetector:
         y_pad = max(1, int(crop.height * 0.08))
         if crop.width > x_pad * 2 and crop.height > y_pad * 2:
             crop = crop.crop((x_pad, y_pad, crop.width - x_pad, crop.height - y_pad))
-        scale = min(1.0, 260 / max(1, crop.width))
+        scale = min(1.0, 180 / max(1, crop.width))
         if scale < 1.0:
             crop = crop.resize((max(1, int(crop.width * scale)), max(1, int(crop.height * scale))), Image.Resampling.BILINEAR)
         pixels = list(crop.getdata())
@@ -2969,6 +2970,14 @@ class GameDetector:
                 q_text, options = claude_read_popup(full, api_key, on_detail=self._on_detail)
             self._record_api_call(ph)
         if not q_text:
+            nonempty_options = [o for o in options if o.strip()]
+            pending_panel_threshold = float(self.config.get("quiz4_option_panel_pending_threshold", 0.78))
+            if not nonempty_options and option_panel_signal < pending_panel_threshold:
+                self._ignored_sig_bits = self._last_sig_bits
+                on_status(
+                    f"四選一 OCR 空白且暗底不足，判定為背景略過（{option_panel_signal:.0%}/{pending_panel_threshold:.0%}）"
+                )
+                return None
             capture_path = self._save_pending_capture(
                 "quiz4", ph, full, q_img, opt_img,
                 question="", options=options, reason="ocr_failed",
@@ -3208,6 +3217,27 @@ class DaxiApp:
                 pass
         if cfg.get("ocr_engine") == "auto":
             cfg["ocr_engine"] = "windows"
+        try:
+            if float(cfg.get("quiz4_option_panel_threshold", 0.78)) >= 0.78:
+                cfg["quiz4_option_panel_threshold"] = DEFAULT_CONFIG["quiz4_option_panel_threshold"]
+        except Exception:
+            cfg["quiz4_option_panel_threshold"] = DEFAULT_CONFIG["quiz4_option_panel_threshold"]
+        cfg.setdefault("quiz4_option_panel_pending_threshold", DEFAULT_CONFIG["quiz4_option_panel_pending_threshold"])
+        try:
+            if float(cfg.get("popup_recognition_cooldown", 2.0)) >= 2.0:
+                cfg["popup_recognition_cooldown"] = DEFAULT_CONFIG["popup_recognition_cooldown"]
+        except Exception:
+            cfg["popup_recognition_cooldown"] = DEFAULT_CONFIG["popup_recognition_cooldown"]
+        try:
+            if float(cfg.get("monitor_active_interval", 0.35)) >= 0.35:
+                cfg["monitor_active_interval"] = DEFAULT_CONFIG["monitor_active_interval"]
+        except Exception:
+            cfg["monitor_active_interval"] = DEFAULT_CONFIG["monitor_active_interval"]
+        try:
+            if float(cfg.get("monitor_idle_interval", 0.70)) >= 0.70:
+                cfg["monitor_idle_interval"] = DEFAULT_CONFIG["monitor_idle_interval"]
+        except Exception:
+            cfg["monitor_idle_interval"] = DEFAULT_CONFIG["monitor_idle_interval"]
         return cfg
 
     def _save_config(self):
