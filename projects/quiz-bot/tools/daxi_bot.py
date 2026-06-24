@@ -2492,7 +2492,18 @@ class GameDetector:
         cfg["options_region"] = {"left": 0, "top": 0.58, "right": 1, "bottom": 1}
         probe = GameDetector(cfg, None, None)
         probe.mode = self.mode
-        return probe.is_popup_visible(crop_img, crop_img.width, crop_img.height)
+        w, h = crop_img.width, crop_img.height
+        frame_signal = probe.popup_frame_signal(crop_img, w, h)
+        frame_key = "sidestand_popup_frame_threshold" if self.mode == "sidestand" else "quiz4_popup_frame_threshold"
+        frame_threshold = max(0.28, float(self.config.get(frame_key, 0.35)) - 0.08)
+        if frame_signal < frame_threshold:
+            return False
+        if self.mode != "sidestand":
+            bottom_signal = probe.popup_bottom_frame_signal(crop_img, w, h)
+            bottom_threshold = max(0.42, float(self.config.get("quiz4_popup_bottom_frame_threshold", 0.35)) + 0.07)
+            if bottom_signal < bottom_threshold:
+                return False
+        return True
 
     def _map_grace_seconds(self):
         if bool(float(self.config.get("map_strict_mode", 1))):
