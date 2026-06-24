@@ -73,7 +73,6 @@ DEFAULT_CONFIG = {
     "popup_recognition_cooldown": 1.0,
     "popup_same_signature_threshold": 0.01,
     "popup_ignore_signature_threshold": 0.002,
-    "quiz4_post_ocr_signature_threshold": 0.14,
     "monitor_idle_interval": 0.45,
     "monitor_active_interval": 0.25,
     "ocr_engine": "windows",  # windows / paddle / auto
@@ -2349,29 +2348,6 @@ class GameDetector:
         self._ignored_sig_bits = self._last_sig_bits
         self._last_recognition_time = time.time()
 
-    def _quiz4_signature_still_current(self, expected_sig_bits, on_status):
-        if not expected_sig_bits or not self.hwnd:
-            return True
-        try:
-            if not (win32gui.IsWindow(self.hwnd) and win32gui.IsWindowVisible(self.hwnd)):
-                return False
-            img, w, h = capture_window(self.hwnd)
-            if not self.is_popup_visible(img, w, h):
-                on_status("題目已消失，略過這次辨識結果")
-                return False
-            q_img = self._crop(img, w, h, self._question_region_key())
-            opt_img = self._crop(img, w, h, "options_region")
-            current_bits = _text_signature_bits(self._quiz_signature_image(q_img, opt_img))
-            distance = _signature_distance(expected_sig_bits, current_bits)
-            threshold = float(self.config.get("quiz4_post_ocr_signature_threshold", 0.14))
-            if distance > threshold:
-                on_status(f"題目已切換，丟棄舊辨識結果（差異 {distance:.0%}）")
-                return False
-            return True
-        except Exception as e:
-            self._on_detail(f"OCR 後畫面比對失敗，保留本次結果：{type(e).__name__}: {e}")
-            return True
-
     def find_window(self):
         result = []
         def cb(hwnd, _):
@@ -3015,8 +2991,6 @@ class GameDetector:
                 on_status("Claude API 辨識中…")
                 q_text, options = claude_read_popup(full, api_key, on_detail=self._on_detail)
             self._record_api_call(ph)
-        if not self._quiz4_signature_still_current(self._last_sig_bits, on_status):
-            return None
         if not q_text:
             nonempty_options = [o for o in options if o.strip()]
             pending_panel_threshold = float(self.config.get("quiz4_option_panel_pending_threshold", 0.78))
