@@ -116,6 +116,7 @@ DEFAULT_CONFIG = {
     "quiz4_match_threshold": 0.78,
     "match_threshold": 0.72,
     "image_question_match_threshold": 0.88,
+    "quiz4_background_ocr": 1,
     "trust_ocr_text_for_pending": 0,
     "auto_add_duplicate_threshold": 0.68,
     "pending_merge_threshold": 0.68,
@@ -2171,6 +2172,38 @@ class Quiz4Database:
         self._save()
         return "added"
 
+    def update_pending_by_capture(self, capture_path, phash=0, question="", options=None, source="背景 OCR"):
+        if not capture_path:
+            return False
+        options = options or []
+        for e in self.entries:
+            if self.is_confirmed(e):
+                continue
+            if capture_path not in _entry_capture_paths(e):
+                continue
+            if phash:
+                e["phash"] = phash
+            if question:
+                e["question"] = question
+            if quiz_option_count(options) > 0:
+                e["options"] = options
+            e["source"] = source
+            self._save()
+            return True
+        return False
+
+    def delete_pending_by_capture(self, capture_path):
+        if not capture_path:
+            return False
+        for i, e in enumerate(list(self.entries)):
+            if self.is_confirmed(e):
+                continue
+            if capture_path in _entry_capture_paths(e):
+                self.entries.pop(i)
+                self._save()
+                return True
+        return False
+
     def delete(self, idx):
         if 0 <= idx < len(self.entries):
             self.entries.pop(idx); self._save()
@@ -2780,10 +2813,16 @@ class GameDetector:
         if not self.config.get("save_pending_captures", 1):
             return ""
         options = options or []
+        thumb = full_img.convert("RGB")
+        tw = 128
+        th = max(1, int(thumb.height * (tw / max(1, thumb.width))))
+        thumb = thumb.resize((tw, th), Image.Resampling.BILINEAR)
+        image_hash = hashlib.sha1(thumb.tobytes()).hexdigest()[:8]
         key = (
             mode,
             reason,
             ph,
+            image_hash,
             normalize_question_text(question),
             tuple(normalize_option_text(o) for o in options[:4]),
         )
@@ -2795,11 +2834,6 @@ class GameDetector:
             day_dir = os.path.join(CAPTURE_DIR, now.strftime("%Y%m%d"))
             os.makedirs(day_dir, exist_ok=True)
             text_part = _safe_filename_part(question or reason)
-            thumb = full_img.convert("RGB")
-            tw = 128
-            th = max(1, int(thumb.height * (tw / max(1, thumb.width))))
-            thumb = thumb.resize((tw, th), Image.Resampling.BILINEAR)
-            image_hash = hashlib.sha1(thumb.tobytes()).hexdigest()[:8]
             short_hash = hashlib.sha1(
                 (
                     json.dumps(key, ensure_ascii=False, default=str)
@@ -2970,6 +3004,25 @@ class GameDetector:
                 source=f"截圖題庫 {score:.0%}",
                 phash=ph,
             )
+
+        if bool(float(self.config.get("quiz4_background_ocr", 1))):
+            capture_path = self._save_pending_capture(
+                "quiz4", ph, full, q_img, opt_img,
+                question="", options=[], reason="queued",
+            )
+            pending_q = f"[待校正] 四選一 {_capture_short_id(capture_path, ph)}"
+            on_status("未知題目已截圖，背景 OCR 排程中")
+            return {
+                "question": pending_q,
+                "answer_idx": None,
+                "answer_text": "",
+                "options": [],
+                "source": "背景待校正",
+                "phash": ph,
+                "capture_path": capture_path,
+                "background_ocr": True,
+                "ocr_failed": True,
+            }
 
         on_status("OCR 辨識中…")
         q_text, options = ocr_parse_quiz(full, question_img=q_img, options_img=opt_img, on_detail=self._on_detail)
@@ -3181,6 +3234,7 @@ class DaxiApp:
         self._nav_vectors = {}
         self._last_nav_key = None
         self._current = None
+        self._background_ocr_jobs = set()
         self._pinned  = False
         self._mode    = tk.StringVar(value="quiz4")
         self._last_status_msg = ""
@@ -4054,11 +4108,16 @@ class DaxiApp:
             return
         self._last_result_key = key
         self._last_result_time = now
-        self._current = result
-        if not self._pinned: self.root.after(0, self._popup_window)
-        self.root.after(0, self._show_result, result)
         mode = self._mode.get()
-        if (mode == "quiz4" and result.get("answer_idx")) or (mode == "sidestand" and result.get("answer")):
+        has_answer = (
+            (mode == "quiz4" and result.get("answer_idx"))
+            or (mode == "sidestand" and result.get("answer"))
+        )
+        if has_answer:
+            self._current = result
+            if not self._pinned:
+                self.root.after(0, self._popup_window)
+            self.root.after(0, self._show_result, result)
             self.detector.ignore_current_popup()
         # 自動加入題庫（無答案的新題目）
         q = result.get("question", "")
@@ -4078,7 +4137,10 @@ class DaxiApp:
                     self._schedule_refresh(self._refresh_pending4)
                 elif status == "added":
                     opt_count = quiz_option_count(result.get("options", []))
-                    self.root.after(0, self._notify_auto_added, "quiz4", opt_count)
+                    if result.get("background_ocr"):
+                        self.root.after(0, self._add_notif, "四選一 → 已暫存截圖，背景 OCR 處理中", "dim")
+                    else:
+                        self.root.after(0, self._notify_auto_added, "quiz4", opt_count)
                     self._schedule_refresh(self._refresh_pending4)
                 elif status == "answered":
                     self.root.after(0, self._add_notif, "四選一 → 類似題已經有答案，這次 OCR 錯字不寫入題庫", "dim")
@@ -4104,6 +4166,8 @@ class DaxiApp:
                     self._schedule_refresh(self._refresh_pending_dbs)
                 elif status == "answered":
                     self.root.after(0, self._add_notif, "選邊站 → 類似題已經有答案，這次 OCR 錯字不寫入題庫", "dim")
+        if mode == "quiz4" and result.get("background_ocr"):
+            self._queue_quiz4_background_ocr(result)
 
     def _result_key(self, result):
         mode = self._mode.get()
@@ -4123,6 +4187,97 @@ class DaxiApp:
             result.get("answer"),
             result.get("recognized", ""),
         )
+
+    def _queue_quiz4_background_ocr(self, result):
+        capture_path = result.get("capture_path") or ""
+        if not capture_path or capture_path in self._background_ocr_jobs:
+            return
+        self._background_ocr_jobs.add(capture_path)
+        self._add_notif("四選一 → 已排入背景 OCR，監測繼續", "dim")
+        threading.Thread(
+            target=self._quiz4_background_ocr_worker,
+            args=(dict(result),),
+            daemon=True,
+        ).start()
+
+    def _quiz4_background_ocr_worker(self, result):
+        capture_path = result.get("capture_path") or ""
+        try:
+            popup_img = _load_image(capture_path)
+            q_img = _load_capture_region(capture_path, "question")
+            opt_img = _load_capture_region(capture_path, "options")
+            if popup_img is None:
+                raise RuntimeError("待校正截圖讀取失敗")
+            q_text, options = ocr_parse_quiz(
+                popup_img,
+                question_img=q_img,
+                options_img=opt_img,
+                on_detail=self._on_detail,
+            )
+            self.root.after(
+                0,
+                lambda r=result, q=q_text, o=options: self._finish_quiz4_background_ocr(r, q, o),
+            )
+        except Exception as e:
+            self.root.after(
+                0,
+                lambda p=capture_path, err=e: self._finish_quiz4_background_ocr_error(p, err),
+            )
+
+    def _finish_quiz4_background_ocr_error(self, capture_path, err):
+        self._background_ocr_jobs.discard(capture_path)
+        self._add_notif(f"四選一 → 背景 OCR 失敗：{type(err).__name__}", "warn")
+
+    def _finish_quiz4_background_ocr(self, result, q_text, options):
+        capture_path = result.get("capture_path") or ""
+        self._background_ocr_jobs.discard(capture_path)
+        ph = result.get("phash") or 0
+        opt_count = quiz_option_count(options)
+        if not q_text and opt_count == 0:
+            self._add_notif("四選一 → 背景 OCR 沒讀到文字，保留截圖待校正", "warn")
+            return
+
+        entry = self.db4.lookup(
+            question=q_text,
+            threshold=float(self.config.get("quiz4_match_threshold", 0.78)),
+        ) if q_text else None
+        if entry and entry.get("answer_idx"):
+            self.db4.delete_pending_by_capture(capture_path)
+            _attach_capture(entry, capture_path)
+            self.db4._save()
+            self._schedule_refresh(self._refresh_pending4)
+            answer_result = dict(
+                entry,
+                options=options or entry.get("options", []),
+                source="背景 OCR 題庫",
+                phash=ph,
+                capture_path=capture_path,
+                recognized=q_text,
+            )
+            self._add_notif("四選一 → 背景 OCR 命中已知題，已顯示答案", "ok")
+            self._on_result(answer_result)
+            return
+
+        updated = self.db4.update_pending_by_capture(
+            capture_path,
+            phash=ph,
+            question=q_text or result.get("question", ""),
+            options=options,
+            source="背景 OCR",
+        )
+        if not updated:
+            self.db4.add_pending(
+                ph,
+                q_text or result.get("question", ""),
+                options,
+                threshold=0.98,
+                capture_path=capture_path,
+            )
+        self._schedule_refresh(self._refresh_pending4)
+        if q_text:
+            self._add_notif(f"四選一 → 背景 OCR 已補題目，選項 {opt_count}/4", "dim" if opt_count >= 4 else "warn")
+        else:
+            self._add_notif(f"四選一 → 背景 OCR 只補到選項 {opt_count}/4", "warn")
 
     def _add_notif(self, msg, tag="info"):
         ts = datetime.datetime.now().strftime("%H:%M:%S")
