@@ -10,6 +10,7 @@ $stopFlag = Get-IrlStopFlagPath
 $PID | Set-Content -LiteralPath $PidFile -Encoding ASCII
 $updateScript = Join-Path $PSScriptRoot 'update_dynu_ddns.ps1'
 $notifyScript = Join-Path $PSScriptRoot 'send_irl_notification.ps1'
+$intervalSeconds = 900
 
 function Send-AdminNotification {
     param(
@@ -47,5 +48,5 @@ while ($true) {
         $lastFailureMessage = $_.Exception.Message
         Send-AdminNotification -Title 'Dynu DDNS 背景更新失敗' -Message $lastFailureMessage -Level Error -Key 'dynu-watchdog-failed' -CooldownMinutes 10
     }
-    Start-Sleep -Seconds 300
+    Start-Sleep -Seconds $intervalSeconds
 }

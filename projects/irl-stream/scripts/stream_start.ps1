@@ -130,7 +130,7 @@ if (Test-Path $dynuWatchdogScript) {
         Remove-Item $dynuWatchdogPidFile -ErrorAction SilentlyContinue
     }
     Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$dynuWatchdogScript`" -PidFile `"$dynuWatchdogPidFile`"" -WindowStyle Hidden
-    Write-Host "Dynu DDNS 監控已啟動（每 5 分鐘自動更新）" -ForegroundColor Green
+    Write-Host "Dynu DDNS 監控已啟動（每 15 分鐘自動更新）" -ForegroundColor Green
 }
 
 if (Test-Path $pathWatchdogScript) {

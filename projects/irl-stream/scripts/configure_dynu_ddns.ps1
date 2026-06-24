@@ -48,7 +48,7 @@ Write-Host '正在測試 Dynu 更新...' -ForegroundColor Cyan
 & $UpdaterScript
 
 Write-Host ''
-Write-Host 'Dynu 設定已儲存。之後啟動直播環境時，會在背景每 5 分鐘自動更新 Dynu。' -ForegroundColor Green
+Write-Host 'Dynu 設定已儲存。之後啟動直播環境時，會在背景每 15 分鐘自動更新 Dynu。' -ForegroundColor Green
 
 Write-Host ''
 Write-Host "目前 IRL 對外網址已設定為：$hostname" -ForegroundColor Green
