@@ -465,6 +465,11 @@ _BATCH_TRADE_RE = re.compile(
     r'(\d+(?:\.\d+)?)\s*(張|股)?'
     r'(?:\s*(\d+(?:\.\d+)?))?'
 )
+_BATCH_BUY_ONLY_RE = re.compile(
+    r'([^\s,，、]+)\s+'
+    r'(\d+(?:\.\d+)?)\s*(張|股)?'
+    r'(?:\s*(\d+(?:\.\d+)?))?'
+)
 
 # ── 股價 API ──────────────────────────────────────────────────
 def _recent_trading_days(n=5) -> list[datetime.date]:
@@ -1588,7 +1593,7 @@ async def _execute_trade(loop, rticker: str, rname: str, parsed_shares: int, pri
     ticker='股票代號或名稱（例如 2330 或 台積電）',
     shares='股數，可用「張」為單位（例如 1張 = 1000股）',
     price='每股價格（元），留空則自動用目前市價',
-    batch='一次輸入多筆買賣，例如：昇達科賣出5股2200 定穎投控賣出10股187（價格可省略，會用目前市價）'
+    batch='一次輸入多筆買賣，例如：台達電 5股 1850；賣出請寫：昇達科賣出5股2200（價格可省略）'
 )
 @app_commands.choices(action=[
     app_commands.Choice(name='買入記錄', value='buy'),
@@ -1672,17 +1677,29 @@ async def cmd_stock(interaction: discord.Interaction,
         if not batch.strip():
             await interaction.followup.send(
                 '請在「batch」欄位一次輸入多筆買賣，例如：\n'
-                '`昇達科賣出5股2200 定穎投控賣出10股187`\n'
-                '（用空白分隔每筆，價格可省略則用目前市價）', ephemeral=True); return
-        matches = list(_BATCH_TRADE_RE.finditer(batch))
+                '`台達電 5股 1850 鴻海 10股 200`\n'
+                '賣出請寫：`昇達科賣出5股2200 定穎投控賣出10股187`\n'
+                '（買入可省略「買入」兩字；價格可省略則用目前市價）', ephemeral=True); return
+        trade_matches = list(_BATCH_TRADE_RE.finditer(batch))
+        spans = [(m.start(), m.end()) for m in trade_matches]
+        buy_only_matches = [
+            m for m in _BATCH_BUY_ONLY_RE.finditer(batch)
+            if not any(start < m.end() and m.start() < end for start, end in spans)
+        ]
+        matches = sorted([*trade_matches, *buy_only_matches], key=lambda item: item.start())
         if not matches:
             await interaction.followup.send(
-                '看不懂批次格式，請用「股票名稱/代號＋買入或賣出＋股數＋股＋價格」，例如：\n'
+                '看不懂批次格式，買入可用「股票 股數 價格」，賣出要加上賣出，例如：\n'
+                '`台達電 5股 1850 鴻海 10股 200`\n'
                 '`昇達科賣出5股2200 定穎投控賣出10股187`', ephemeral=True); return
         results = []
         for m in matches:
-            raw_name, act_word, shares_str, unit, price_str = m.groups()
-            typ = 'buy' if act_word in ('買入', '買進', '加碼') else 'sell'
+            if m.re is _BATCH_TRADE_RE:
+                raw_name, act_word, shares_str, unit, price_str = m.groups()
+                typ = 'buy' if act_word in ('買入', '買進', '加碼') else 'sell'
+            else:
+                raw_name, shares_str, unit, price_str = m.groups()
+                typ = 'buy'
             rticker, rname = await loop.run_in_executor(None, resolve_ticker, raw_name)
             if not rticker:
                 results.append(f'❌ 找不到「{raw_name}」')
