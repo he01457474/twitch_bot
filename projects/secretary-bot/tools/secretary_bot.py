@@ -461,7 +461,7 @@ def parse_shares(text: str) -> int | None:
 # 批次買賣解析：「股票名稱/代號」+「買入/賣出」+「股數」(+單位) (+價格)
 # 例：昇達科賣出5股 2200.0 定穎投控賣出10股 187.0
 _BATCH_TRADE_RE = re.compile(
-    r'([^\s]+?)(買入|買進|加碼|賣出|賣掉|出清|減碼)'
+    r'([^\s,，、]+?)\s*(買入|買進|加碼|賣出|賣掉|出清|減碼)\s*'
     r'(\d+(?:\.\d+)?)\s*(張|股)?'
     r'(?:\s*(\d+(?:\.\d+)?))?'
 )
@@ -1617,6 +1617,28 @@ async def cmd_stock(interaction: discord.Interaction,
     resolved = (None, None)
     parsed_shares = None
     if a in ('buy', 'sell', 'calc_buy', 'calc_sell'):
+        if ticker and not shares:
+            inline = _BATCH_TRADE_RE.fullmatch(ticker.strip())
+            if inline:
+                raw_name, act_word, shares_str, unit, price_str = inline.groups()
+                inline_typ = 'buy' if act_word in ('買入', '買進', '加碼') else 'sell'
+            else:
+                inline = _BATCH_BUY_ONLY_RE.fullmatch(ticker.strip())
+                if inline:
+                    raw_name, shares_str, unit, price_str = inline.groups()
+                    inline_typ = 'buy'
+            if inline:
+                expected_typ = 'buy' if a in ('buy', 'calc_buy') else 'sell'
+                if inline_typ != expected_typ:
+                    await interaction.followup.send(
+                        f'你選的是{"買入" if expected_typ == "buy" else "賣出"}，但文字裡是{"買入" if inline_typ == "buy" else "賣出"}；請改選正確動作，或用「批次買賣」。',
+                        ephemeral=True,
+                    )
+                    return
+                ticker = raw_name.strip()
+                shares = f'{shares_str}{unit or "股"}'
+                if price <= 0 and price_str:
+                    price = float(price_str)
         if ticker:
             resolved = await loop.run_in_executor(None, resolve_ticker, ticker)
             if resolved[0] is None:
@@ -1632,7 +1654,7 @@ async def cmd_stock(interaction: discord.Interaction,
         if not resolved[0] or not parsed_shares:
             await interaction.followup.send(
                 '請填股票、股數；股數可用「張」（1張 = 1000股），價格留空會自動用目前市價。\n'
-                '例如：台積電、1張、900', ephemeral=True); return
+                '也可以直接在股票欄輸入：`台達電買入5股1850`', ephemeral=True); return
         rticker, rname = resolved
         p = await loop.run_in_executor(None, fetch_price, rticker)
         name = _best_name(rticker, rname, p)
@@ -1651,7 +1673,7 @@ async def cmd_stock(interaction: discord.Interaction,
         if not resolved[0] or not parsed_shares:
             await interaction.followup.send(
                 '請填股票、股數；股數可用「張」（1張 = 1000股），價格留空會自動用目前市價。\n'
-                '例如：台積電、1張、950', ephemeral=True); return
+                '也可以直接在股票欄輸入：`台達電賣出5股1850`', ephemeral=True); return
         rticker, rname = resolved
         hs = get_holdings()
         h = next((x for x in hs if x['ticker'] == rticker), None)
