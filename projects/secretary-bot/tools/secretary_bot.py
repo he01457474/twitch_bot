@@ -1564,7 +1564,8 @@ async def _execute_trade(loop, rticker: str, rname: str, parsed_shares: int, pri
             c.execute('INSERT INTO transactions (ticker,name,shares,cost,type) VALUES (?,?,?,?,?)',
                       (rticker, name, parsed_shares, actual_price, 'buy'))
         note = '（市價）' if price <= 0 else ''
-        return True, f'✅ 買入 **{name}({rticker})** × {parsed_shares:,}股 @ {actual_price:,.0f}元{note}'
+        total = parsed_shares * actual_price
+        return True, f'✅ 買入 **{name}({rticker})** × {parsed_shares:,}股 @ {actual_price:,.0f}元{note}｜本次成本 {total:,.0f}元'
     else:
         hs = get_holdings()
         h = next((x for x in hs if x['ticker'] == rticker), None)
@@ -1582,8 +1583,9 @@ async def _execute_trade(loop, rticker: str, rname: str, parsed_shares: int, pri
             c.execute('INSERT INTO transactions (ticker,name,shares,cost,type) VALUES (?,?,?,?,?)',
                       (rticker, h['name'], parsed_shares, actual_price, 'sell'))
         note = '（市價）' if price <= 0 else ''
+        total = parsed_shares * actual_price
         return True, (f'✅ 賣出 **{h["name"]}({rticker})** × {parsed_shares:,}股 @ {actual_price:,.0f}元{note}'
-                      f'｜損益 {signed(realized)}元 {color(realized)}')
+                      f'｜本次收入 {total:,.0f}元｜損益 {signed(realized)}元 {color(realized)}')
 
 # ── 股票指令 ──────────────────────────────────────────────────
 @tree.command(name='股票', description='股票買賣記錄與損益查詢')
@@ -1665,9 +1667,10 @@ async def cmd_stock(interaction: discord.Interaction,
             c.execute('INSERT INTO transactions (ticker,name,shares,cost,type) VALUES (?,?,?,?,?)',
                       (rticker, name, parsed_shares, actual_price, 'buy'))
         note = '（目前市價）' if price <= 0 else ''
+        total = parsed_shares * actual_price
         await interaction.followup.send(
             f'✅ 買入記錄\n**{name} {rticker}** × {parsed_shares:,}股 @ {actual_price:,.0f}元{note}\n'
-            f'總成本：{parsed_shares*actual_price:,.0f}元', ephemeral=True)
+            f'本次成本：{total:,.0f}元', ephemeral=True)
 
     elif a == 'sell':
         if not resolved[0] or not parsed_shares:
@@ -1691,8 +1694,10 @@ async def cmd_stock(interaction: discord.Interaction,
             c.execute('INSERT INTO transactions (ticker,name,shares,cost,type) VALUES (?,?,?,?,?)',
                       (rticker, h['name'], parsed_shares, actual_price, 'sell'))
         note = '（目前市價）' if price <= 0 else ''
+        total = parsed_shares * actual_price
         await interaction.followup.send(
             f'✅ 賣出記錄\n**{h["name"]} {rticker}** × {parsed_shares:,}股 @ {actual_price:,.0f}元{note}\n'
+            f'本次收入：{total:,.0f}元\n'
             f'實現損益：{signed(realized)}元 {color(realized)}', ephemeral=True)
 
     elif a == 'batch':
