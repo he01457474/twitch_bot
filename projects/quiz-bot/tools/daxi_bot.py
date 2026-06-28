@@ -1680,11 +1680,20 @@ def _ocr_parse_quiz_by_layout(full_img, question_img=None, options_img=None, on_
 
     return clean_question_candidate(q_text), options[:4]
 
+def _quiz_question_content_image(question_img):
+    if question_img is None:
+        return None
+    width, height = question_img.size
+    if height >= 60 and width / max(1, height) >= 4.0:
+        return question_img.crop((0, int(height * 0.25), width, height))
+    return question_img
+
 def ocr_parse_quiz(full_img, question_img=None, options_img=None, on_detail=None):
     """OCR 彈窗圖，分離題目和選項。
     question_img：若提供，獨立辨識題目（避免 2 欄選項佈局干擾讀取順序）。
     回傳 (question_str, [opt1, opt2, opt3, opt4])。"""
     strict_question_region = question_img is not None
+    question_img = _quiz_question_content_image(question_img)
     high_precision_quiz4 = options_img is not None
     if _OCR_ENGINE == "windows":
         q_by_layout, opts_by_layout = _ocr_parse_quiz_by_layout(
@@ -2010,6 +2019,55 @@ def _load_capture_region(capture_path, region="question"):
     if len(_CAPTURE_REGION_CACHE) > 96:
         _CAPTURE_REGION_CACHE.pop(next(iter(_CAPTURE_REGION_CACHE)))
     return img
+
+def _load_capture_image(path):
+    if not path or not os.path.exists(path):
+        return None
+    try:
+        return Image.open(path).convert("RGB")
+    except Exception:
+        return None
+
+def _capture_bundle_paths(capture_path):
+    if not capture_path:
+        return []
+    if capture_path.endswith("_popup.png"):
+        base = capture_path[:-10]
+        return [
+            capture_path,
+            base + "_question.png",
+            base + "_options.png",
+            base + "_meta.json",
+        ]
+    return [capture_path]
+
+def _delete_capture_bundle(capture_path):
+    capture_root = os.path.normcase(os.path.abspath(CAPTURE_DIR))
+    deleted = 0
+    parent_dirs = set()
+    for path in _capture_bundle_paths(capture_path):
+        full_path = os.path.normcase(os.path.abspath(path))
+        try:
+            if os.path.commonpath([capture_root, full_path]) != capture_root:
+                continue
+        except ValueError:
+            continue
+        _CAPTURE_REGION_CACHE.pop((path, "question"), None)
+        _CAPTURE_REGION_CACHE.pop((path, "options"), None)
+        if not os.path.isfile(path):
+            continue
+        try:
+            os.unlink(path)
+            deleted += 1
+            parent_dirs.add(os.path.dirname(path))
+        except OSError:
+            pass
+    for folder in parent_dirs:
+        try:
+            os.rmdir(folder)
+        except OSError:
+            pass
+    return deleted
 
 def _entry_capture_paths(entry):
     paths = []
@@ -2413,13 +2471,17 @@ class GameDetector:
         return "sidestand_question_region" if self.mode == "sidestand" else "question_region"
 
     def _quiz_signature_image(self, q_img, opt_img):
-        qw, qh = q_img.size
+        # The countdown is drawn along the bottom of the options panel. Exclude
+        # that band so one live question keeps the same visual signature.
         ow, oh = opt_img.size
+        stable_opt_img = opt_img.crop((0, 0, ow, max(1, int(oh * 0.72))))
+        qw, qh = q_img.size
+        ow, oh = stable_opt_img.size
         sw = max(1, qw, ow)
         sh = max(1, qh + oh)
         sig = Image.new("RGB", (sw, sh), (0, 0, 0))
         sig.paste(q_img.convert("RGB"), (0, 0))
-        sig.paste(opt_img.convert("RGB"), (0, qh))
+        sig.paste(stable_opt_img.convert("RGB"), (0, qh))
         return sig
 
     def sample_brightness(self, img, w, h):
@@ -3235,6 +3297,7 @@ class DaxiApp:
         self._last_nav_key = None
         self._current = None
         self._background_ocr_jobs = set()
+        self._cancelled_background_ocr_jobs = set()
         self._pinned  = False
         self._mode    = tk.StringVar(value="quiz4")
         self._last_status_msg = ""
@@ -3733,7 +3796,9 @@ class DaxiApp:
 
     def _build_pending4(self, f):
         cols = ("question","state","source")
-        self.pending4_tree = ttk.Treeview(f, columns=cols, show="headings", height=12)
+        self.pending4_tree = ttk.Treeview(
+            f, columns=cols, show="headings", height=12, selectmode="extended"
+        )
         self.pending4_tree.heading("question", text="題目")
         self.pending4_tree.heading("state",    text="狀態")
         self.pending4_tree.heading("source",   text="來源")
@@ -3776,7 +3841,9 @@ class DaxiApp:
 
     def _build_pending_dbs(self, f):
         cols = ("question","state")
-        self.pending_dbs_tree = ttk.Treeview(f, columns=cols, show="headings", height=12)
+        self.pending_dbs_tree = ttk.Treeview(
+            f, columns=cols, show="headings", height=12, selectmode="extended"
+        )
         self.pending_dbs_tree.heading("question", text="題目")
         self.pending_dbs_tree.heading("state",   text="狀態")
         self.pending_dbs_tree.column("question", width=360)
@@ -4203,7 +4270,7 @@ class DaxiApp:
     def _quiz4_background_ocr_worker(self, result):
         capture_path = result.get("capture_path") or ""
         try:
-            popup_img = _load_image(capture_path)
+            popup_img = _load_capture_image(capture_path)
             q_img = _load_capture_region(capture_path, "question")
             opt_img = _load_capture_region(capture_path, "options")
             if popup_img is None:
@@ -4226,11 +4293,20 @@ class DaxiApp:
 
     def _finish_quiz4_background_ocr_error(self, capture_path, err):
         self._background_ocr_jobs.discard(capture_path)
-        self._add_notif(f"四選一 → 背景 OCR 失敗：{type(err).__name__}", "warn")
+        if capture_path in self._cancelled_background_ocr_jobs:
+            self._cancelled_background_ocr_jobs.discard(capture_path)
+            return
+        self._add_notif(
+            f"四選一 → 背景 OCR 失敗：{type(err).__name__}: {str(err)[:100]}",
+            "warn",
+        )
 
     def _finish_quiz4_background_ocr(self, result, q_text, options):
         capture_path = result.get("capture_path") or ""
         self._background_ocr_jobs.discard(capture_path)
+        if capture_path in self._cancelled_background_ocr_jobs:
+            self._cancelled_background_ocr_jobs.discard(capture_path)
+            return
         ph = result.get("phash") or 0
         opt_count = quiz_option_count(options)
         if not q_text and opt_count == 0:
@@ -4935,6 +5011,15 @@ class DaxiApp:
             return None
         return mapping[visible_idx]
 
+    def _selected_real_indices(self, tree, mapping_name):
+        mapping = getattr(self, mapping_name, [])
+        indices = []
+        for item_id in tree.selection():
+            visible_idx = tree.index(item_id)
+            if 0 <= visible_idx < len(mapping):
+                indices.append(mapping[visible_idx])
+        return sorted(set(indices), reverse=True)
+
     def _quiz4_capture_images_from_path(self, path):
         base = path
         for suffix in ("_question.png", "_options.png", "_popup.png"):
@@ -5320,12 +5405,19 @@ class DaxiApp:
             self._refresh_pending4()
 
     def _delete_pending4(self):
-        sel = self.pending4_tree.selection()
-        if not sel: return
-        if messagebox.askyesno("刪除","確定要刪除這筆四選一待校正資料？"):
-            idx = self._selected_real_index(self.pending4_tree, "_pending4_visible_indices")
-            if idx is not None:
-                self.db4.delete(idx)
+        indices = self._selected_real_indices(
+            self.pending4_tree, "_pending4_visible_indices"
+        )
+        if not indices:
+            return
+        if messagebox.askyesno("批量刪除", f"確定要刪除選取的 {len(indices)} 筆四選一待校正資料？"):
+            capture_paths = []
+            for idx in indices:
+                if 0 <= idx < len(self.db4.entries):
+                    capture_paths.extend(_entry_capture_paths(self.db4.entries[idx]))
+                    self.db4.entries.pop(idx)
+            self.db4._save()
+            self._delete_unreferenced_pending_captures(capture_paths)
             self._refresh_db4()
             self._refresh_pending4()
 
@@ -5340,14 +5432,35 @@ class DaxiApp:
             self._refresh_pending_dbs()
 
     def _delete_pending_dbs(self):
-        sel = self.pending_dbs_tree.selection()
-        if not sel: return
-        if messagebox.askyesno("刪除","確定要刪除這筆選邊站待校正資料？"):
-            idx = self._selected_real_index(self.pending_dbs_tree, "_pending_dbs_visible_indices")
-            if idx is not None:
-                self.dbs.delete(idx)
+        indices = self._selected_real_indices(
+            self.pending_dbs_tree, "_pending_dbs_visible_indices"
+        )
+        if not indices:
+            return
+        if messagebox.askyesno("批量刪除", f"確定要刪除選取的 {len(indices)} 筆選邊站待校正資料？"):
+            capture_paths = []
+            for idx in indices:
+                if 0 <= idx < len(self.dbs.entries):
+                    capture_paths.extend(_entry_capture_paths(self.dbs.entries[idx]))
+                    self.dbs.entries.pop(idx)
+            self.dbs._save()
+            self._delete_unreferenced_pending_captures(capture_paths)
             self._refresh_dbs()
             self._refresh_pending_dbs()
+
+    def _delete_unreferenced_pending_captures(self, capture_paths):
+        referenced = set()
+        for entry in self.db4.entries + self.dbs.entries:
+            referenced.update(_entry_capture_paths(entry))
+        deleted = 0
+        for capture_path in set(capture_paths):
+            if capture_path in referenced:
+                continue
+            if capture_path in self._background_ocr_jobs:
+                self._cancelled_background_ocr_jobs.add(capture_path)
+            deleted += _delete_capture_bundle(capture_path)
+        if deleted:
+            self._add_notif(f"已同步刪除 {deleted} 個待校正截圖檔案", "dim")
 
     def _apply_cfg(self):
         _str_keys = {"api_key", "gemini_api_key", "gemini_model", "ocr_engine"}
