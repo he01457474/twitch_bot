@@ -3125,9 +3125,14 @@ def build_stock_analysis(ticker: str, display_name: str = '') -> discord.Embed |
         f"不得加入資料中沒有的產品、客戶、財報或投資判斷，只輸出正文。\n{profile_info}",
         max_tokens=220,
     )
+    display_industry = (
+        profile.get('industry_category')
+        or _friendly_industry_name(profile.get('industry'))
+        or _friendly_industry_name(profile.get('sector'))
+        or '尚無產業分類'
+    )
     if company_text.startswith('（AI'):
-        industry_name = profile.get('industry_category') or _friendly_industry_name(profile.get('industry')) or '目前未分類產業'
-        company_text = f"{label}({ticker})屬於{industry_name}；公司詳細業務暫時無法整理。"
+        company_text = '主要業務資料暫時無法整理。'
     ma20 = metrics.get('ma20')
     support = metrics.get('support20')
     return20 = metrics.get('return_20d')
@@ -3159,7 +3164,6 @@ def build_stock_analysis(ticker: str, display_name: str = '') -> discord.Embed |
     news_note = f" 近期消息「{news[0]}」已納入觀察，但操作仍以價格、營收與法人方向為主。" if news else ''
     ai_text = (
         f"【先看結論】{conclusion}。{conclusion_reason}。\n\n"
-        f"【公司在做什麼】{company_text}\n\n"
         f"【支持理由】{'；'.join(positives) if positives else '目前沒有明確的正面數據。'}\n"
         f"【風險】{'；'.join(risks) if risks else '目前量價、營收與法人沒有明顯警訊。'}\n\n"
         f"【新手可以怎麼做】{action_text}{news_note}"
@@ -3172,17 +3176,11 @@ def build_stock_analysis(ticker: str, display_name: str = '') -> discord.Embed |
         color=0x2ECC71 if (dc and dc > 0) else (0xE74C3C if (dc and dc < 0) else 0x95A5A6)
     )
 
-    basic_lines = []
-    if profile.get('market_type'):
-        basic_lines.append(f"市場別：{profile['market_type']}")
-    if profile.get('industry_category'):
-        basic_lines.append(f"產業：{profile['industry_category']}")
-    if profile.get('industry'):
-        basic_lines.append(f"Yahoo：{_friendly_industry_name(profile['industry'])}")
-    if profile.get('website'):
-        basic_lines.append(f"網站：{profile['website']}")
-    if basic_lines:
-        embed.add_field(name='🏢 基本資料', value='\n'.join(basic_lines)[:1024], inline=False)
+    embed.add_field(
+        name='🏢 產業與主要業務',
+        value=f"產業：{display_industry}\n主要業務：{company_text}"[:1024],
+        inline=False,
+    )
 
     # 價格區
     price_lines = []
