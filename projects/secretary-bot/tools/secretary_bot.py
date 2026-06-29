@@ -873,6 +873,22 @@ def fetch_stock_profile(ticker: str, display_name: str = '') -> dict:
     return profile
 
 
+_INDUSTRY_ZH = {
+    'Electronic Components': '電子零組件',
+    'Electrical Equipment & Parts': '電機設備與零件',
+    'Semiconductors': '半導體',
+    'Computer Hardware': '電腦硬體',
+    'Communication Equipment': '通訊設備',
+    'Auto Parts': '汽車零組件',
+    'Banks - Regional': '銀行',
+    'Insurance - Diversified': '綜合保險',
+}
+
+
+def _friendly_industry_name(value: str) -> str:
+    return _INDUSTRY_ZH.get(value or '', value or '')
+
+
 def _finmind_rows(dataset: str, ticker: str, start_date: str, timeout: int = 12) -> list[dict]:
     """統一讀取 FinMind；錯誤或額度不足時回傳空陣列。"""
     params = {
@@ -961,7 +977,7 @@ def fetch_revenue_metrics(ticker: str) -> dict:
                       and int(row.get('revenue_month') or 0) == int(latest.get('revenue_month') or 0)), None)
 
     def growth(current: float, base: float | None) -> float | None:
-        return (current - base) / base * 100 if base else None
+        return (current - base) / base * 100 if base is not None and base > 0 else None
 
     return {
         'revenue_month': f"{int(latest.get('revenue_year') or 0)}/{int(latest.get('revenue_month') or 0):02d}",
@@ -1386,8 +1402,17 @@ def refresh_news_cache(days: int = 7):
     categories = ('headline', 'wd_stock', 'us_stock', 'tw_macro', 'forex', 'commodity', 'cn_stock', 'tw_stock')
     for category in categories:
         _collect_cnyes_titles(category, days=days, limit=20, pages=2)
-    for query in ('台股 產業 題材 法人', '美股 聯準會 美債', 'AI 伺服器 半導體', '原油 銅 地緣政治'):
-        scrape_google_news(query, days=days, limit=8)
+    google_queries = (
+        '台股 產業 題材 法人',
+        '台股 盤面焦點 強勢族群',
+        '台股 營收 創高 訂單',
+        '台股 政策 受惠 供應鏈',
+        '美股 聯準會 美債',
+        'AI 伺服器 半導體',
+        '原油 銅 地緣政治',
+    )
+    for query in google_queries:
+        scrape_google_news(query, days=days, limit=10)
 
 
 _GLOBAL_SYMBOLS = {
@@ -1602,7 +1627,7 @@ def ai_holding_analysis(enriched: list[dict], insts: dict | None = None, market_
     def priority(h: dict) -> float:
         return abs(h.get('day_pct') or 0) * 2 + abs(h.get('pnl_pct') or 0) / 5 + abs(h.get('return_20d') or 0) / 5
 
-    guidance_lines, invalidation_lines = [], []
+    guidance_lines = []
     for h in sorted(stocks, key=priority, reverse=True)[:4]:
         cur = h.get('today_close') or h.get('close') or h.get('yesterday_close')
         ma20 = h.get('ma20')
@@ -1620,6 +1645,8 @@ def ai_holding_analysis(enriched: list[dict], insts: dict | None = None, market_
             facts.append(f"成交量是 20 日平均 {volume_ratio:.1f} 倍")
         if inst5 is not None:
             facts.append(f"法人近 5 日 {signed(inst5/10000, '.0f')} 萬股")
+        if h.get('latest_news'):
+            facts.append(f"近期消息「{h['latest_news']}」")
 
         if day_pct is not None and day_pct >= 9.5:
             action = '不要追價；已有獲利可考慮分批停利，其餘續抱觀察'
@@ -1636,13 +1663,10 @@ def ai_holding_analysis(enriched: list[dict], insts: dict | None = None, market_
 
         condition_price = support or ma20
         if condition_price:
-            invalidation = f"{h['name']}({h['ticker']})收盤跌破約 {condition_price:.1f} 元時，原本的續抱或觀察條件失效。"
+            action += f'；收盤若低於約 {condition_price:.1f} 元就先降低風險'
         elif inst5 is not None:
-            invalidation = f"{h['name']}({h['ticker']})法人近 5 日由 {signed(inst5/10000, '.0f')} 萬股轉為相反方向時重新評估。"
-        else:
-            invalidation = f"{h['name']}({h['ticker']})目前缺少支撐與法人資料，不設定新的加碼條件。"
+            action += '；法人方向轉弱時先不要加碼'
         guidance_lines.append(f"・{h['name']}({h['ticker']})：{action}。依據：{'；'.join(facts) if facts else '可用資料不足'}。")
-        invalidation_lines.append('・' + invalidation)
 
     prompt = (
         f"你是協助投資新手的台股分析師，只整理今日市場背景，不提供持股操作。\n"
@@ -1652,17 +1676,18 @@ def ai_holding_analysis(enriched: list[dict], insts: dict | None = None, market_
         f"不得提到持股漲跌，不得自行加入輸入中沒有的公司、數字或事件；沒有直接連結就寫今日事件沒有明確產業連結。"
     )
     market_result = ensure_precise_analysis(ask_ai(prompt, max_tokens=300), f'{market_context}\n{summary}', max_tokens=300)
-    if not market_result.startswith('【今天先看這裡】'):
+    if market_result.startswith('（AI'):
+        market_result = '【今天先看這裡】市場資料已更新，今天直接依持股價格、成交量、營收與法人方向處理。'
+    elif not market_result.startswith('【今天先看這裡】'):
         market_result = '【今天先看這裡】' + market_result
     guidance = '\n'.join(guidance_lines) or '・目前沒有需要處理的個股。'
-    invalidations = '\n'.join(invalidation_lines[:2]) or '・目前資料不足，暫不設定新的操作條件。'
-    return f'{market_result}\n\n【持股怎麼做】\n{guidance}\n\n【什麼情況要改變判斷】\n{invalidations}'
+    return f'{market_result}\n\n【持股怎麼做】\n{guidance}'
 
 def _ai_candidate_tickers(held_tickers: list[str], market_context: str = '') -> list[dict]:
     """AI 只提出新聞題材候選，最終是否推薦交由資料評分決定。"""
     exclude = '、'.join(held_tickers) if held_tickers else '無'
     raw = ask_ai(
-        f"你是台股研究助理，請從提供的近期事件提出 8 檔台股候選，之後會由程式用量價、籌碼和營收淘汰，"
+        f"你是台股研究助理，請從提供的近期事件提出 12 檔台股候選，之後會由程式用量價、籌碼和營收淘汰，"
         f"不一定要跟台積電或半導體供應鏈有關。\n\n"
         + (f"近期市場情勢／題材參考：\n{market_context}\n\n"
            f"請先從上述新聞找出可能影響台股的主題，再挑選跟主題合理相關的標的；"
@@ -1671,7 +1696,7 @@ def _ai_candidate_tickers(held_tickers: list[str], market_context: str = '') -> 
            if market_context else '') +
         f"排除以下已持有股票（代號）：{exclude}\n\n"
         f"候選條件：\n"
-        f"・8 檔至少涵蓋 3 個產業，不要都押同一個題材。\n"
+        f"・12 檔至少涵蓋 4 個產業，不要都押同一個題材。\n"
         f"・可以考慮 AI 基建、電力/能源、軍工航太、網通、金融、原物料、消費、運輸等方向。\n"
         f"・不得推薦 ETF、興櫃、已持有股票；不要只因公司熱門就列入。\n"
         f"・事件與公司業務沒有清楚連結就不要列入。\n\n"
@@ -1682,8 +1707,8 @@ def _ai_candidate_tickers(held_tickers: list[str], market_context: str = '') -> 
         f"新聞依據：完整複製上方一則直接相關的新聞標題，不得改寫\n"
         f"趨勢關聯：用「來源市場/事件 → 受影響族群 → 原因」寫一句話\n"
         f"理由：一句話，說明事件如何影響產品、訂單、成本、利率或匯率，不得捏造財報數字\n\n"
-        f"只輸出 8 檔，每檔之間空一行，不要加股價或操作建議。",
-        max_tokens=900,
+        f"只輸出 12 檔，每檔之間空一行，不要加股價或操作建議。",
+        max_tokens=1300,
     )
     results = []
     for block in re.split(r'(?=代號[:：])', raw.strip()):
@@ -1703,7 +1728,7 @@ def _ai_candidate_tickers(held_tickers: list[str], market_context: str = '') -> 
                         break
         if 'ticker' in item and 'name' in item:
             results.append(item)
-    return results[:8]
+    return results[:12]
 
 
 _BASE_SCORE_WEIGHTS = {
@@ -1792,7 +1817,10 @@ def _score_stock(metrics: dict, candidate: dict) -> dict:
         fundamental += 12 if 0 < pe <= 30 else (-10 if pe <= 0 or pe > 60 else 3)
     fundamental = max(0.0, min(100.0, fundamental))
 
-    theme = 75.0 if candidate.get('trend_rel') and candidate.get('reason') else 50.0
+    if candidate.get('candidate_source') == 'direct_news':
+        theme = min(95.0, 68.0 + candidate.get('catalyst_score', 0) * 4)
+    else:
+        theme = 75.0 if candidate.get('trend_rel') and candidate.get('reason') else 50.0
     risk = 70.0
     if volatility is not None:
         risk += 10 if volatility <= 2.5 else (-20 if volatility >= 5 else 0)
@@ -1820,7 +1848,7 @@ def _recommendation_action(item: dict) -> str:
         return f'先觀察，重新站回 20 日均線約 {ma20:.1f} 元且成交量回升再評估。'
     wait_price = item.get('ma5') or ma20 or close
     stop = support or (close * 0.92)
-    return f'不要追價，可等接近 {wait_price:.1f} 元再分批觀察；跌破約 {stop:.1f} 元代表原判斷失效。'
+    return f'不要追價，可等接近 {wait_price:.1f} 元再分批觀察；收盤若低於約 {stop:.1f} 元就先不要加碼。'
 
 
 def _evidence_in_context(evidence: str, context: str) -> bool:
@@ -1830,12 +1858,83 @@ def _evidence_in_context(evidence: str, context: str) -> bool:
     return len(evidence_key) >= 12 and evidence_key[:12] in context_key
 
 
+_LOW_VALUE_CATALYST_KEYWORDS = (
+    '開放融資融券', '暫停融資融券', '注意交易資訊', '公布注意交易資訊',
+    '恢復交易', '停止交易', '除權息交易', '股東常會', '股東會通過',
+)
+_NEGATIVE_CATALYST_KEYWORDS = (
+    '下修', '調降', '衰退', '虧損', '減產', '砍單', '示警', '違約', '裁員', '轉虧',
+)
+_STRONG_CATALYST_KEYWORDS = (
+    '營收創高', '創新高', '訂單', '得標', '量產', '上修', '調高', '擴產',
+    '漲價', '缺貨', '供不應求', '政策受惠', '法說會', '財測', '轉盈',
+    'AI伺服器', 'AI 伺服器', '記憶體', '新產品', '新藥', '併購',
+)
+
+
+def _catalyst_strength(title: str) -> int:
+    if any(keyword in title for keyword in _LOW_VALUE_CATALYST_KEYWORDS):
+        return -100
+    if any(keyword in title for keyword in _NEGATIVE_CATALYST_KEYWORDS):
+        return -50
+    score = sum(2 for keyword in _STRONG_CATALYST_KEYWORDS if keyword in title)
+    if any(keyword in title for keyword in ('目標價', 'EPS預估上修', '營收年增', '獲利成長')):
+        score += 2
+    return score
+
+
+def _news_named_candidates(market_context: str, held_tickers: list[str], limit: int = 20) -> list[dict]:
+    """直接找出新聞標題中被點名的上市櫃公司，避免完全依賴 AI 聯想。"""
+    held = {ticker.upper() for ticker in held_tickers}
+    titles = []
+    for raw in re.split(r'[；\n]+', market_context or ''):
+        title = raw.strip()
+        for prefix in ('前天到今天國際/總經情勢：', '前天到今天台股焦點題材：', '定時累積新聞：',
+                       '市場新聞：', '持股新聞：', '美股與全球：'):
+            if title.startswith(prefix):
+                title = title[len(prefix):].strip()
+        if len(title) >= 8 and _is_relevant_market_title(title) and _catalyst_strength(title) > 0:
+            titles.append(title)
+
+    mapping = _load_ticker_map()
+    names = sorted(((name, ticker) for name, ticker in mapping.items()
+                    if len(name) >= 2 and re.fullmatch(r'\d{4}', ticker or '')),
+                   key=lambda item: len(item[0]), reverse=True)
+    results, seen = [], set()
+    for title in titles:
+        matched_spans: list[tuple[int, int]] = []
+        for name, ticker in names:
+            start = title.find(name)
+            if start < 0:
+                continue
+            end = start + len(name)
+            if any(start < used_end and end > used_start for used_start, used_end in matched_spans):
+                continue
+            matched_spans.append((start, end))
+            if ticker in seen or ticker.upper() in held or _is_etf(ticker):
+                continue
+            seen.add(ticker)
+            results.append({
+                'ticker': ticker,
+                'name': name,
+                'sector': '',
+                'evidence': title,
+                'trend_rel': f'{title} → {name} → 新聞直接點名公司，後續再用量價與營收確認',
+                'reason': '新聞直接點名公司，不靠 AI 猜測關聯。',
+                'candidate_source': 'direct_news',
+                'catalyst_score': _catalyst_strength(title),
+            })
+    results.sort(key=lambda item: item.get('catalyst_score', 0), reverse=True)
+    return results[:limit]
+
+
 _THEME_SECTOR_RULES = (
     (('AI', '半導體', '晶片', '伺服器', '記憶體', 'PCB', '5G', '網通', '光通訊', '蘋果'),
      ('電子', '半導體', '電腦', '通信', '光電')),
     (('銀行', '保險', '利率', '降息', '升息', '美債'), ('金融', '保險')),
     (('原油', '油價', '天然氣', '石化'), ('塑膠', '油電', '化學')),
-    (('銅價', '鋼鐵', '原物料'), ('鋼鐵', '電器電纜', '化學', '塑膠')),
+    (('銅價', '銅需求'), ('電器電纜', '電子零組件')),
+    (('鋼鐵', '鐵礦砂', '鋼價'), ('鋼鐵',)),
     (('航運', '紅海', '運價', '貨櫃'), ('航運',)),
 )
 
@@ -1845,7 +1944,9 @@ def _theme_sector_compatible(candidate: dict) -> bool:
     sector = candidate.get('sector') or candidate.get('industry') or ''
     name = candidate.get('name') or ''
     ticker = candidate.get('ticker') or ''
-    if (name and name in evidence) or (ticker and ticker in evidence):
+    name_is_explicit = bool(name and re.search(re.escape(name) + r'(?![\u4e00-\u9fffA-Za-z0-9])', evidence))
+    ticker_is_explicit = bool(ticker and re.search(rf'(?<!\d){re.escape(ticker)}(?!\d)', evidence))
+    if name_is_explicit or ticker_is_explicit:
         return True
     for topic_keywords, allowed_sectors in _THEME_SECTOR_RULES:
         if any(keyword in evidence for keyword in topic_keywords):
@@ -1855,9 +1956,16 @@ def _theme_sector_compatible(candidate: dict) -> bool:
 
 def ai_recommend_tickers(held_tickers: list[str], market_context: str = '') -> list[dict]:
     """新聞建立候選池，官方清單驗證後以硬資料排序，最多回傳不同產業的 2 檔。"""
-    candidates = _ai_candidate_tickers(held_tickers, market_context)
+    direct_candidates = _news_named_candidates(market_context, held_tickers)
+    candidates = direct_candidates + _ai_candidate_tickers(held_tickers, market_context)
     held = {ticker.upper() for ticker in held_tickers}
     meta_map = _load_stock_meta()
+    if not meta_map:
+        meta_map = {
+            ticker: {'ticker': ticker, 'name': name, 'industry_category': '', 'market_type': ''}
+            for name, ticker in _load_ticker_map().items()
+            if re.fullmatch(r'\d{4}', ticker or '')
+        }
     _load_valuation_map()
     valid = []
     seen = set()
@@ -1876,18 +1984,28 @@ def ai_recommend_tickers(held_tickers: list[str], market_context: str = '') -> l
         if not _theme_sector_compatible(verified):
             continue
         valid.append(verified)
-    with ThreadPoolExecutor(max_workers=6) as ex:
+        if len(valid) >= 12:
+            break
+    with ThreadPoolExecutor(max_workers=8) as ex:
         futures = [(candidate, ex.submit(fetch_stock_metrics, candidate['ticker'])) for candidate in valid]
     scored = [_score_stock(metrics_fut.result(), candidate) for candidate, metrics_fut in futures]
-    scored = [item for item in scored if not item['rejected'] and item['score'] >= 55 and item['confidence'] != '低']
-    scored.sort(key=lambda item: item['score'], reverse=True)
+    eligible = [item for item in scored if not item['rejected'] and item['confidence'] != '低']
+    eligible.sort(key=lambda item: item['score'], reverse=True)
+    scored = [item for item in eligible if item['score'] >= 55]
+    fallback = [item for item in eligible
+                if item['score'] >= 50 and item.get('candidate_source') == 'direct_news' and item not in scored]
+    for item in fallback:
+        item['watch_only'] = True
+    pool = scored + fallback
     selected = []
     used_sectors = set()
-    for item in scored:
+    for item in pool:
         sector = item.get('sector') or item.get('industry') or '未分類'
-        if sector in used_sectors and len(scored) > 2:
+        if sector in used_sectors and len(pool) > 2:
             continue
         item['action'] = _recommendation_action(item)
+        if item.get('watch_only'):
+            item['action'] = f"題材剛開始發酵、目前 {item['score']:.0f} 分，先列入觀察，不急著買。" + item['action']
         selected.append(item)
         used_sectors.add(sector)
         if len(selected) >= 2:
@@ -2007,8 +2125,8 @@ def build_report() -> discord.Embed:
         inst_futs  = {h['ticker']: ex.submit(fetch_institutional, h['ticker']) for h in holdings}
         metric_futs = {h['ticker']: ex.submit(fetch_stock_metrics, h['ticker']) for h in non_etf}
         news_futs  = [(h, ex.submit(scrape_stock_news, h['ticker'], h['name'])) for h in news_targets]
-        themes_fut = ex.submit(scrape_hot_themes)
-        intl_fut   = ex.submit(scrape_intl_news)
+        themes_fut = ex.submit(scrape_hot_themes, DAILY_NEWS_DAYS, 12)
+        intl_fut   = ex.submit(scrape_intl_news, 15, DAILY_NEWS_DAYS)
         mkt_fut    = ex.submit(fetch_market_inst)
         global_fut = ex.submit(fetch_global_market_snapshot)
         outcome_fut = ex.submit(update_recommendation_outcomes)
@@ -2017,7 +2135,8 @@ def build_report() -> discord.Embed:
     insts  = {t: f.result() for t, f in inst_futs.items()}
     metrics = {t: f.result() for t, f in metric_futs.items()}
     news_results = [(h, f.result()) for h, f in news_futs]
-    themes    = themes_fut.result()[:4]
+    latest_news = {h['ticker']: items[0] for h, items in news_results if items}
+    themes    = themes_fut.result()[:10]
     intl_news = intl_fut.result()
     mkt       = mkt_fut.result()
     global_market = global_fut.result()
@@ -2029,13 +2148,13 @@ def build_report() -> discord.Embed:
     if global_text:
         market_context_lines.append('美股與全球市場實際數據：' + global_text)
     if intl_news:
-        market_context_lines.append('前天到今天國際/總經情勢：' + '；'.join(intl_news[:5]))
+        market_context_lines.append('前天到今天國際/總經情勢：' + '；'.join(intl_news[:10]))
     if themes:
         market_context_lines.append('前天到今天台股焦點題材：' + '；'.join(themes))
     analysis_context = '\n'.join(market_context_lines)
-    cached_news = get_cached_news(days=DAILY_NEWS_DAYS, limit=25)
+    cached_news = get_cached_news(days=DAILY_NEWS_DAYS, limit=60)
     if cached_news:
-        market_context_lines.append('定時累積新聞：' + '；'.join(cached_news[:6]))
+        market_context_lines.append('定時累積新聞：' + '；'.join(cached_news[:30]))
     candidate_context = '\n'.join(market_context_lines)
 
     # 計算損益
@@ -2055,6 +2174,7 @@ def build_report() -> discord.Embed:
         total_cost  += avg * sh
         total_value += (cur * sh) if cur else (avg * sh)
         enriched.append({**h, **metrics.get(h['ticker'], {}), 'ticker': h['ticker'], 'name': h['name'],
+                         'latest_news': latest_news.get(h['ticker'], ''),
                          'today_close': tc, 'yesterday_close': yc,
                          'day_change': dc, 'day_pct': dp, 'pnl': pnl, 'pnl_pct': pp,
                          'is_realtime': p.get('is_realtime', False) if p else False})
@@ -2070,17 +2190,13 @@ def build_report() -> discord.Embed:
             price_str = f'資料日 {item.get("updated_at") or "未知"}，收盤 {cur:.1f} 元'
         else:
             price_str = '股價暫無資料'
-        components = item.get('components', {})
+        recommendation_label = '題材觀察' if item.get('watch_only') else '潛力標的'
         parts = [
-            f"**{item.get('name', item['ticker'])} {item['ticker']}｜{item.get('score', 0):.0f} 分｜信心 {item.get('confidence', '低')}**",
+            f"**{item.get('name', item['ticker'])} {item['ticker']}｜{recommendation_label}｜{item.get('score', 0):.0f} 分**",
             price_str,
         ]
-        if item.get('sector'):
-            parts.append(f"產業：{item['sector']}")
         if item.get('evidence'):
-            parts.append(f"新聞依據：{item['evidence']}")
-        if item.get('trend_rel'):
-            parts.append(f"為什麼入選：{item['trend_rel']}")
+            parts.append(f"目前題材：{item['evidence']}")
         metric_bits = []
         if item.get('return_20d') is not None:
             metric_bits.append(f"近 20 日 {signed(item['return_20d'], '.1f')}%")
@@ -2088,16 +2204,10 @@ def build_report() -> discord.Embed:
             metric_bits.append(f"成交量為 20 日平均 {item['volume_ratio']:.1f} 倍")
         if item.get('revenue_yoy') is not None:
             metric_bits.append(f"{item.get('revenue_month', '最新月')}營收年增 {signed(item['revenue_yoy'], '.1f')}%")
-        if item.get('inst_5d') is not None:
-            metric_bits.append(f"法人近 5 日合計 {signed(item['inst_5d']/10000, '.0f')} 萬股")
-        parts.append('資料驗證：' + ('；'.join(metric_bits) if metric_bits else '可用資料有限'))
-        parts.append(
-            f"分項：趨勢 {components.get('trend', 0):.0f}｜籌碼 {components.get('chips', 0):.0f}｜"
-            f"基本面 {components.get('fundamental', 0):.0f}｜風險 {components.get('risk', 0):.0f}"
-        )
-        parts.append(f"新手做法：{item.get('action', '')}")
+        parts.append('為什麼列入：' + ('；'.join(metric_bits) if metric_bits else '題材明確，但量價資料仍有限'))
+        parts.append(f"最終建議：{item.get('action', '')}")
         recommend_lines.append('\n'.join(parts))
-    recommend_text = '\n\n'.join(recommend_lines) or '本次沒有同時通過資料完整度、流動性與 55 分門檻的股票，不為了湊數推薦。'
+    recommend_text = '\n\n'.join(recommend_lines) or '目前擴大搜尋後仍沒有達到觀察門檻的股票，先不勉強列入。'
 
     # ── 持股欄 ────────────────────────────────────────────────
     hold_parts = ['**今日持股**\n──────────']
@@ -2180,7 +2290,7 @@ def build_report() -> discord.Embed:
             news_pairs.append((f'{h["name"]} {h["ticker"]}', '\n'.join(f'・{n}' for n in news)))
 
     # ── 新手術語 ──────────────────────────────────────────────
-    full = hold_text + inst_text + ' '.join(themes) + ' '.join(intl_news) + ai_text + recommend_text
+    full = hold_text + ' '.join(themes) + ' '.join(intl_news) + ai_text + recommend_text
     with db() as c:
         learned = {r[0] for r in c.execute('SELECT term FROM learned_terms').fetchall()}
     new_terms = [(t, e) for t, e in TERMS.items() if t not in learned and t in full][:3]
@@ -2199,16 +2309,6 @@ def build_report() -> discord.Embed:
         embed.add_field(name='​', value=chunk, inline=False)
     embed.add_field(name='💰 總覽', value=hold_summary, inline=False)
 
-    for chunk in inst_chunks:
-        embed.add_field(name='​', value=chunk, inline=False)
-
-    if news_pairs:
-        embed.add_field(name='📰 持股新聞', value='​', inline=False)
-        for i, (n, v) in enumerate(news_pairs):
-            embed.add_field(name=n, value=v[:1024] or '​', inline=True)
-            if i % 2 == 1:
-                embed.add_field(name='​', value='​', inline=False)
-
     advice_text = ai_text
     if recommend_text:
         advice_text += '\n\n**💎 潛力股推薦**\n' + recommend_text
@@ -2221,6 +2321,43 @@ def build_report() -> discord.Embed:
     remember('daily_report', f'{ai_text}\n{recommend_text}', today.isoformat())
     record_recommendations(recommend_items, 'daily', today.isoformat())
     return embed
+
+
+def _weekly_fallback_text(rows: list[dict], global_text: str) -> str:
+    """AI 額度不足時，直接用已抓到的數據產生新手週報。"""
+    valid = [row for row in rows if row.get('week_pct') is not None]
+    summary_lines = []
+    if len(valid) == 1:
+        only = valid[0]
+        summary_lines.append(f"本週持股 {only['name']}({only['ticker']})變動 {signed(only['week_pct'], '.1f')}%。")
+    elif valid:
+        best = max(valid, key=lambda row: row['week_pct'])
+        weakest = min(valid, key=lambda row: row['week_pct'])
+        summary_lines.append(
+            f"本週持股較強的是 {best['name']}({best['ticker']}) {signed(best['week_pct'], '.1f')}%；"
+            f"較弱的是 {weakest['name']}({weakest['ticker']}) {signed(weakest['week_pct'], '.1f')}%。"
+        )
+    else:
+        summary_lines.append('本週持股漲跌資料不足，先依目前價格與均線處理。')
+    if global_text:
+        summary_lines.append('全球市場先看：' + '；'.join(global_text.split('；')[:3]) + '。')
+
+    action_lines = []
+    ranked = sorted(rows, key=lambda row: abs(row.get('week_pct') or 0) + abs(row.get('pnl_pct') or 0) / 5, reverse=True)
+    for row in ranked[:3]:
+        cur, ma20, support = row.get('cur'), row.get('ma20'), row.get('support20')
+        if cur and ma20 and cur < ma20:
+            action = f"先觀察，站回約 {ma20:.1f} 元再考慮加碼"
+        elif support:
+            action = f"可續抱觀察；收盤低於約 {support:.1f} 元時先降低風險"
+        else:
+            action = '資料不足，先維持原部位、不新增投入'
+        action_lines.append(f"・{row['name']}({row['ticker']})：{action}。")
+    return (
+        '**🧭 本週重點**\n' + '\n'.join(summary_lines)
+        + '\n\n**🔮 下週直接怎麼做**\n' + ('\n'.join(action_lines) if action_lines else '・目前沒有持股資料。')
+    )
+
 
 def build_weekly_report() -> discord.Embed:
     today = datetime.date.today()
@@ -2252,6 +2389,7 @@ def build_weekly_report() -> discord.Embed:
     outcome_fut.result()
 
     holding_lines = []
+    weekly_rows = []
     for h in holdings:
         ticker = h['ticker']
         metric = metrics.get(ticker) or {}
@@ -2291,6 +2429,15 @@ def build_weekly_report() -> discord.Embed:
             f"法人近5日{signed(metric['inst_5d']/10000, '.0f') + '萬股' if metric.get('inst_5d') is not None else '缺資料'}，"
             f"月營收年增{signed(metric['revenue_yoy'], '.1f') + '%' if metric.get('revenue_yoy') is not None else '缺資料'}"
         )
+        weekly_rows.append({
+            'ticker': ticker,
+            'name': h['name'],
+            'cur': cur,
+            'week_pct': week_pct,
+            'pnl_pct': pnl_pct,
+            'ma20': metric.get('ma20'),
+            'support20': metric.get('support20'),
+        })
 
     flow_rows = []
     holding_names = {h['ticker']: h['name'] for h in holdings}
@@ -2325,9 +2472,10 @@ def build_weekly_report() -> discord.Embed:
         fnet = mkt.get('foreign', 0)
         tnet = mkt.get('trust', 0)
         market_lines.append(f"最近一日大盤法人：外資{signed(fnet/1e8, '.0f')}億，投信{signed(tnet/1e8, '.0f')}億")
-    cached_news = get_cached_news(days=7, limit=40)
+    extra_news = []
+    cached_news = get_cached_news(days=7, limit=60)
     if cached_news:
-        extra_news = [title for title in cached_news if title not in weekly_market_news][:8]
+        extra_news = [title for title in cached_news if title not in weekly_market_news][:15]
         if extra_news:
             market_lines.append('定時累積的最近 7 天新聞：' + '；'.join(extra_news))
     market_lines.append('推薦追蹤：' + recommendation_performance_summary())
@@ -2355,13 +2503,11 @@ def build_weekly_report() -> discord.Embed:
         f"格式固定為「新聞標題 → 具名產業或股票 → 可驗證原因」；無法清楚連結就不要選該新聞。\n\n"
         f"**🔮 下週只看這 3 件事**\n"
         f"每點只能使用上方已有的價格、20日均線、20日支撐、量比、法人、營收或全球市場數字，"
-        f"寫清楚數據高於或低於哪個數字代表偏多或偏空，以及哪一檔持股該如何反應。\n\n"
-        f"**⚠️ 什麼情況要改變判斷**\n"
-        f"列 2 個含股票名稱與具體數字的失效條件。"
+        f"直接寫成哪一檔持股下週可以怎麼做，必要的風險價位放在同一句，不要另外建立失效條件區塊。"
     )
     recommendation_context = (
         ('美股與全球：' + global_text + '\n' if global_text else '')
-        + '市場新聞：' + '；'.join(weekly_market_news[:12])
+        + '市場新聞：' + '；'.join(weekly_market_news[:20] + extra_news)
         + '\n持股新聞：' + '；'.join(news_lines[:8])
     )
     result = ask_ai(prompt, max_tokens=1400)
@@ -2370,13 +2516,14 @@ def build_weekly_report() -> discord.Embed:
         f"持股數據：\n{chr(10).join(holding_lines)}\n市場資料：\n{recommendation_context}",
         max_tokens=1400,
     )
+    if result.startswith('（AI'):
+        result = _weekly_fallback_text(weekly_rows, global_text)
     recommend_items = ai_recommend_tickers([h['ticker'] for h in holdings], recommendation_context)
     embed = discord.Embed(
         title=f'📅 本週市場回顧｜{today.strftime("%Y/%m/%d")}',
         description=result[:4096],
         color=0x3498DB
     )
-    embed.add_field(name='💰 近 5 日法人方向', value=fund_flow_text[:1024], inline=False)
     if recommend_items:
         recommendation_parts = []
         for item in recommend_items:
@@ -2385,21 +2532,19 @@ def build_weekly_report() -> discord.Embed:
                 metric_bits.append(f"近 20 日 {signed(item['return_20d'], '.1f')}%")
             if item.get('revenue_yoy') is not None:
                 metric_bits.append(f"月營收年增 {signed(item['revenue_yoy'], '.1f')}%")
-            if item.get('inst_5d') is not None:
-                metric_bits.append(f"法人近 5 日 {signed(item['inst_5d']/10000, '.0f')} 萬股")
+            recommendation_label = '題材觀察' if item.get('watch_only') else '潛力標的'
             recommendation_parts.append(
-                f"**{item['name']} {item['ticker']}｜{item['score']:.0f} 分｜信心 {item['confidence']}**\n"
-                f"新聞依據：{item.get('evidence', '未提供')}\n"
-                f"原因：{item.get('trend_rel') or item.get('reason', '資料題材通過驗證')}\n"
-                f"數據：{'；'.join(metric_bits) if metric_bits else '可用資料有限'}\n"
-                f"下週做法：{item['action']}"
+                f"**{item['name']} {item['ticker']}｜{recommendation_label}｜{item['score']:.0f} 分**\n"
+                f"目前題材：{item.get('evidence', '未提供')}\n"
+                f"為什麼列入：{'；'.join(metric_bits) if metric_bits else '題材明確，但量價資料仍有限'}\n"
+                f"最終建議：{item['action']}"
             )
         for index, chunk in enumerate(_chunk_text('\n\n'.join(recommendation_parts))):
             embed.add_field(name='💎 下週觀察名單' if index == 0 else '​', value=chunk, inline=False)
     else:
         embed.add_field(
             name='💎 下週觀察名單',
-            value='本週沒有同時通過資料完整度、流動性與 55 分門檻的股票，不為了湊數推薦。',
+            value='擴大搜尋最近 7 天題材後，仍沒有達到觀察門檻的股票，先不勉強列入。',
             inline=False,
         )
     embed.set_footer(text='⚠️ 以上為 AI 輔助分析，不構成投資建議。')
@@ -2896,7 +3041,7 @@ async def cmd_push(interaction: discord.Interaction):
     channel = bot.get_channel(channel_id)
     if not channel:
         await interaction.response.send_message('找不到頻道，請先 `/config channel <ID>`。', ephemeral=True); return
-    await interaction.response.send_message('⏳ 產生報告中，約需 30 秒…', ephemeral=True)
+    await interaction.response.send_message('⏳ 正在整合行情與熱門題材，約需 30～60 秒…', ephemeral=True)
     try:
         embed = await asyncio.get_event_loop().run_in_executor(None, build_report)
         await channel.send(embed=embed)
@@ -2980,6 +3125,9 @@ def build_stock_analysis(ticker: str, display_name: str = '') -> discord.Embed |
         f"不得加入資料中沒有的產品、客戶、財報或投資判斷，只輸出正文。\n{profile_info}",
         max_tokens=220,
     )
+    if company_text.startswith('（AI'):
+        industry_name = profile.get('industry_category') or _friendly_industry_name(profile.get('industry')) or '目前未分類產業'
+        company_text = f"{label}({ticker})屬於{industry_name}；公司詳細業務暫時無法整理。"
     ma20 = metrics.get('ma20')
     support = metrics.get('support20')
     return20 = metrics.get('return_20d')
@@ -3008,14 +3156,13 @@ def build_stock_analysis(ticker: str, display_name: str = '') -> discord.Embed |
         risks.append(f"成交量只有 20 日平均 {volume_ratio:.1f} 倍，動能較弱")
     action_item = {**metrics, 'close': analysis_price, 'name': label, 'ticker': ticker}
     action_text = _recommendation_action(action_item)
-    invalidation = f'收盤跌破約 {support:.1f} 元時，原判斷失效。' if support else '目前缺少 20 日支撐資料，不設定新的買進條件。'
+    news_note = f" 近期消息「{news[0]}」已納入觀察，但操作仍以價格、營收與法人方向為主。" if news else ''
     ai_text = (
         f"【先看結論】{conclusion}。{conclusion_reason}。\n\n"
         f"【公司在做什麼】{company_text}\n\n"
         f"【支持理由】{'；'.join(positives) if positives else '目前沒有明確的正面數據。'}\n"
         f"【風險】{'；'.join(risks) if risks else '目前量價、營收與法人沒有明顯警訊。'}\n\n"
-        f"【新手可以怎麼做】{action_text}\n"
-        f"【判斷失效條件】{invalidation}"
+        f"【新手可以怎麼做】{action_text}{news_note}"
     )
 
     # 組 Embed
@@ -3031,7 +3178,7 @@ def build_stock_analysis(ticker: str, display_name: str = '') -> discord.Embed |
     if profile.get('industry_category'):
         basic_lines.append(f"產業：{profile['industry_category']}")
     if profile.get('industry'):
-        basic_lines.append(f"Yahoo：{profile['industry']}")
+        basic_lines.append(f"Yahoo：{_friendly_industry_name(profile['industry'])}")
     if profile.get('website'):
         basic_lines.append(f"網站：{profile['website']}")
     if basic_lines:
@@ -3056,8 +3203,6 @@ def build_stock_analysis(ticker: str, display_name: str = '') -> discord.Embed |
         metric_lines.append(f"今日量是 20 日平均 {metrics['volume_ratio']:.1f} 倍")
     if metrics.get('revenue_yoy') is not None:
         metric_lines.append(f"{metrics.get('revenue_month', '最新月')}營收年增 {signed(metrics['revenue_yoy'], '.1f')}%")
-    if metrics.get('inst_5d') is not None:
-        metric_lines.append(f"法人近 5 日 {signed(metrics['inst_5d']/10000, '.0f')} 萬股")
     if metrics.get('pe') is not None:
         metric_lines.append(f"本益比 {metrics['pe']:.1f} 倍")
     if metric_lines:
@@ -3073,23 +3218,6 @@ def build_stock_analysis(ticker: str, display_name: str = '') -> discord.Embed |
             name='💼 我的持股',
             value=f'持有 {sh} 股\n成本 {avg:.2f} → 現價 {cur:.0f}元\n損益 {signed(pnl)}元（{signed(pp, ".1f")}%）{color(pnl)}',
             inline=True
-        )
-
-    # 法人
-    if inst and any(v != 0 for v in inst.values()):
-        def fi(v): return f'{signed(v/10000, ".0f")}萬股 {color(v)}'
-        embed.add_field(
-            name='🏦 三大法人',
-            value=f'外資 {fi(inst["foreign"])}\n投信 {fi(inst["trust"])}\n自營 {fi(inst["dealer"])}',
-            inline=True
-        )
-
-    # 新聞
-    if news:
-        embed.add_field(
-            name='📰 近期新聞',
-            value='\n'.join(f'・{n}' for n in news[:4]),
-            inline=False
         )
 
     # AI 分析
