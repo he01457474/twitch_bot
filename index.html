@@ -589,9 +589,10 @@
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
                         <h5 class="card-title" style="color:#fbbf24 !important"><i class="fa-solid fa-list-ol me-2"></i>最近對戰</h5>
-                        <p class="card-desc">顯示最近 5 場名次、平均名次、前四率與吃雞率。</p>
+                        <p class="card-desc">預設顯示最近 5 場，可指定 5～20 場，包含名次、平均名次、前四率與吃雞率。</p>
                         <div class="mt-3">
                             <span class="cmd-badge" onclick="copyText('!TFT最近')">!TFT最近</span>
+                            <span class="cmd-badge" onclick="copyText('!TFT最近 20')">!TFT最近 20</span>
                             <span class="cmd-badge" onclick="copyText('!TFT最近 @ID')">!TFT最近 @ID</span>
                         </div>
                     </div>
@@ -636,9 +637,12 @@
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
                         <h5 class="card-title" style="color:#c4b5fd !important"><i class="fa-solid fa-clock-rotate-left me-2"></i>補入歷史</h5>
-                        <p class="card-desc">手動補入可取得的本季場次、LP 歷史與近期對戰，供牌位變化查詢使用。</p>
+                        <p class="card-desc">手動補入可取得的本季場次、LP 歷史與近期對戰。預設檢查最近 40 場，可指定 20～100 場及 Riot ID。</p>
                         <div class="feature-note note-vip"><i class="fa-solid fa-lock"></i>限系統管理員</div>
-                        <div><span class="cmd-badge" onclick="copyText('!TFT補資料')">!TFT補資料</span></div>
+                        <div>
+                            <span class="cmd-badge" onclick="copyText('!TFT補資料')">!TFT補資料</span>
+                            <span class="cmd-badge" onclick="copyText('!TFT補資料 100 名字#TAG')">!TFT補資料 100 名字#TAG</span>
+                        </div>
                     </div>
                 </div>
 
