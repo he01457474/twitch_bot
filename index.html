@@ -349,6 +349,7 @@
                     <li class="nav-item"><a class="nav-link" href="#lookup"><i class="fa-solid fa-magnifying-glass"></i><span>帳號查詢</span></a></li>
                     <li class="nav-item"><a class="nav-link" href="#fun"><i class="fa-solid fa-gamepad"></i><span>娛樂互動</span></a></li>
                     <li class="nav-item"><a class="nav-link" href="#valorant"><i class="fa-solid fa-crosshairs"></i><span>VALORANT</span></a></li>
+                    <li class="nav-item"><a class="nav-link" href="#tft"><i class="fa-solid fa-chess-board"></i><span>TFT</span></a></li>
                     <li class="nav-item"><a class="nav-link" href="#management"><i class="fa-solid fa-shield-halved"></i><span>管理後台</span></a></li>
                 </ul>
             </div>
@@ -558,6 +559,84 @@
                             <span class="cmd-badge" onclick="copyText('!最近對戰 名字#TAG')">!最近對戰 名字#TAG</span>
                         </div>
                         <div class="mt-2 text-white-50 small">別名：!近況、!matches</div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <div id="tft" class="cmd-section">
+            <div class="section-header">
+                <i class="fa-solid fa-chess-board section-icon"></i>
+                <div><h2 class="gradient-text">聯盟戰棋戰績</h2><span class="en-sub-title">TEAMFIGHT TACTICS</span></div>
+            </div>
+            <div class="row g-4">
+
+                <div class="col-md-6 col-lg-4 searchable-item">
+                    <div class="glass-card">
+                        <h5 class="card-title" style="color:#67e8f9 !important"><i class="fa-solid fa-ranking-star me-2"></i>目前牌位</h5>
+                        <p class="card-desc">顯示台服／韓服、第幾季，以及單人、雙人、狂暴模式的牌位與場次。單人顯示前四率，雙人顯示前二率。</p>
+                        <div class="mt-3">
+                            <span class="cmd-badge" onclick="copyText('!TFT')">!TFT</span>
+                            <span class="cmd-badge" onclick="copyText('!TFT 名字#TAG')">!TFT 名字#TAG</span>
+                            <span class="cmd-badge" onclick="copyText('!TFT 韓服 名字#TAG')">!TFT 韓服 名字#TAG</span>
+                        </div>
+                        <div class="mt-2 text-white-50 small">沒帶參數時查詢本頻道台主的綁定帳號；未指定伺服器時預設台服。</div>
+                    </div>
+                </div>
+
+                <div class="col-md-6 col-lg-4 searchable-item">
+                    <div class="glass-card">
+                        <h5 class="card-title" style="color:#fbbf24 !important"><i class="fa-solid fa-list-ol me-2"></i>最近對戰</h5>
+                        <p class="card-desc">顯示最近 5 場名次、平均名次、前四率與吃雞率。</p>
+                        <div class="mt-3">
+                            <span class="cmd-badge" onclick="copyText('!TFT最近')">!TFT最近</span>
+                            <span class="cmd-badge" onclick="copyText('!TFT最近 @ID')">!TFT最近 @ID</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6 col-lg-4 searchable-item">
+                    <div class="glass-card">
+                        <h5 class="card-title" style="color:#a7f3d0 !important"><i class="fa-solid fa-arrow-trend-up me-2"></i>牌位變化</h5>
+                        <p class="card-desc">比較指定期間內的牌位、換算分數、對戰場數與前四率。若歷史不足，會顯示目前可比較的實際期間。</p>
+                        <div class="mt-3">
+                            <span class="cmd-badge" onclick="copyText('!TFT變化 7')">!TFT變化 7</span>
+                            <span class="cmd-badge" onclick="copyText('!TFT變化 30 @ID')">!TFT變化 30 @ID</span>
+                        </div>
+                        <div class="mt-2 text-white-50 small">可查詢 1～90 天，預設 7 天。</div>
+                    </div>
+                </div>
+
+                <div class="col-md-6 col-lg-4 searchable-item">
+                    <div class="glass-card">
+                        <h5 class="card-title" style="color:#f0abfc !important"><i class="fa-solid fa-chart-simple me-2"></i>本季場次</h5>
+                        <p class="card-desc">顯示本季總場次、前四場數與比例、平均名次，以及第 1 名與第 8 名場數。</p>
+                        <div class="mt-3">
+                            <span class="cmd-badge" onclick="copyText('!TFT場次')">!TFT場次</span>
+                            <span class="cmd-badge" onclick="copyText('!TFT場次 @ID')">!TFT場次 @ID</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6 col-lg-4 searchable-item">
+                    <div class="glass-card">
+                        <h5 class="card-title" style="color:#fdba74 !important"><i class="fa-solid fa-link me-2"></i>綁定台主帳號</h5>
+                        <p class="card-desc">綁定本頻道台主的 Riot ID。未指定伺服器時預設台服，韓服帳號需在 Riot ID 前加上「韓服」。</p>
+                        <div class="feature-note note-vip"><i class="fa-solid fa-lock"></i>限台主或系統管理員</div>
+                        <div>
+                            <span class="cmd-badge" onclick="copyText('!綁定TFT 名字#TAG')">!綁定TFT 名字#TAG</span>
+                            <span class="cmd-badge" onclick="copyText('!綁定TFT 韓服 名字#TAG')">!綁定TFT 韓服 名字#TAG</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6 col-lg-4 searchable-item">
+                    <div class="glass-card">
+                        <h5 class="card-title" style="color:#c4b5fd !important"><i class="fa-solid fa-clock-rotate-left me-2"></i>補入歷史</h5>
+                        <p class="card-desc">手動補入可取得的本季場次、LP 歷史與近期對戰，供牌位變化查詢使用。</p>
+                        <div class="feature-note note-vip"><i class="fa-solid fa-lock"></i>限系統管理員</div>
+                        <div><span class="cmd-badge" onclick="copyText('!TFT補資料')">!TFT補資料</span></div>
                     </div>
                 </div>
 
