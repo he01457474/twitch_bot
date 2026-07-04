@@ -637,11 +637,12 @@
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
                         <h5 class="card-title" style="color:#c4b5fd !important"><i class="fa-solid fa-clock-rotate-left me-2"></i>補入歷史</h5>
-                        <p class="card-desc">手動補入可取得的本季場次、LP 歷史與近期對戰。預設檢查最近 40 場，可指定 20～100 場及 Riot ID。</p>
+                        <p class="card-desc">BOT 每 10 分鐘會替已綁定帳號逐步補舊對戰。也可手動指定 20～250 個對戰；「完整」模式最多掃描 250 個對戰，場次統計會採用較完整的資料。</p>
                         <div class="feature-note note-vip"><i class="fa-solid fa-lock"></i>限系統管理員</div>
                         <div>
                             <span class="cmd-badge" onclick="copyText('!TFT補資料')">!TFT補資料</span>
                             <span class="cmd-badge" onclick="copyText('!TFT補資料 100 名字#TAG')">!TFT補資料 100 名字#TAG</span>
+                            <span class="cmd-badge" onclick="copyText('!TFT補資料 完整 名字#TAG')">!TFT補資料 完整 名字#TAG</span>
                         </div>
                     </div>
                 </div>
@@ -666,14 +667,14 @@
                         <div class="admin-icon-box"><i class="fa-solid fa-crown"></i></div>
                         <div class="admin-info">
                             <span class="admin-role">系統持有者</span>
-                            <div class="effect-wrapper-gold">每台都被當空氣的飝猫珤珤<span class="admin-id-unified">(fly_cat0420)</span></div>
+                            <div class="effect-wrapper-gold" data-twitch-user-id="74202440"><span class="admin-display-name">每台都被當空氣的飝猫珤珤</span><span class="admin-id-unified admin-login">(fly_cat0420)</span></div>
                         </div>
                     </div>
                     <div class="admin-card card-root">
                         <div class="admin-icon-box"><i class="fa-solid fa-terminal"></i></div>
                         <div class="admin-info">
                             <span class="admin-role">最高管理員</span>
-                            <div class="effect-wrapper-aurora">玆歐巴<span class="admin-id-unified">(tp012943)</span></div>
+                            <div class="effect-wrapper-aurora" data-twitch-user-id="20092299"><span class="admin-display-name">玆歐巴</span><span class="admin-id-unified admin-login">(tp012943)</span></div>
                         </div>
                     </div>
                 </div>
@@ -958,6 +959,27 @@
                 row.style.display = text.toLowerCase().indexOf(filter) > -1 ? "" : "none";
             });
         }
+
+        async function refreshTwitchAdminNames() {
+            try {
+                const response = await fetch('/.netlify/functions/twitch-admins', {
+                    headers: { 'Accept': 'application/json' }
+                });
+                if (!response.ok) return;
+
+                const payload = await response.json();
+                (payload.users || []).forEach(user => {
+                    const card = document.querySelector(`[data-twitch-user-id="${user.id}"]`);
+                    if (!card) return;
+                    card.querySelector('.admin-display-name').textContent = user.displayName;
+                    card.querySelector('.admin-login').textContent = `(${user.login})`;
+                });
+            } catch (error) {
+                console.warn('無法更新 Twitch 管理員名稱，保留預設資料。');
+            }
+        }
+
+        refreshTwitchAdminNames();
 
         var backToTopBtn = document.getElementById("backToTop");
         window.onscroll = function() {
