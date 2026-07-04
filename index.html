@@ -326,6 +326,741 @@
             background: rgba(168, 85, 247, 0.5); border-color: #ffffff; color: #ffffff;
             transform: translateY(-2px); box-shadow: 0 4px 12px rgba(168, 85, 247, 0.3); 
         }
+
+        /* 2026 指令中心：低耗能、緊湊、以查找效率為主 */
+        :root {
+            --bg-color: #0b0c0f;
+            --card-bg: #15171c;
+            --card-border: #30343d;
+            --twitch-purple: #a970ff;
+            --twitch-accent: #cbb8ff;
+            --text-main: #f4f4f5;
+            --text-silver: #c5c8ce;
+            --surface-raised: #1b1e24;
+            --accent-green: #35d07f;
+            --accent-cyan: #43bde8;
+            --accent-amber: #f2b84b;
+        }
+
+        body { background: var(--bg-color); }
+        .bg-container { background: #0b0c0f; }
+        .bg-container, .bg-grid { background-image: none; }
+
+        .navbar {
+            background: #111318;
+            border-bottom: 1px solid #2b2f37;
+            padding: 0;
+            backdrop-filter: none;
+        }
+        .navbar .container { min-height: 58px; }
+        .navbar-brand { color: #fff; gap: 10px; }
+        .navbar-brand i { color: var(--accent-cyan); font-size: 1.2rem; }
+        .brand-text {
+            color: #fff;
+            background: none;
+            -webkit-text-fill-color: currentColor;
+            font-size: 1.05rem;
+            animation: none;
+            letter-spacing: 0;
+        }
+        .navbar-nav { gap: 2px; }
+        .nav-link {
+            min-height: 58px;
+            padding: 0 13px;
+            border: 0;
+            border-bottom: 2px solid transparent;
+            border-radius: 0;
+            background: transparent;
+            box-shadow: none;
+            text-shadow: none;
+            font-size: 0.84rem;
+            font-weight: 700;
+            transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+        }
+        .nav-link:hover, .nav-link:focus {
+            color: #fff !important;
+            background: #1c2027;
+            border-color: var(--accent-cyan);
+            box-shadow: none;
+            transform: none;
+        }
+        .nav-link:hover i { transform: none; }
+        .nav-link i { color: #8f98a8; transition: color 0.15s ease; }
+        .nav-link:hover i { color: var(--accent-cyan); }
+
+        .hero-section {
+            padding: 32px 0 20px;
+            text-align: left;
+            border-bottom: 1px solid #252932;
+            background: #0e1014;
+        }
+        .hero-workspace {
+            display: grid;
+            grid-template-columns: minmax(220px, 0.8fr) minmax(340px, 1.4fr) auto;
+            align-items: center;
+            gap: 24px;
+        }
+        .hero-title {
+            margin: 0;
+            color: #fff;
+            font-size: 2rem;
+            line-height: 1.15;
+            text-shadow: none;
+            animation: none;
+            letter-spacing: 0;
+        }
+        .hero-kicker {
+            display: block;
+            margin-top: 7px;
+            margin-bottom: 0;
+            color: var(--accent-cyan);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.76rem;
+            font-weight: 700;
+        }
+        .hero-desc-box { display: none; }
+        .search-container { max-width: none; width: 100%; margin: 0; }
+        .search-input {
+            min-height: 48px;
+            padding: 11px 16px 11px 46px;
+            border: 1px solid #3a404b;
+            border-radius: 6px;
+            background: #171a20;
+            font-size: 0.98rem;
+            transition: border-color 0.15s ease, background-color 0.15s ease;
+        }
+        .search-input:focus { border-color: var(--accent-cyan); background: #1b1f26; }
+        .search-icon { left: 16px; color: #8d96a5; font-size: 1rem; }
+        .search-status { margin: 7px 0 0; color: #8d96a5; font-size: 0.78rem; }
+        .version-container { margin: 0 !important; text-align: right !important; }
+        .version-badge {
+            padding: 8px 12px;
+            border: 1px solid #343a44;
+            border-radius: 5px;
+            background: #171a20;
+            font-size: 0.78rem;
+            animation: none;
+        }
+        .version-dot { width: 7px; height: 7px; animation: none; }
+
+        body > .container { padding-bottom: 40px; }
+        .cmd-section { content-visibility: auto; contain-intrinsic-size: 650px; scroll-margin-top: 72px; }
+        .section-header {
+            gap: 12px;
+            margin: 42px 0 16px;
+            padding-bottom: 11px;
+            border-bottom: 1px solid #30343d;
+        }
+        .section-icon { width: 30px; margin: 0; color: var(--accent-cyan); font-size: 1.1rem; text-align: center; }
+        .gradient-text {
+            margin: 0;
+            color: #f4f4f5;
+            background: none;
+            -webkit-text-fill-color: currentColor;
+            font-size: 1.35rem;
+            letter-spacing: 0;
+        }
+        .en-sub-title { margin-left: 0; color: #77808f; font-size: 0.68rem; letter-spacing: 0; }
+        .cmd-section > .row { --bs-gutter-x: 12px; --bs-gutter-y: 12px; }
+
+        .glass-card {
+            position: relative;
+            min-height: 100%;
+            padding: 15px;
+            border: 1px solid var(--card-border);
+            border-left: 3px solid #4c5563;
+            border-radius: 7px;
+            background: var(--card-bg);
+            box-shadow: none;
+            will-change: auto;
+            transition: border-color 0.15s ease, background-color 0.15s ease;
+        }
+        .glass-card:hover { border-color: #49515e; border-left-color: var(--accent-cyan); background: #181b21; }
+        .card-title {
+            display: flex;
+            align-items: center;
+            min-height: 32px;
+            margin: 0 0 10px;
+            padding-right: 0;
+            color: #f4f4f5;
+            font-size: 1.05rem;
+            line-height: 1.3;
+            letter-spacing: 0;
+        }
+        .card-desc {
+            margin: 0 0 12px;
+            padding: 0;
+            color: #b8bdc7;
+            font-size: 0.88rem;
+            line-height: 1.55;
+        }
+        .glass-card .mt-3 { margin-top: 5px !important; }
+        .feature-note {
+            display: inline-flex;
+            align-self: flex-start;
+            margin: 0 0 10px;
+            padding: 5px 8px;
+            border-left-width: 2px;
+            border-radius: 3px;
+            background: #1d2026;
+            font-size: 0.75rem;
+        }
+        .cmd-badge {
+            margin: 2px 3px 2px 0;
+            padding: 5px 8px;
+            border-color: #48505e;
+            border-radius: 4px;
+            background: #20242b;
+            color: #d9e1ec;
+            font-size: 0.78rem;
+            transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+        }
+        .cmd-badge:hover {
+            border-color: var(--accent-cyan);
+            background: #26313a;
+            color: #fff;
+            box-shadow: none;
+            transform: none;
+        }
+
+        .table-container { border-color: #30343d; border-radius: 7px; background: #121419; }
+        .custom-table th { padding: 13px 15px; background: #1b1e24; font-size: 0.8rem; }
+        .custom-table td { padding: 14px 15px; border-bottom-color: #292d35; font-size: 0.88rem; }
+        .logic-card, .perm-box { border-radius: 4px; }
+        .admin-card { border-radius: 7px; background: #15171c; }
+        .effect-wrapper-gold, .effect-wrapper-aurora {
+            animation: none;
+            filter: none;
+            background: none;
+            -webkit-text-fill-color: currentColor;
+        }
+        .effect-wrapper-gold { color: #f2c45d; }
+        .effect-wrapper-aurora { color: #8fd3ee; }
+        .perm-special-highlight { filter: none; }
+        #backToTop { width: 42px; height: 42px; border: 0; border-radius: 6px; background: #252a32; }
+        footer { margin-top: 70px; padding: 32px 0; }
+
+        @media (max-width: 991px) {
+            .navbar { padding: 8px 0; }
+            .navbar .container { min-height: 42px; }
+            .navbar-collapse { margin-top: 8px; border-top: 1px solid #2b2f37; }
+            .navbar-nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 8px 0; }
+            .nav-link { min-height: 42px; padding: 0 10px; border: 0; border-left: 2px solid transparent; }
+            .nav-link:hover, .nav-link:focus { border-color: var(--accent-cyan); }
+            .hero-workspace { grid-template-columns: 1fr; gap: 15px; }
+            .version-container { text-align: left !important; }
+        }
+        @media (max-width: 575px) {
+            .hero-section { padding: 24px 0 16px; }
+            .hero-title { font-size: 1.65rem; }
+            .section-header { margin-top: 32px; }
+            .glass-card { padding: 13px; }
+            .custom-table th, .custom-table td { padding: 11px; }
+            .param-item { flex-direction: column; gap: 5px; }
+            .param-key { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            html { scroll-behavior: auto; }
+            *, *::before, *::after { animation: none !important; transition-duration: 0.01ms !important; }
+        }
+
+        /* 2.5 視覺層：保留低耗能結構，補回直播控制台的品牌感 */
+        body {
+            background-color: #090a0d;
+            background-image:
+                linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px);
+            background-size: 32px 32px;
+        }
+        .bg-container { display: none; }
+        .navbar {
+            border-top: 3px solid var(--twitch-purple);
+            background: #101116;
+            box-shadow: 0 4px 18px rgba(0, 0, 0, 0.28);
+        }
+        .navbar-brand {
+            padding: 7px 10px;
+            border-radius: 5px;
+            background: #1a1721;
+        }
+        .navbar-brand i {
+            width: 28px;
+            height: 28px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 5px;
+            background: var(--twitch-purple);
+            color: #fff;
+        }
+        .nav-link.active {
+            border-color: var(--twitch-purple);
+            background: #201a2a;
+            color: #fff !important;
+        }
+        .nav-link.active i { color: #cfb4ff; }
+
+        .hero-section {
+            position: relative;
+            overflow: hidden;
+            border-bottom: 1px solid #35303f;
+            background: #15121a;
+        }
+        .hero-section::before {
+            content: '';
+            position: absolute;
+            inset: 0 auto 0 0;
+            width: 7px;
+            background: var(--twitch-purple);
+        }
+        .hero-section::after {
+            display: none;
+        }
+        .hero-kicker { color: #b990ff; }
+        .hero-title { color: #fff; }
+        .search-input {
+            border-color: #51465f;
+            background: #1b1821;
+            box-shadow: inset 3px 0 0 var(--twitch-purple);
+        }
+        .search-input:focus {
+            border-color: #b990ff;
+            background: #211c29;
+            box-shadow: inset 3px 0 0 var(--accent-cyan), 0 0 0 3px rgba(67, 189, 232, 0.1);
+        }
+        .version-badge {
+            border-color: #4b4059;
+            background: #201b28;
+            color: #e6d9f7;
+        }
+
+        #checkin { --section-color: #3fd58b; --section-soft: #152a21; }
+        #lookup { --section-color: #45bde7; --section-soft: #142630; }
+        #fun { --section-color: #f1a54c; --section-soft: #2d2216; }
+        #valorant { --section-color: #ff6474; --section-soft: #30191e; }
+        #tft { --section-color: #63d2c7; --section-soft: #142b29; }
+        #management { --section-color: #b990ff; --section-soft: #261d31; }
+
+        .navbar .nav-link[href="#checkin"] { --nav-color: #3fd58b; --nav-soft: rgba(63, 213, 139, 0.08); }
+        .navbar .nav-link[href="#lookup"] { --nav-color: #45bde7; --nav-soft: rgba(69, 189, 231, 0.08); }
+        .navbar .nav-link[href="#fun"] { --nav-color: #f1a54c; --nav-soft: rgba(241, 165, 76, 0.08); }
+        .navbar .nav-link[href="#valorant"] { --nav-color: #ff6474; --nav-soft: rgba(255, 100, 116, 0.08); }
+        .navbar .nav-link[href="#tft"] { --nav-color: #63d2c7; --nav-soft: rgba(99, 210, 199, 0.08); }
+        .navbar .nav-link[href="#management"] { --nav-color: #b990ff; --nav-soft: rgba(185, 144, 255, 0.08); }
+        .navbar .nav-link {
+            color: var(--nav-color, #cbd5e1) !important;
+            background: transparent;
+        }
+        .navbar .nav-link i { color: var(--nav-color, #cbd5e1); }
+        .navbar .nav-link:hover,
+        .navbar .nav-link:focus,
+        .navbar .nav-link.active {
+            border-color: transparent;
+            background: #181b21;
+            color: var(--nav-color, #ffffff) !important;
+        }
+        .navbar .nav-link:hover i,
+        .navbar .nav-link:focus i,
+        .navbar .nav-link.active i { color: var(--nav-color, #ffffff); }
+        .nav-copy {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 2px;
+            line-height: 1;
+        }
+        .nav-copy small {
+            color: inherit;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.58rem;
+            font-weight: 700;
+            opacity: 0.72;
+        }
+
+        .section-header {
+            position: relative;
+            padding: 11px 14px 12px;
+            border: 1px solid #30343d;
+            border-left: 4px solid var(--section-color, var(--accent-cyan));
+            border-radius: 6px;
+            background: #121419;
+        }
+        .section-icon {
+            width: 36px;
+            height: 36px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #353c48;
+            border-radius: 5px;
+            background: #20242b;
+            color: var(--section-color, var(--accent-cyan));
+        }
+        .gradient-text { color: #fff; }
+        .en-sub-title { color: var(--section-color, #77808f); opacity: 0.72; }
+
+        .glass-card {
+            border-color: #353943;
+            border-left-color: var(--section-color, #596474);
+            background: #15171d;
+        }
+        .glass-card::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 42px;
+            width: 34px;
+            height: 2px;
+            background: var(--section-color, #596474);
+            opacity: 0.65;
+        }
+        .glass-card:hover {
+            border-color: #545b69;
+            border-left-color: var(--section-color, var(--accent-cyan));
+            background: #1b1e25;
+            box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+        }
+        .card-title > i {
+            width: 28px;
+            height: 28px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex: 0 0 28px;
+            border: 1px solid #353c48;
+            border-radius: 5px;
+            background: #20242b;
+        }
+        .cmd-badge {
+            border-color: #4a5260;
+            background: #22262e;
+            color: #e8edf4;
+            box-shadow: inset 0 -2px 0 rgba(0,0,0,0.22);
+        }
+        .cmd-badge::before {
+            content: '›';
+            margin-right: 5px;
+            color: var(--section-color, var(--accent-cyan));
+            font-weight: 900;
+        }
+        .cmd-badge:hover {
+            border-color: var(--section-color, var(--accent-cyan));
+            background: var(--section-soft, #26313a);
+        }
+        .table-container {
+            border-top: 3px solid var(--section-color, var(--twitch-purple));
+            background: #121419;
+            box-shadow: 0 14px 30px rgba(0,0,0,0.18);
+        }
+        .admin-card {
+            border-color: #414650;
+            background: #17191f;
+            box-shadow: 0 8px 18px rgba(0,0,0,0.16);
+        }
+        #backToTop {
+            border: 1px solid #5a4a6a;
+            background: #241b2d;
+            color: #d6c0f3;
+        }
+
+        @media (max-width: 991px) {
+            .navbar-brand { padding: 5px 8px; }
+            .nav-link.active { border-left-color: var(--twitch-purple); }
+        }
+        @media (max-width: 575px) {
+            .hero-section::before { width: 4px; }
+            .section-header { padding: 9px 10px 10px; }
+            .section-icon { width: 32px; height: 32px; }
+        }
+
+        .cmd-section[hidden] { display: none !important; }
+        .cmd-section {
+            content-visibility: visible;
+            contain-intrinsic-size: none;
+        }
+        footer { margin-top: 35px; }
+
+        /* 閱讀層次：分類色、主要敘述與補充註解 */
+        #checkin { --section-card: #121c18; --section-card-hover: #17251f; }
+        #lookup { --section-card: #121a20; --section-card-hover: #17242c; }
+        #fun { --section-card: #1c1813; --section-card-hover: #272016; }
+        #valorant { --section-card: #1d1518; --section-card-hover: #291a1f; }
+        #tft { --section-card: #121c1c; --section-card-hover: #172626; }
+        #management { --section-card: #19151e; --section-card-hover: #231b2a; }
+
+        .section-header {
+            background: linear-gradient(100deg, var(--section-soft, #182028) 0%, #121419 42%);
+        }
+        .gradient-text { color: var(--section-color, #ffffff); font-size: 1.58rem; }
+        .en-sub-title { color: var(--section-color, #8fa2b8); font-size: 0.76rem; opacity: 0.82; }
+        .glass-card { background: #15171d; }
+        .glass-card:hover { background: #1b1e25; }
+        .glass-card::after { display: none; }
+        .cmd-section .glass-card .card-title {
+            color: #f8fafc !important;
+            font-size: 1.18rem;
+            line-height: 1.4;
+            margin-bottom: 13px;
+        }
+        .cmd-section .glass-card .card-title > i {
+            color: var(--section-color, #cbd5e1);
+        }
+        .card-desc {
+            color: #a8b8cc;
+            font-size: 1.02rem;
+            font-weight: 400;
+            line-height: 1.65;
+        }
+        .cmd-badge {
+            border-color: var(--section-color, #6f7d91);
+            background: #0c1016;
+            color: #ffffff;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            font-weight: 700;
+        }
+        .feature-note {
+            padding: 7px 10px;
+            font-size: 0.86rem;
+            line-height: 1.45;
+        }
+        .note-vip { background: #282013; }
+        .note-allow { background: #12261d; }
+        .note-info { background: #12232b; }
+        .note-danger { background: #2a1719; }
+
+        .card-desc > .text-white-50.small,
+        .glass-card > .text-white-50.small,
+        .param-text .text-white-50.small,
+        .custom-table .text-white-50.small {
+            display: block;
+            width: fit-content;
+            max-width: 100%;
+            margin-top: 15px !important;
+            padding: 6px 8px;
+            border: 1px solid #3b4452;
+            border-radius: 4px;
+            background: transparent;
+            color: #7f8c9f !important;
+            font-size: 0.82rem !important;
+            font-weight: 400;
+            line-height: 1.5;
+        }
+        .card-desc > .text-white-50.small::before {
+            content: '補充';
+            display: inline-flex;
+            margin-right: 7px;
+            padding: 1px 5px;
+            border: 1px solid #4a5564;
+            border-radius: 3px;
+            background: #20242b;
+            color: #8e9bad;
+            font-size: 0.68rem;
+            font-weight: 700;
+            line-height: 1.35;
+            vertical-align: 1px;
+        }
+        .custom-table th { color: #ffffff; font-size: 0.9rem; }
+        .custom-table td { color: #c4cedc; font-size: 1rem; line-height: 1.65; }
+        .param-text { color: #cbd5e2; font-size: 1rem; line-height: 1.65; }
+        .search-status { font-size: 0.84rem; }
+        .search-status:empty { display: none; }
+        .search-container .search-icon { top: 24px; }
+        .cmd-type-tag {
+            min-height: 28px;
+            display: inline-flex;
+            align-items: center;
+            padding: 5px 9px;
+            border-radius: 4px;
+            background: #151922;
+            border-color: #46505f;
+            color: #aeb9c8;
+            font-size: 0.72rem;
+            font-weight: 700;
+            line-height: 1;
+            letter-spacing: 0;
+        }
+
+        @media (max-width: 575px) {
+            .gradient-text { font-size: 1.42rem; }
+            .cmd-section .glass-card .card-title { font-size: 1.14rem; }
+            .card-desc { font-size: 1rem; }
+            .cmd-badge { font-size: 0.88rem; }
+            .custom-table td, .param-text { font-size: 0.96rem; }
+            .nav-link { min-height: 50px; }
+        }
+
+        @media (min-width: 768px) {
+            #management .custom-table {
+                width: 100%;
+                border-collapse: collapse;
+            }
+            #management .custom-table th {
+                border-right: 1px solid #4a515e;
+                border-bottom: 1px solid #4a515e;
+            }
+            #management .custom-table td {
+                border-right: 1px solid #3d4450;
+                border-bottom: 1px solid #424a57;
+            }
+            #management .custom-table th:last-child,
+            #management .custom-table td:last-child { border-right: 0; }
+            #management .custom-table tbody tr:last-child td { border-bottom: 0; }
+        }
+
+        @media (max-width: 767px) {
+            #management .table-container,
+            #management .table-responsive { overflow: visible; }
+            #management .custom-table,
+            #management .custom-table tbody {
+                display: block;
+                width: 100%;
+            }
+            #management .custom-table thead { display: none; }
+            #management .custom-table tr.searchable-row {
+                display: block;
+                width: 100%;
+                margin-bottom: 14px;
+                overflow: hidden;
+                border: 1px solid #3c3548;
+                border-left: 3px solid var(--section-color, #b990ff);
+                border-radius: 6px;
+                background: #121419;
+            }
+            #management .custom-table td {
+                display: block;
+                width: 100% !important;
+                padding: 13px;
+                border-bottom: 1px solid #2b2f37;
+                overflow-wrap: anywhere;
+            }
+            #management .custom-table td:last-child { border-bottom: 0; }
+            #management .custom-table td::before {
+                display: block;
+                margin-bottom: 9px;
+                color: var(--section-color, #b990ff);
+                font-size: 0.72rem;
+                font-weight: 800;
+                letter-spacing: 0;
+            }
+            #management .custom-table td:nth-child(1)::before { content: '指令'; }
+            #management .custom-table td:nth-child(2)::before { content: '功能詳解'; }
+            #management .custom-table td:nth-child(3)::before { content: '權限與說明'; }
+            #management .custom-table .text-nowrap { white-space: normal !important; }
+        }
+
+        /* 低耗能動態背景：只移動獨立圖層，不重繪內容區 */
+        body { background: #090a0d; }
+        .bg-container {
+            display: block;
+            z-index: 0;
+            pointer-events: none;
+            contain: strict;
+            background:
+                radial-gradient(circle at 12% 8%, rgba(145, 70, 255, 0.09), transparent 34%),
+                radial-gradient(circle at 88% 72%, rgba(67, 189, 232, 0.06), transparent 30%),
+                #090a0d;
+        }
+        .bg-grid {
+            top: -32px;
+            left: -32px;
+            width: calc(100% + 64px);
+            height: calc(100% + 64px);
+            background-image:
+                linear-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px);
+            background-size: 32px 32px;
+            mask-image: none;
+            -webkit-mask-image: none;
+            will-change: transform;
+            animation: background-grid-drift 45s linear infinite;
+        }
+        .bg-container::after {
+            content: '';
+            position: absolute;
+            z-index: 2;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 14vh;
+            opacity: 0;
+            background: linear-gradient(to bottom, transparent, rgba(92, 205, 238, 0.045), transparent);
+            transform: translate3d(0, -20vh, 0);
+            will-change: transform, opacity;
+            animation: background-scan 16s linear infinite;
+        }
+        .navbar { z-index: 20; }
+        .hero-section, body > .container { position: relative; z-index: 1; }
+        #copyToast, #backToTop { z-index: 30; }
+        .is-page-hidden .bg-grid,
+        .is-page-hidden .bg-container::after { animation-play-state: paused; }
+
+        /* 品牌動態：小幅漂浮與間歇掃光，不改變導覽列尺寸 */
+        .navbar-brand {
+            position: relative;
+            overflow: hidden;
+            isolation: isolate;
+            transition: border-color 0.18s ease, background-color 0.18s ease;
+        }
+        .navbar-brand::after {
+            content: '';
+            position: absolute;
+            z-index: 2;
+            top: -45%;
+            left: -45%;
+            width: 34%;
+            height: 190%;
+            opacity: 0;
+            pointer-events: none;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.24), transparent);
+            transform: translate3d(-160%, 0, 0) rotate(16deg);
+            will-change: transform, opacity;
+            animation: brand-light-sweep 8s ease-in-out infinite;
+        }
+        .navbar-brand .fa-robot {
+            position: relative;
+            z-index: 1;
+            transform-origin: 50% 70%;
+            will-change: transform;
+            animation: brand-robot-float 4.2s ease-in-out infinite;
+        }
+        .navbar-brand .brand-text {
+            position: relative;
+            z-index: 1;
+            transition: color 0.18s ease;
+        }
+        .navbar-brand:hover {
+            border-color: rgba(169, 112, 255, 0.48);
+            background-color: #21192a;
+        }
+        .navbar-brand:hover .fa-robot {
+            animation: none;
+            transform: scale(1.09) rotate(-4deg);
+        }
+        .navbar-brand:hover .brand-text { color: #ffffff; }
+        .is-page-hidden .navbar-brand::after,
+        .is-page-hidden .navbar-brand .fa-robot { animation-play-state: paused; }
+
+        @keyframes background-grid-drift {
+            to { transform: translate3d(32px, 32px, 0); }
+        }
+        @keyframes background-scan {
+            0%, 22% { opacity: 0; transform: translate3d(0, -20vh, 0); }
+            28% { opacity: 1; }
+            58% { opacity: 0.75; }
+            66%, 100% { opacity: 0; transform: translate3d(0, 120vh, 0); }
+        }
+        @keyframes brand-robot-float {
+            0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg); }
+            45% { transform: translate3d(0, -2px, 0) rotate(-3deg); }
+            60% { transform: translate3d(0, -1px, 0) rotate(2deg); }
+        }
+        @keyframes brand-light-sweep {
+            0%, 68% { opacity: 0; transform: translate3d(-160%, 0, 0) rotate(16deg); }
+            72% { opacity: 0.7; }
+            84% { opacity: 0.45; }
+            88%, 100% { opacity: 0; transform: translate3d(520%, 0, 0) rotate(16deg); }
+        }
     </style>
 </head>
 <body>
@@ -333,24 +1068,24 @@
     <div class="bg-container"><div class="bg-grid"></div></div>
 
     <div id="copyToast" class="copy-tooltip"><i class="fa-solid fa-check-circle me-2"></i>指令已複製</div>
-    <button id="backToTop" onclick="scrollToTop()"><i class="fa-solid fa-arrow-up"></i></button>
+    <button id="backToTop" onclick="scrollToTop()" title="回到頂端" aria-label="回到頂端"><i class="fa-solid fa-arrow-up"></i></button>
 
     <nav class="navbar navbar-expand-lg navbar-dark sticky-top">
         <div class="container">
             <a class="navbar-brand" href="#">
-                <i class="fa-solid fa-robot"></i><span class="brand-text">BOT MANUAL</span>
+                <i class="fa-solid fa-robot"></i><span class="brand-text">FLYCAT BOT</span>
             </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="開啟分類選單">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
-                    <li class="nav-item"><a class="nav-link" href="#checkin"><i class="fa-solid fa-calendar-check"></i><span>簽到排行</span></a></li>
-                    <li class="nav-item"><a class="nav-link" href="#lookup"><i class="fa-solid fa-magnifying-glass"></i><span>帳號查詢</span></a></li>
-                    <li class="nav-item"><a class="nav-link" href="#fun"><i class="fa-solid fa-gamepad"></i><span>娛樂互動</span></a></li>
-                    <li class="nav-item"><a class="nav-link" href="#valorant"><i class="fa-solid fa-crosshairs"></i><span>VALORANT</span></a></li>
-                    <li class="nav-item"><a class="nav-link" href="#tft"><i class="fa-solid fa-chess-board"></i><span>TFT</span></a></li>
-                    <li class="nav-item"><a class="nav-link" href="#management"><i class="fa-solid fa-shield-halved"></i><span>管理後台</span></a></li>
+                    <li class="nav-item"><a class="nav-link" href="#checkin"><i class="fa-solid fa-calendar-check"></i><span class="nav-copy"><span>簽到與排行</span><small>CHECK-IN &amp; RANKING</small></span></a></li>
+                    <li class="nav-item"><a class="nav-link" href="#lookup"><i class="fa-solid fa-magnifying-glass"></i><span class="nav-copy"><span>帳號查詢</span><small>ACCOUNT LOOKUP</small></span></a></li>
+                    <li class="nav-item"><a class="nav-link" href="#fun"><i class="fa-solid fa-gamepad"></i><span class="nav-copy"><span>娛樂互動</span><small>FUN &amp; INTERACTION</small></span></a></li>
+                    <li class="nav-item"><a class="nav-link" href="#valorant"><i class="fa-solid fa-crosshairs"></i><span class="nav-copy"><span>VALORANT 戰績</span><small>VALORANT STATS</small></span></a></li>
+                    <li class="nav-item"><a class="nav-link" href="#tft"><i class="fa-solid fa-chess-board"></i><span class="nav-copy"><span>聯盟戰棋戰績</span><small>TEAMFIGHT TACTICS</small></span></a></li>
+                    <li class="nav-item"><a class="nav-link" href="#management"><i class="fa-solid fa-shield-halved"></i><span class="nav-copy"><span>管理與後台</span><small>MANAGEMENT DASHBOARD</small></span></a></li>
                 </ul>
             </div>
         </div>
@@ -358,14 +1093,19 @@
 
     <div class="hero-section">
         <div class="container">
-            <h1 class="hero-title">Bot 指令手冊</h1>
-            <div class="hero-desc-box"><p class="lead">整合結婚後宮、簽到系統、全自動斗內廣播與自動化管理的智慧助手</p></div>
-            <div class="search-container">
-                <i class="fa-solid fa-magnifying-glass search-icon"></i>
-                <input type="text" id="searchInput" class="search-input" placeholder="搜尋指令 (例如: 求婚, 簽到, 排名...)" oninput="searchCommands()">
-            </div>
-            <div class="version-container" style="text-align: center; margin-bottom: 60px;">
-                <div class="version-badge"><span class="version-dot"></span><span>v5.1.0 穩定版</span></div>
+            <div class="hero-workspace">
+                <div>
+                    <h1 class="hero-title">FlyCat Bot 指令中心</h1>
+                    <span class="hero-kicker">COMMAND CENTER</span>
+                </div>
+                <div class="search-container">
+                    <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                    <input type="text" id="searchInput" class="search-input" placeholder="搜尋指令、功能或權限" oninput="searchCommands()" autocomplete="off" aria-label="搜尋指令">
+                    <p id="searchStatus" class="search-status" aria-live="polite"></p>
+                </div>
+                <div class="version-container">
+                    <div class="version-badge"><span class="version-dot"></span><span>v5.2.0 穩定版</span></div>
+                </div>
             </div>
         </div>
     </div>
@@ -380,7 +1120,7 @@
             <div class="row g-4">
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#34d399 !important"><i class="fa-solid fa-calendar-check me-2"></i>每日簽到</h5>
+                        <h5 class="card-title"><i class="fa-solid fa-calendar-check me-2"></i>每日簽到</h5>
                         <p class="card-desc">每次簽到獲得 EXP，連續簽到每天多 +5，最高第 30 天封頂（+175 EXP）。<br><span class="text-white-50 small">每日限一次，需開台狀態。</span></p>
                         <div class="mt-3"><span class="cmd-badge" onclick="copyText('!簽到')">!簽到</span></div>
                     </div>
@@ -388,7 +1128,7 @@
 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#34d399 !important"><i class="fa-solid fa-rotate-left me-2"></i>補簽</h5>
+                        <h5 class="card-title"><i class="fa-solid fa-rotate-left me-2"></i>補簽</h5>
                         <p class="card-desc">昨天忘記簽到嗎？補回昨天的簽到，streak 繼續延續！<br><span class="text-white-50 small">每月限 3 次，補簽獲得基礎 +30 EXP（不含連續加成）。</span></p>
                         <div class="mt-3"><span class="cmd-badge" onclick="copyText('!補簽')">!補簽</span></div>
                     </div>
@@ -396,7 +1136,7 @@
 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#fbbf24 !important"><i class="fa-solid fa-trophy me-2"></i>排行榜</h5>
+                        <h5 class="card-title"><i class="fa-solid fa-trophy me-2"></i>排行榜</h5>
                         <p class="card-desc">查看本月前五名簽到排行榜，或查詢自己在頻道中的即時排名。</p>
                         <div class="feature-note note-vip"><i class="fa-solid fa-lock"></i>查詢他人需 MOD+ 權限</div>
                         <div class="mt-3"><span class="cmd-badge" onclick="copyText('!本月排名')">!本月排名</span> <span class="cmd-badge" onclick="copyText('!我的排名')">!我的排名</span></div>
@@ -405,7 +1145,7 @@
 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#fb923c !important"><i class="fa-solid fa-clock-rotate-left me-2"></i>歷史榮譽榜</h5>
+                        <h5 class="card-title"><i class="fa-solid fa-clock-rotate-left me-2"></i>歷史榮譽榜</h5>
                         <p class="card-desc">查詢過去指定月份的前五名簽到排行榜 (格式 YYYY-MM)。</p>
                         <div class="mt-3"><span class="cmd-badge" onclick="copyText('!月排名 2025-11')">!月排名 YYYY-MM</span></div>
                     </div>
@@ -421,7 +1161,7 @@
             <div class="row g-4">
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#a78bfa !important"><i class="fa-solid fa-address-card me-2"></i>個人查詢</h5>
+                        <h5 class="card-title"><i class="fa-solid fa-address-card me-2"></i>個人查詢</h5>
                         <p class="card-desc">查詢完整的簽到履歷，包含：本月簽到次數、歷史簽到總次數、本月開台次數以及最後簽到日。</p>
                         <div class="feature-note note-vip"><i class="fa-solid fa-lock"></i>查詢他人需 VIP+ 權限</div>
                         <div><span class="cmd-badge" onclick="copyText('!查詢')">!查詢</span> <span class="cmd-badge" onclick="copyText('!查詢 @ID')">!查詢 @ID</span></div>
@@ -430,7 +1170,7 @@
 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#6ee7b7 !important"><i class="fa-solid fa-stopwatch me-2"></i>掛台肝度</h5>
+                        <h5 class="card-title"><i class="fa-solid fa-stopwatch me-2"></i>掛台肝度</h5>
                         <p class="card-desc">查詢等級、觀看時數、發言量、連簽天數以及目前的進出聊天室狀態。EXP 由觀看、發言、簽到三項合計。</p>
                         <div class="feature-note note-allow"><i class="fa-solid fa-check"></i>支援查詢他人</div>
                         <div><span class="cmd-badge" onclick="copyText('!cu')">!cu</span> <span class="cmd-badge" onclick="copyText('!cu @ID')">!cu @ID</span></div>
@@ -439,7 +1179,7 @@
 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#c084fc !important"><i class="fa-solid fa-clock-rotate-left me-2"></i>前世查水表</h5>
+                        <h5 class="card-title"><i class="fa-solid fa-clock-rotate-left me-2"></i>前世查水表</h5>
                         <p class="card-desc">稽查使用者的 Twitch 歷史改名紀錄。<br><span class="text-white-50 small">※ 僅能查詢機器人導入後的改名紀錄，不溯及既往。</span></p>
                         <div class="mt-3"><span class="cmd-badge" onclick="copyText('!前世')">!前世</span> <span class="cmd-badge" onclick="copyText('!前世 @ID')">!前世 @ID</span></div>
                     </div>
@@ -447,7 +1187,7 @@
 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#f472b6 !important"><i class="fa-solid fa-heart me-2"></i>追隨時間</h5>
+                        <h5 class="card-title"><i class="fa-solid fa-heart me-2"></i>追隨時間</h5>
                         <p class="card-desc">精確計算你的追隨時長，並自動對應中文名稱 (別名：!追隨時間、!followage)。</p>
                         <div class="feature-note note-allow"><i class="fa-solid fa-check"></i>支援查詢他人</div>
                         <div><span class="cmd-badge" onclick="copyText('!芯寶')">!芯寶</span> <span class="cmd-badge" onclick="copyText('!芯寶 @ID')">!芯寶 @ID</span></div>
@@ -456,7 +1196,7 @@
 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#22d3ee !important"><i class="fa-solid fa-cake-candles me-2"></i>帳號生日</h5>
+                        <h5 class="card-title"><i class="fa-solid fa-cake-candles me-2"></i>帳號生日</h5>
                         <p class="card-desc">查詢你的Twitch 帳號的註冊日，以及帳號註冊了多久 (中文格式)。</p>
                         <div class="feature-note note-vip"><i class="fa-solid fa-lock"></i>查詢他人需 VIP+ 權限</div>
                         <div><span class="cmd-badge" onclick="copyText('!創建多久')">!創建多久</span> <span class="cmd-badge" onclick="copyText('!創建多久 @ID')">!創建多久 @ID</span></div>
@@ -465,7 +1205,7 @@
 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#e2e8f0 !important"><i class="fa-solid fa-circle-question me-2"></i>指令幫助</h5>
+                        <h5 class="card-title"><i class="fa-solid fa-circle-question me-2"></i>指令幫助</h5>
                         <p class="card-desc">獲取完整的機器人指令列表連結，隨時查閱所有可用功能。</p>
                         <div class="mt-3"><span class="cmd-badge" onclick="copyText('!幫助')">!幫助</span></div>
                     </div>
@@ -477,13 +1217,13 @@
         <div id="fun" class="cmd-section">
             <div class="section-header">
                 <i class="fa-solid fa-gamepad section-icon"></i>
-                <div><h2 class="gradient-text">娛樂互動</h2><span class="en-sub-title">FUN & INTERACTION</span></div>
+                <div><h2 class="gradient-text">娛樂互動</h2><span class="en-sub-title">FUN &amp; INTERACTION</span></div>
             </div>
             <div class="row g-4">
                 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#fde047 !important"><i class="fa-solid fa-dice me-2"></i>每日運勢占卜</h5>
+                        <h5 class="card-title"><i class="fa-solid fa-dice me-2"></i>每日運勢占卜</h5>
                         <p class="card-desc">測試你今天的運氣！包含運勢、幸運色、數字與台主頭髮預測！(別名：!占卜)</p>
                         <div class="mt-3"><span class="cmd-badge" onclick="copyText('!運勢')">!運勢</span></div>
                     </div>
@@ -491,7 +1231,7 @@
 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#ec4899 !important"><i class="fa-solid fa-ring me-2"></i>結婚後宮系統</h5>
+                        <h5 class="card-title"><i class="fa-solid fa-ring me-2"></i>結婚後宮系統</h5>
                         <p class="card-desc">建立你的婚姻及後宮！防 NTR 機制、30秒自動倒數，並擁有正宮、皇貴妃等古風稱謂。</p>
                         <div class="feature-note note-vip"><i class="fa-solid fa-lock"></i>查詢他人伴侶需 VIP+ 權限</div>
                         <div>
@@ -504,7 +1244,7 @@
 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#ef4444 !important"><i class="fa-solid fa-heart-crack me-2"></i>離婚協議</h5>
+                        <h5 class="card-title"><i class="fa-solid fa-heart-crack me-2"></i>離婚協議</h5>
                         <p class="card-desc">解除婚姻關係。為了防止誤觸，系統設有二次確認機制 (30秒)。</p>
                         <div class="feature-note note-danger"><i class="fa-solid fa-triangle-exclamation"></i>需輸入確認指令</div>
                         <div>
@@ -516,7 +1256,7 @@
                 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#38bdf8 !important"><i class="fa-solid fa-comment-slash me-2"></i>自 Ban 冷靜</h5>
+                        <h5 class="card-title"><i class="fa-solid fa-comment-slash me-2"></i>自 Ban 冷靜</h5>
                         <p class="card-desc">覺得自己話太多？把「自己」禁言一段時間，冷靜一下。</p>
                         <div class="feature-note note-info"><i class="fa-solid fa-circle-info"></i>上限: 觀眾 10分 / VIP 1小時</div>
                         <div>
@@ -538,7 +1278,7 @@
 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#fb7185 !important"><i class="fa-solid fa-ranking-star me-2"></i>牌位查詢</h5>
+                        <h5 class="card-title"><i class="fa-solid fa-ranking-star me-2"></i>牌位查詢</h5>
                         <p class="card-desc">查詢 VALORANT 目前牌位、RR、隱分與最高牌位。<br><span class="text-white-50 small">沒帶參數時預設查詢台主綁定的帳號；加上 @ID 或 名字#TAG 可查詢其他人。</span></p>
                         <div class="mt-3">
                             <span class="cmd-badge" onclick="copyText('!rank')">!rank</span>
@@ -551,7 +1291,7 @@
 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#fb7185 !important"><i class="fa-solid fa-list-check me-2"></i>最近對戰</h5>
+                        <h5 class="card-title"><i class="fa-solid fa-list-check me-2"></i>最近對戰</h5>
                         <p class="card-desc">顯示最近 3 場對戰紀錄，包含模式、角色、地圖、KDA 與爆頭率。<br><span class="text-white-50 small">沒帶參數時預設查詢台主綁定的帳號；加上 @ID 或 名字#TAG 可查詢其他人。</span></p>
                         <div class="mt-3">
                             <span class="cmd-badge" onclick="copyText('!最近對戰')">!最近對戰</span>
@@ -574,7 +1314,7 @@
 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#67e8f9 !important"><i class="fa-solid fa-ranking-star me-2"></i>目前牌位</h5>
+                        <h5 class="card-title"><i class="fa-solid fa-ranking-star me-2"></i>目前牌位</h5>
                         <p class="card-desc">顯示台服、韓服或東南亞服、第幾季，以及單人、雙人、狂暴模式的牌位與場次。單人顯示前四率，雙人顯示前二率。</p>
                         <div class="mt-3">
                             <span class="cmd-badge" onclick="copyText('!TFT')">!TFT</span>
@@ -588,7 +1328,7 @@
 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#fbbf24 !important"><i class="fa-solid fa-list-ol me-2"></i>最近對戰</h5>
+                        <h5 class="card-title"><i class="fa-solid fa-list-ol me-2"></i>最近對戰</h5>
                         <p class="card-desc">預設顯示最近 5 場，可指定 5～20 場，包含名次、平均名次、前四率與吃雞率。</p>
                         <div class="mt-3">
                             <span class="cmd-badge" onclick="copyText('!TFT最近')">!TFT最近</span>
@@ -600,7 +1340,7 @@
 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#a7f3d0 !important"><i class="fa-solid fa-arrow-trend-up me-2"></i>牌位變化</h5>
+                        <h5 class="card-title"><i class="fa-solid fa-arrow-trend-up me-2"></i>牌位變化</h5>
                         <p class="card-desc">比較指定期間內的牌位、換算分數、對戰場數與前四率。若歷史不足，會顯示目前可比較的實際期間。</p>
                         <div class="mt-3">
                             <span class="cmd-badge" onclick="copyText('!TFT變化 7')">!TFT變化 7</span>
@@ -612,7 +1352,7 @@
 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#f0abfc !important"><i class="fa-solid fa-chart-simple me-2"></i>本季場次</h5>
+                        <h5 class="card-title"><i class="fa-solid fa-chart-simple me-2"></i>本季場次</h5>
                         <p class="card-desc">顯示本季總場次、前四場數與比例、平均名次，以及第 1 名與第 8 名場數。</p>
                         <div class="mt-3">
                             <span class="cmd-badge" onclick="copyText('!TFT場次')">!TFT場次</span>
@@ -623,7 +1363,7 @@
 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#fdba74 !important"><i class="fa-solid fa-link me-2"></i>綁定台主帳號</h5>
+                        <h5 class="card-title"><i class="fa-solid fa-link me-2"></i>綁定台主帳號</h5>
                         <p class="card-desc">綁定本頻道台主的 Riot ID。未指定伺服器時預設台服，其他伺服器需在 Riot ID 前加上「韓服」或「東南亞服」。</p>
                         <div class="feature-note note-vip"><i class="fa-solid fa-lock"></i>限台主或系統管理員</div>
                         <div>
@@ -636,7 +1376,7 @@
 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title" style="color:#c4b5fd !important"><i class="fa-solid fa-clock-rotate-left me-2"></i>補入歷史</h5>
+                        <h5 class="card-title"><i class="fa-solid fa-clock-rotate-left me-2"></i>補入歷史</h5>
                         <p class="card-desc">BOT 每 10 分鐘會替已綁定帳號逐步補舊對戰。也可手動指定 20～250 個對戰；「完整」模式最多掃描 250 個對戰，場次統計會採用較完整的資料。</p>
                         <div class="feature-note note-vip"><i class="fa-solid fa-lock"></i>限系統管理員</div>
                         <div>
@@ -924,7 +1664,7 @@
         </div>
 
         <footer>
-            <p class="mb-1">Bot Version: 5.1.0 穩定版</p>
+            <p class="mb-1">Bot Version: 5.2.0 穩定版</p>
             <small>專為 Twitch 打造的系統</small>
         </footer>
 
@@ -935,6 +1675,44 @@
         const searchInput = document.getElementById('searchInput');
         const cards = document.querySelectorAll('.searchable-item');
         const rows = document.querySelectorAll('.searchable-row');
+        const sections = document.querySelectorAll('.cmd-section');
+        const searchStatus = document.getElementById('searchStatus');
+        let searchTimer;
+
+        document.querySelectorAll('.cmd-badge').forEach(badge => {
+            badge.setAttribute('role', 'button');
+            badge.setAttribute('tabindex', '0');
+            badge.setAttribute('aria-label', `複製指令 ${badge.textContent.trim()}`);
+            badge.addEventListener('keydown', event => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    badge.click();
+                }
+            });
+        });
+
+        document.querySelectorAll('#navbarNav .nav-link').forEach(link => {
+            link.addEventListener('click', event => {
+                if (window.innerWidth >= 992) return;
+
+                const target = document.querySelector(link.getAttribute('href'));
+                const collapseElement = document.getElementById('navbarNav');
+                if (!target || !collapseElement) return;
+
+                event.preventDefault();
+                const scrollToTarget = () => {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    history.replaceState(null, '', link.getAttribute('href'));
+                };
+
+                if (collapseElement.classList.contains('show')) {
+                    collapseElement.addEventListener('hidden.bs.collapse', scrollToTarget, { once: true });
+                    bootstrap.Collapse.getOrCreateInstance(collapseElement, { toggle: false }).hide();
+                } else {
+                    scrollToTarget();
+                }
+            });
+        });
 
         function copyText(text) {
             navigator.clipboard.writeText(text).then(function() {
@@ -946,19 +1724,39 @@
             });
         }
 
-        function searchCommands() {
+        function applySearch() {
             const filter = searchInput.value.toLowerCase();
-            
+            let visibleCount = 0;
+
             cards.forEach(card => {
                 const text = card.textContent || card.innerText;
-                card.style.display = text.toLowerCase().indexOf(filter) > -1 ? "" : "none";
+                const matched = text.toLowerCase().includes(filter);
+                card.style.display = matched ? "" : "none";
+                if (matched) visibleCount += 1;
             });
 
             rows.forEach(row => {
                 const text = row.textContent || row.innerText;
-                row.style.display = text.toLowerCase().indexOf(filter) > -1 ? "" : "none";
+                const matched = text.toLowerCase().includes(filter);
+                row.style.display = matched ? "" : "none";
+                if (matched) visibleCount += 1;
             });
+
+            sections.forEach(section => {
+                const candidates = section.querySelectorAll('.searchable-item, .searchable-row');
+                const hasSearchResult = Array.from(candidates).some(item => item.style.display !== 'none');
+                section.hidden = Boolean(filter) && !hasSearchResult;
+            });
+
+            searchStatus.textContent = filter ? `找到 ${visibleCount} 項結果` : '';
         }
+
+        function searchCommands() {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(applySearch, 120);
+        }
+
+        applySearch();
 
         async function refreshTwitchAdminNames() {
             try {
@@ -993,6 +1791,13 @@
         function scrollToTop() {
             window.scrollTo({top: 0, behavior: 'smooth'});
         }
+
+        function syncBackgroundAnimation() {
+            document.documentElement.classList.toggle('is-page-hidden', document.hidden);
+        }
+
+        document.addEventListener('visibilitychange', syncBackgroundAnimation);
+        syncBackgroundAnimation();
     </script>
 </body>
 </html>
