@@ -5,10 +5,10 @@ echo   FlyCat Bot 部署腳本
 echo ========================================
 echo.
 
-:: ── 1. 推送 index.html 到公開 repo ──
+:: ── 1. 推送網站與 Netlify Function 到公開 repo ──
 echo [1/3] 更新指令手冊 (index.html)...
 cd /d "D:\tset\FlyCatClaude Code"
-git add index.html
+git add index.html deploy.bat netlify.toml netlify/functions/twitch-admins.mjs
 git diff --cached --quiet && (echo   沒有變更，略過) || (git commit -m "update: 更新指令手冊" && git push origin master && echo   OK)
 echo.
 
