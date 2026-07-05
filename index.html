@@ -296,7 +296,6 @@
         .role-owner { background: rgba(234, 179, 8, 0.15); border-color: rgba(234, 179, 8, 0.4); color: #fde047; } 
         .role-mod { background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.4); color: #6ee7b7; }
         .role-admin { background: rgba(244, 63, 94, 0.1); border-color: rgba(244, 63, 94, 0.4); color: #fda4af; }
-        .role-viewer { background: rgba(56, 189, 248, 0.1); border-color: rgba(56, 189, 248, 0.4); color: #7dd3fc; }
 
         /* 系統分類標籤 */
         .cmd-type-tag { display: inline-block; padding: 4px 10px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; font-family: 'JetBrains Mono'; letter-spacing: 0.5px; border: 1px solid; }
@@ -541,7 +540,7 @@
         #backToTop { width: 42px; height: 42px; border: 0; border-radius: 6px; background: #252a32; }
         footer { margin-top: 70px; padding: 32px 0; }
 
-        @media (max-width: 991px) {
+        @media (max-width: 1199px) {
             .navbar { padding: 8px 0; }
             .navbar .container { min-height: 42px; }
             .navbar-collapse { margin-top: 8px; border-top: 1px solid #2b2f37; }
@@ -673,8 +672,7 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            flex: 0 1 100px;
-            width: 100px;
+            width: auto;
             min-width: 0;
             gap: 2px;
             line-height: 1;
@@ -693,15 +691,20 @@
         .nav-copy small {
             color: inherit;
             font-family: 'JetBrains Mono', monospace;
-            font-size: 0.56rem;
+            font-size: 0.52rem;
             font-weight: 700;
             line-height: 1.1;
-            opacity: 0.72;
+            letter-spacing: 0;
+            opacity: 0.82;
         }
-        .nav-copy small.nav-en-wide { font-size: 0.51rem; }
-        .nav-copy small.nav-en-xwide { font-size: 0.47rem; }
+        .navbar-nav .nav-link {
+            display: grid;
+            grid-template-columns: 16px minmax(0, 1fr);
+            align-items: center;
+            column-gap: 6px;
+        }
 
-        @media (min-width: 992px) {
+        @media (min-width: 1200px) {
             .navbar-collapse { min-width: 0; }
             .navbar-nav {
                 display: grid;
@@ -710,8 +713,6 @@
             }
             .navbar-nav .nav-item { min-width: 0; }
             .navbar-nav .nav-link {
-                justify-content: center;
-                gap: 5px;
                 padding-left: 5px;
                 padding-right: 5px;
             }
@@ -803,7 +804,7 @@
             color: #d6c0f3;
         }
 
-        @media (max-width: 991px) {
+        @media (max-width: 1199px) {
             .navbar-brand { padding: 5px 8px; }
             .nav-link.active { border-left-color: var(--twitch-purple); }
         }
@@ -1110,7 +1111,7 @@
     <div id="copyToast" class="copy-tooltip"><i class="fa-solid fa-check-circle me-2"></i>指令已複製</div>
     <button id="backToTop" onclick="scrollToTop()" title="回到頂端" aria-label="回到頂端"><i class="fa-solid fa-arrow-up"></i></button>
 
-    <nav class="navbar navbar-expand-lg navbar-dark sticky-top">
+    <nav class="navbar navbar-expand-xl navbar-dark sticky-top">
         <div class="container">
             <a class="navbar-brand" href="#">
                 <i class="fa-solid fa-robot"></i><span class="brand-text">FLYCAT BOT</span>
@@ -1120,12 +1121,12 @@
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
-                    <li class="nav-item"><a class="nav-link" href="#checkin"><i class="fa-solid fa-calendar-check"></i><span class="nav-copy"><span>簽到與排行</span><small class="nav-en-wide">CHECK-IN &amp; RANKING</small></span></a></li>
+                    <li class="nav-item"><a class="nav-link" href="#checkin"><i class="fa-solid fa-calendar-check"></i><span class="nav-copy"><span>簽到與排行</span><small>CHECK-IN &amp; RANKING</small></span></a></li>
                     <li class="nav-item"><a class="nav-link" href="#lookup"><i class="fa-solid fa-magnifying-glass"></i><span class="nav-copy"><span>帳號查詢</span><small>ACCOUNT LOOKUP</small></span></a></li>
-                    <li class="nav-item"><a class="nav-link" href="#fun"><i class="fa-solid fa-gamepad"></i><span class="nav-copy"><span>娛樂互動</span><small class="nav-en-wide">FUN &amp; INTERACTION</small></span></a></li>
+                    <li class="nav-item"><a class="nav-link" href="#fun"><i class="fa-solid fa-gamepad"></i><span class="nav-copy"><span>娛樂互動</span><small>FUN &amp; INTERACTION</small></span></a></li>
                     <li class="nav-item"><a class="nav-link" href="#valorant"><i class="fa-solid fa-crosshairs"></i><span class="nav-copy"><span>VALORANT 戰績</span><small>VALORANT STATS</small></span></a></li>
-                    <li class="nav-item"><a class="nav-link" href="#tft"><i class="fa-solid fa-chess-board"></i><span class="nav-copy"><span>聯盟戰棋戰績</span><small class="nav-en-wide">TEAMFIGHT TACTICS</small></span></a></li>
-                    <li class="nav-item"><a class="nav-link" href="#management"><i class="fa-solid fa-shield-halved"></i><span class="nav-copy"><span>管理與後台</span><small class="nav-en-xwide">MANAGEMENT DASHBOARD</small></span></a></li>
+                    <li class="nav-item"><a class="nav-link" href="#tft"><i class="fa-solid fa-chess-board"></i><span class="nav-copy"><span>聯盟戰棋戰績</span><small>TEAMFIGHT TACTICS</small></span></a></li>
+                    <li class="nav-item"><a class="nav-link" href="#management"><i class="fa-solid fa-shield-halved"></i><span class="nav-copy"><span>管理與後台</span><small>MANAGEMENT DASHBOARD</small></span></a></li>
                 </ul>
             </div>
         </div>
@@ -1214,6 +1215,15 @@
                         <p class="card-desc">查詢等級、觀看時數、發言量、連簽天數以及目前的進出聊天室狀態。EXP 由觀看、發言、簽到三項合計。</p>
                         <div class="feature-note note-allow"><i class="fa-solid fa-check"></i>支援查詢他人</div>
                         <div><span class="cmd-badge" onclick="copyText('!cu')">!cu</span> <span class="cmd-badge" onclick="copyText('!cu @ID')">!cu @ID</span></div>
+                    </div>
+                </div>
+
+                <div class="col-md-6 col-lg-4 searchable-item">
+                    <div class="glass-card">
+                        <h5 class="card-title"><i class="fa-solid fa-chart-line me-2"></i>活躍排行榜</h5>
+                        <p class="card-desc">查看本台前 1～20 名活躍觀眾，依觀看時間與發言量計算 EXP。</p>
+                        <div class="feature-note note-info"><i class="fa-solid fa-users"></i>所有觀眾可使用｜頻道共用 10 秒冷卻</div>
+                        <div><span class="cmd-badge" onclick="copyText('!活躍榜')">!活躍榜</span> <span class="cmd-badge" onclick="copyText('!top5')">!top5</span> <span class="cmd-badge" onclick="copyText('!top20')">!top20</span></div>
                     </div>
                 </div>
 
@@ -1575,28 +1585,6 @@
                                         <span class="role-badge role-mod"><i class="fa-solid fa-shield-halved"></i> 頻道 MOD</span>
                                     </div>
                                     <p class="mb-0 mt-2 small text-white-50">自訂專屬頻道的文字回覆指令。</p>
-                                </td>
-                            </tr>
-
-                            <tr class="searchable-row">
-                                <td>
-                                    <div class="d-flex flex-wrap gap-2 mb-3"><span class="cmd-badge" onclick="copyText('!活躍榜')">!活躍榜</span></div>
-                                    <div><span class="cmd-type-tag type-active">活躍度 (ACTIVE)</span></div>
-                                </td>
-                                <td>
-                                    <div class="param-item">
-                                        <div class="param-key key-yellow">無參數</div>
-                                        <div class="param-text">
-                                            即時統計並顯示本台前 5 名最高活躍度 (EXP) 的觀眾。
-                                            <div class="text-white-50 mt-1 small"><i class="fa-solid fa-calculator me-1"></i>EXP 計算：觀看分鐘數 × 2 + 發言次數 × 5</div>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td>
-                                    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
-                                        <span class="role-badge role-viewer"><i class="fa-solid fa-users"></i> 所有觀眾</span>
-                                    </div>
-                                    <p class="mb-0 mt-2 small text-white-50">所有觀眾皆可使用，頻道共用 10 秒冷卻（別名：!top、!top5、!活躍排行榜）。</p>
                                 </td>
                             </tr>
 
