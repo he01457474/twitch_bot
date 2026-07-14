@@ -81,27 +81,29 @@
 ### Repo 分工
 | Repo | 內容 | 網址 |
 |------|------|------|
-| 公開 | `index.html` 指令手冊（Netlify） | https://github.com/he01457474/twitch_bot |
-| 私有 | `test.py` 機器人程式碼 | https://github.com/he01457474/twitch_bot_private |
+| 網頁 | `index.html` 與 Netlify 網頁檔案 | https://github.com/he01457474/twitch_bot |
+| 私有 BOT | `src/test.py`、BOT 更新與授權腳本 | https://github.com/he01457474/twitch_bot_private |
+| 本機工具 | `projects/irl-stream/`、`projects/quiz-bot/`、私人秘書及其他工具 | 不推送到上述網站 Repo |
 
 ### 分支規則
-- `index.html` 更新後，必須推到 **`main`** 分支，Netlify 才會自動部署
-- `master` 分支照常 commit，但 `index.html` 要額外 `git push origin main` 或用 `git checkout main && git checkout master -- index.html && git commit && git push origin main && git checkout master`
+- `main` 是 Netlify 網頁正式分支；只有網頁檔案可推送到 `main`。
+- 不可將 `master` 的內容整批合併或推送到 `main`；它含有歷史上的本機專案變更。
+- `projects/` 下的 IRL、Quiz、私人秘書與其他本機工具不可推送到 `twitch_bot`；需要遠端 Repo 時，先由使用者指定專案與可見性。
 
 ### 本機路徑
-- 工作目錄：`D:\tset\FlyCatClaude Code`（公開 repo）
-- 私有暫存：`D:\tset\bot_private`（私有 repo）
+- 工作目錄：`D:\tset\FlyCatClaude Code`（總工作目錄）
+- 私有 BOT Repo：`D:\tset\bot_private`（私有 repo）
 - `.env` 永遠只留在 BOT 那台電腦，不上傳 GitHub
 
 ### 部署流程
-1. **這台電腦**：改本機 BOT 檔案 `D:\tset\FlyCatClaude Code\3.py`，完成後同步到私有 repo `D:\tset\bot_private\src\test.py` 並 commit/push
+1. **這台電腦**：直接修改私有 repo `D:\tset\bot_private\src\test.py`，完成後 commit/push 到私人 Repo。
 2. **LAPTOP-6N12C053**：執行 `D:\下載\BOT2\repo_temp\update_bot.bat` → 自動 pull + 重啟 BOT
 
 ### 注意事項
-- 之後聊天 BOT 相關修改，可以先改本機 `D:\tset\FlyCatClaude Code\3.py`；修完後必須同步到私有 repo `D:\tset\bot_private\src\test.py`
-- 同步到私有 repo 後直接 commit/push 到 GitHub，讓另一台 BOT 電腦可以 pull 更新
+- `D:\tset\FlyCatClaude Code\3.py` 不再作為 BOT 來源；不可重新建立或推送到公開網站 Repo。
+- 聊天 BOT 相關修改只改 `D:\tset\bot_private\src\test.py`，完成後直接 commit/push 到私人 Repo，讓筆電可以 pull 更新。
 - `.env`、資料庫、log、備份、執行暫存都不能提交
-- BOT 實際執行檔為 `D:\下載\BOT2\test.py`，由 `start_bot.bat` 啟動
+- 筆電 BOT 由 `D:\下載\BOT2\repo_temp\start_bot.bat` 啟動 `src\test.py`。
 
 ## 已安裝的 MCP 工具
 
