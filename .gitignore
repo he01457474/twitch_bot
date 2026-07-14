@@ -70,3 +70,9 @@ projects/irl-stream/config/dynu_ddns.json
 projects/irl-stream/config/relay_settings.json
 projects/irl-stream/config/notification.json
 projects/irl-stream/config/notification_state.json
+
+# Codex conversation attachments
+.codex-remote-attachments/
+
+# Twitch bot source, runtime data, and internal documentation live in the private repository.
+projects/twitch-bot/
