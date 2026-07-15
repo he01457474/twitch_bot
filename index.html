@@ -289,8 +289,12 @@
         .key-red { color: #f87171; background: rgba(248, 113, 113, 0.15); border-color: rgba(248, 113, 113, 0.4); }
         .key-purple { color: #c084fc; background: rgba(192, 132, 252, 0.15); border-color: rgba(192, 132, 252, 0.4); }
 
-        .reward-badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
-        .reward-badge { display: inline-flex; align-items: center; min-height: 30px; padding: 5px 9px; border: 1px solid #3d4652; border-radius: 4px; background: #171b21; color: #dce3eb; font-size: 0.82rem; font-weight: 700; }
+        .reward-flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 2px 0 12px; border-top: 1px solid #343a44; border-bottom: 1px solid #343a44; }
+        .reward-step { position: relative; min-width: 0; padding: 12px 13px 12px 38px; }
+        .reward-step + .reward-step { border-left: 1px solid #343a44; }
+        .reward-step-icon { position: absolute; top: 13px; left: 10px; width: 20px; color: var(--section-color, #8fd3ee); text-align: center; }
+        .reward-step-title { display: block; margin-bottom: 4px; color: #f2f4f8; font-size: 0.86rem; font-weight: 800; }
+        .reward-step-copy { display: block; color: #9ea6b3; font-size: 0.79rem; line-height: 1.5; }
 
         @media (max-width: 768px) { .admin-grid { grid-template-columns: 1fr; } }
 
@@ -561,6 +565,8 @@
             .custom-table th, .custom-table td { padding: 11px; }
             .param-item { flex-direction: column; gap: 5px; }
             .param-key { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+            .reward-flow { grid-template-columns: 1fr; }
+            .reward-step + .reward-step { border-top: 1px solid #343a44; border-left: 0; }
         }
         @media (prefers-reduced-motion: reduce) {
             html { scroll-behavior: auto; }
@@ -1105,6 +1111,103 @@
             84% { opacity: 0.45; }
             88%, 100% { opacity: 0; transform: translate3d(520%, 0, 0) rotate(16deg); }
         }
+
+        /* 最高管理員：低耗能極光卡片，動畫只改 transform 與 opacity */
+        .card-root {
+            position: relative;
+            overflow: hidden;
+            isolation: isolate;
+            border-color: rgba(132, 141, 255, 0.62);
+            background:
+                radial-gradient(circle at 12% 0%, rgba(63, 210, 238, 0.14), transparent 42%),
+                linear-gradient(135deg, #1a1926 0%, #151923 58%, #17151f 100%);
+            box-shadow: 0 10px 25px rgba(3, 8, 20, 0.32), inset 0 0 18px rgba(109, 120, 255, 0.06);
+            transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        .card-root::before {
+            content: '';
+            position: absolute;
+            z-index: 0;
+            top: -55%;
+            left: -48%;
+            width: 34%;
+            height: 210%;
+            opacity: 0;
+            pointer-events: none;
+            background: linear-gradient(90deg, transparent, rgba(125, 211, 252, 0.22), rgba(196, 181, 253, 0.32), transparent);
+            transform: translate3d(-180%, 0, 0) rotate(16deg);
+            will-change: transform, opacity;
+            animation: admin-card-sweep 7s ease-in-out infinite;
+        }
+        .card-root::after {
+            content: '';
+            position: absolute;
+            z-index: 2;
+            inset: 0;
+            pointer-events: none;
+            border: 1px solid rgba(103, 232, 249, 0.12);
+            border-radius: inherit;
+            box-shadow: inset 0 0 16px rgba(129, 140, 248, 0.08);
+        }
+        .card-root:nth-child(3)::before { animation-delay: -3.4s; }
+        .card-root .admin-icon-box,
+        .card-root .admin-info { position: relative; z-index: 1; }
+        .card-root .admin-icon-box {
+            overflow: visible;
+            color: #d9f5ff;
+            background: linear-gradient(145deg, rgba(99, 102, 241, 0.32), rgba(34, 211, 238, 0.15));
+            box-shadow: 0 0 0 1px rgba(165, 180, 252, 0.3), 0 0 16px rgba(99, 102, 241, 0.24);
+        }
+        .card-root .admin-icon-box::after {
+            content: '';
+            position: absolute;
+            inset: -5px;
+            border: 1px solid rgba(103, 232, 249, 0.5);
+            border-radius: 10px;
+            opacity: 0;
+            transform: scale(0.86);
+            will-change: transform, opacity;
+            animation: admin-icon-halo 3.8s ease-out infinite;
+        }
+        .card-root:nth-child(3) .admin-icon-box::after { animation-delay: -1.9s; }
+        .card-root .admin-role { color: #c9c6ff; text-shadow: 0 0 12px rgba(129, 140, 248, 0.28); }
+        .card-root .effect-wrapper-aurora {
+            color: transparent;
+            background: linear-gradient(90deg, #e0f2fe 0%, #a5b4fc 34%, #67e8f9 62%, #ddd6fe 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 0 6px rgba(103, 232, 249, 0.2));
+        }
+        .card-root:hover {
+            transform: translate3d(0, -3px, 0);
+            border-color: rgba(165, 180, 252, 0.88);
+            box-shadow: 0 14px 30px rgba(3, 8, 20, 0.42), 0 0 20px rgba(99, 102, 241, 0.15);
+        }
+        .is-page-hidden .card-root::before,
+        .is-page-hidden .card-root .admin-icon-box::after { animation-play-state: paused; }
+
+        @media (max-width: 767px) {
+            .reward-flow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .reward-step:nth-child(odd) { border-left: 0; }
+            .reward-step:nth-child(n+3) { border-top: 1px solid #343a44; }
+        }
+        @media (max-width: 575px) {
+            .reward-flow { grid-template-columns: 1fr; }
+            .reward-step + .reward-step { border-top: 1px solid #343a44; border-left: 0; }
+        }
+
+        @keyframes admin-card-sweep {
+            0%, 64% { opacity: 0; transform: translate3d(-180%, 0, 0) rotate(16deg); }
+            70% { opacity: 0.72; }
+            84% { opacity: 0.42; }
+            90%, 100% { opacity: 0; transform: translate3d(620%, 0, 0) rotate(16deg); }
+        }
+        @keyframes admin-icon-halo {
+            0%, 48% { opacity: 0; transform: scale(0.86); }
+            62% { opacity: 0.62; }
+            88%, 100% { opacity: 0; transform: scale(1.2); }
+        }
     </style>
 </head>
 <body>
@@ -1148,7 +1251,7 @@
                     <p id="searchStatus" class="search-status" aria-live="polite"></p>
                 </div>
                 <div class="version-container">
-                    <div class="version-badge"><span class="version-dot"></span><span>v5.2.1 穩定版</span></div>
+                    <div class="version-badge"><span class="version-dot"></span><span>v5.2.2 穩定版</span></div>
                 </div>
             </div>
         </div>
@@ -1320,17 +1423,34 @@
                     </div>
                 </div>
 
-                <div class="col-md-6 col-lg-4 searchable-item">
+                <div class="col-md-12 col-lg-8 searchable-item">
                     <div class="glass-card">
                         <h5 class="card-title"><i class="fa-solid fa-arrows-rotate me-2"></i>頻道點數禁言反彈</h5>
-                        <p class="card-desc">兌換「禁言觀眾」指定對手後，雙方可輪流兌換「反彈禁言」。每次反彈增加 600 秒，直到其中一方沒有繼續反彈才執行禁言。</p>
-                        <div class="feature-note note-info"><i class="fa-regular fa-clock"></i>每回合有 20 秒可以反彈</div>
-                        <div class="feature-note note-danger"><i class="fa-solid fa-shield-halved"></i>指定台主、MOD 或 BOT 時，600 秒直接反彈給發起者</div>
-                        <div class="reward-badges" aria-label="Twitch 頻道點數獎勵名稱">
-                            <span class="reward-badge">禁言觀眾</span>
-                            <span class="reward-badge">反彈禁言</span>
-                            <span class="reward-badge">解除禁言</span>
+                        <p class="card-desc">這是 Twitch 頻道點數獎勵，不是聊天指令。雙方會先輪流反彈，只有倒數結束後才真正執行禁言。</p>
+                        <div class="reward-flow" aria-label="頻道點數禁言反彈流程">
+                            <div class="reward-step">
+                                <i class="fa-solid fa-crosshairs reward-step-icon"></i>
+                                <span class="reward-step-title">1. 發起</span>
+                                <span class="reward-step-copy">A 兌換「禁言觀眾」並填入 B，先累積 600 秒。</span>
+                            </div>
+                            <div class="reward-step">
+                                <i class="fa-solid fa-rotate reward-step-icon"></i>
+                                <span class="reward-step-title">2. 反彈</span>
+                                <span class="reward-step-copy">B 在 20 秒內兌換「反彈禁言」，目標改回 A，累積為 1200 秒。</span>
+                            </div>
+                            <div class="reward-step">
+                                <i class="fa-solid fa-repeat reward-step-icon"></i>
+                                <span class="reward-step-title">3. 繼續交手</span>
+                                <span class="reward-step-copy">每反彈一次增加 600 秒，並重新倒數 20 秒。</span>
+                            </div>
+                            <div class="reward-step">
+                                <i class="fa-solid fa-gavel reward-step-icon"></i>
+                                <span class="reward-step-title">4. 結算</span>
+                                <span class="reward-step-copy">輪到的一方沒有反彈，BOT 才對目前目標執行累積禁言。</span>
+                            </div>
                         </div>
+                        <div class="feature-note note-allow"><i class="fa-solid fa-unlock-keyhole"></i>「解除禁言」是獨立獎勵，不會加入反彈回合</div>
+                        <div class="feature-note note-danger"><i class="fa-solid fa-shield-halved"></i>指定台主、MOD 或 BOT 時，600 秒直接反彈給發起者</div>
                     </div>
                 </div>
             </div>
