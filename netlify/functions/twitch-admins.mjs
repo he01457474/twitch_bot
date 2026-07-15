@@ -1,4 +1,4 @@
-const TWITCH_USER_IDS = ["74202440", "20092299"];
+const TWITCH_USER_IDS = ["74202440", "20092299", "29233312"];
 
 let appToken = "";
 let appTokenExpiresAt = 0;
