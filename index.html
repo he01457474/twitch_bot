@@ -1112,6 +1112,77 @@
             88%, 100% { opacity: 0; transform: translate3d(520%, 0, 0) rotate(16deg); }
         }
 
+        /* 系統持有者：低耗能金色卡片，與最高管理員錯開播放 */
+        .card-owner {
+            position: relative;
+            overflow: hidden;
+            isolation: isolate;
+            border-color: rgba(250, 204, 21, 0.62);
+            background:
+                radial-gradient(circle at 12% 0%, rgba(250, 204, 21, 0.16), transparent 42%),
+                linear-gradient(135deg, #221d13 0%, #191814 58%, #1d1812 100%);
+            box-shadow: 0 10px 25px rgba(12, 8, 2, 0.34), inset 0 0 18px rgba(250, 204, 21, 0.06);
+            transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        .card-owner::before {
+            content: '';
+            position: absolute;
+            z-index: 0;
+            top: -55%;
+            left: -48%;
+            width: 34%;
+            height: 210%;
+            opacity: 0;
+            pointer-events: none;
+            background: linear-gradient(90deg, transparent, rgba(253, 224, 71, 0.2), rgba(255, 255, 255, 0.32), transparent);
+            transform: translate3d(-180%, 0, 0) rotate(16deg);
+            will-change: transform, opacity;
+            animation: admin-card-sweep 7s ease-in-out -1.7s infinite;
+        }
+        .card-owner::after {
+            content: '';
+            position: absolute;
+            z-index: 2;
+            inset: 0;
+            pointer-events: none;
+            border: 1px solid rgba(253, 224, 71, 0.14);
+            border-radius: inherit;
+            box-shadow: inset 0 0 16px rgba(250, 204, 21, 0.08);
+        }
+        .card-owner .admin-icon-box,
+        .card-owner .admin-info { position: relative; z-index: 1; }
+        .card-owner .admin-icon-box {
+            overflow: visible;
+            color: #fff4bd;
+            background: linear-gradient(145deg, rgba(202, 138, 4, 0.34), rgba(250, 204, 21, 0.14));
+            box-shadow: 0 0 0 1px rgba(253, 224, 71, 0.32), 0 0 16px rgba(234, 179, 8, 0.24);
+        }
+        .card-owner .admin-icon-box::after {
+            content: '';
+            position: absolute;
+            inset: -5px;
+            border: 1px solid rgba(253, 224, 71, 0.56);
+            border-radius: 10px;
+            opacity: 0;
+            transform: scale(0.86);
+            will-change: transform, opacity;
+            animation: admin-icon-halo 3.8s ease-out -0.95s infinite;
+        }
+        .card-owner .admin-role { color: #fde68a; text-shadow: 0 0 12px rgba(250, 204, 21, 0.28); }
+        .card-owner .effect-wrapper-gold {
+            color: transparent;
+            background: linear-gradient(90deg, #fff7cc 0%, #facc15 34%, #ffffff 58%, #f59e0b 82%, #fef3c7 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 0 6px rgba(250, 204, 21, 0.22));
+        }
+        .card-owner:hover {
+            transform: translate3d(0, -3px, 0);
+            border-color: rgba(253, 224, 71, 0.9);
+            box-shadow: 0 14px 30px rgba(12, 8, 2, 0.44), 0 0 20px rgba(234, 179, 8, 0.16);
+        }
+
         /* 最高管理員：低耗能極光卡片，動畫只改 transform 與 opacity */
         .card-root {
             position: relative;
@@ -1184,6 +1255,40 @@
             border-color: rgba(165, 180, 252, 0.88);
             box-shadow: 0 14px 30px rgba(3, 8, 20, 0.42), 0 0 20px rgba(99, 102, 241, 0.15);
         }
+        .card-root:nth-child(3) {
+            border-color: rgba(232, 121, 249, 0.58);
+            background:
+                radial-gradient(circle at 12% 0%, rgba(244, 114, 182, 0.14), transparent 42%),
+                linear-gradient(135deg, #211724 0%, #191722 58%, #1c151d 100%);
+            box-shadow: 0 10px 25px rgba(12, 3, 18, 0.34), inset 0 0 18px rgba(232, 121, 249, 0.06);
+        }
+        .card-root:nth-child(3)::before {
+            background: linear-gradient(90deg, transparent, rgba(244, 114, 182, 0.2), rgba(216, 180, 254, 0.32), transparent);
+        }
+        .card-root:nth-child(3)::after {
+            border-color: rgba(244, 114, 182, 0.14);
+            box-shadow: inset 0 0 16px rgba(232, 121, 249, 0.08);
+        }
+        .card-root:nth-child(3) .admin-icon-box {
+            color: #fce7f3;
+            background: linear-gradient(145deg, rgba(168, 85, 247, 0.3), rgba(244, 114, 182, 0.16));
+            box-shadow: 0 0 0 1px rgba(232, 121, 249, 0.3), 0 0 16px rgba(244, 114, 182, 0.22);
+        }
+        .card-root:nth-child(3) .admin-icon-box::after { border-color: rgba(244, 114, 182, 0.52); }
+        .card-root:nth-child(3) .admin-role { color: #f0abfc; text-shadow: 0 0 12px rgba(232, 121, 249, 0.26); }
+        .card-root:nth-child(3) .effect-wrapper-aurora {
+            background: linear-gradient(90deg, #fae8ff 0%, #d8b4fe 34%, #f9a8d4 64%, #f5d0fe 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 0 6px rgba(244, 114, 182, 0.2));
+        }
+        .card-root:nth-child(3):hover {
+            border-color: rgba(240, 171, 252, 0.88);
+            box-shadow: 0 14px 30px rgba(12, 3, 18, 0.44), 0 0 20px rgba(244, 114, 182, 0.14);
+        }
+        .is-page-hidden .card-owner::before,
+        .is-page-hidden .card-owner .admin-icon-box::after,
         .is-page-hidden .card-root::before,
         .is-page-hidden .card-root .admin-icon-box::after { animation-play-state: paused; }
 
@@ -1251,7 +1356,7 @@
                     <p id="searchStatus" class="search-status" aria-live="polite"></p>
                 </div>
                 <div class="version-container">
-                    <div class="version-badge"><span class="version-dot"></span><span>v5.2.2 穩定版</span></div>
+                    <div class="version-badge"><span class="version-dot"></span><span>v5.2.3 穩定版</span></div>
                 </div>
             </div>
         </div>
