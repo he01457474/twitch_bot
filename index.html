@@ -1658,7 +1658,7 @@
                     <div class="glass-card">
                         <h5 class="card-title"><i class="fa-solid fa-link me-2"></i>綁定台主帳號</h5>
                         <p class="card-desc">綁定本頻道台主的 Riot ID。未指定伺服器時預設台服，其他伺服器需在 Riot ID 前加上「韓服」或「東南亞服」。</p>
-                        <div class="feature-note note-vip"><i class="fa-solid fa-lock"></i>限台主或系統管理員</div>
+                        <div class="feature-note note-vip"><i class="fa-solid fa-lock"></i>限台主或最高管理員</div>
                         <div>
                             <span class="cmd-badge" onclick="copyText('!綁定TFT 名字#TAG')">!綁定TFT 名字#TAG</span>
                             <span class="cmd-badge" onclick="copyText('!綁定TFT 韓服 名字#TAG')">!綁定TFT 韓服 名字#TAG</span>
@@ -1671,7 +1671,7 @@
                     <div class="glass-card">
                         <h5 class="card-title"><i class="fa-solid fa-clock-rotate-left me-2"></i>補入歷史</h5>
                         <p class="card-desc">BOT 每 10 分鐘會替已綁定帳號逐步補舊對戰。也可手動指定 20～250 個對戰；「完整」模式最多掃描 250 個對戰，場次統計會採用較完整的資料。</p>
-                        <div class="feature-note note-vip"><i class="fa-solid fa-lock"></i>限系統管理員</div>
+                        <div class="feature-note note-vip"><i class="fa-solid fa-lock"></i>限台主或最高管理員</div>
                         <div>
                             <span class="cmd-badge" onclick="copyText('!TFT補資料')">!TFT補資料</span>
                             <span class="cmd-badge" onclick="copyText('!TFT補資料 100 名字#TAG')">!TFT補資料 100 名字#TAG</span>
@@ -1733,6 +1733,59 @@
                         <tbody id="adminTableBody">
                             <tr class="searchable-row">
                                 <td>
+                                    <div class="d-flex flex-wrap gap-2 mb-3"><span class="cmd-badge" onclick="copyText('!B人')">!B人</span></div>
+                                    <div><span class="cmd-type-tag type-ban">禁言 (TIMEOUT)</span></div>
+                                </td>
+                                <td>
+                                    <div class="logic-card logic-blue">
+                                        <div class="logic-head logic-head-blue"><i class="fa-regular fa-snowflake"></i> ❄️ 自願冷靜</div>
+                                        <div class="logic-content">
+                                            <div class="d-flex mb-1"><span class="logic-bold text-nowrap me-2">!B人</span> <span>→ 預設 10 分鐘</span></div>
+                                            <div class="d-flex mb-1"><span class="logic-bold text-nowrap me-2">!B人 30</span> <span>→ 禁言 30 秒</span></div>
+                                            <div class="d-flex"><span class="logic-bold text-nowrap me-2">!B人 隨機</span> <span>→ 60~600 秒大冒險</span></div>
+                                        </div>
+                                    </div>
+                                    <div class="logic-card logic-red">
+                                        <div class="logic-head logic-head-red"><i class="fa-solid fa-gavel"></i> 🔨 強制執法</div>
+                                        <div class="logic-content">
+                                            <div class="d-flex"><span class="logic-bold text-nowrap me-2">!B人 @ID 秒數</span> <span>→ 強制禁言對象</span></div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="d-flex flex-column gap-2">
+                                        <div class="perm-box perm-mod">
+                                            <div class="d-flex flex-wrap gap-2 mb-2">
+                                                <span class="role-badge role-admin"><i class="fa-solid fa-user-secret"></i> 最高管理員</span>
+                                                <span class="role-badge role-owner"><i class="fa-solid fa-crown"></i> 頻道台主</span>
+                                                <span class="role-badge role-mod"><i class="fa-solid fa-shield-halved"></i> 頻道 MOD</span>
+                                            </div>
+                                            <div class="perm-info-mod">
+                                                <span><i class="fa-regular fa-clock me-1"></i>上限: <span class="perm-val">24小時</span></span>
+                                                <span><i class="fa-solid fa-bolt me-1"></i>冷卻: <span class="perm-val">無</span></span>
+                                            </div>
+                                            <div class="perm-special-highlight"><i class="fa-solid fa-crosshairs"></i> 特權：可指定任何人</div>
+                                        </div>
+                                        <div class="perm-box perm-vip">
+                                            <div class="perm-head-vip"><span class="perm-tag-vip">頻道 VIP</span><i class="fa-solid fa-star perm-icon-vip"></i></div>
+                                            <div class="perm-info-vip">
+                                                <span><i class="fa-regular fa-clock me-1"></i>上限: <span class="perm-val">1小時</span></span>
+                                                <span><i class="fa-solid fa-hourglass-half me-1"></i>冷卻: <span class="perm-val">3秒</span></span>
+                                            </div>
+                                        </div>
+                                        <div class="perm-box perm-viewer">
+                                            <div class="perm-head-viewer"><span class="perm-tag-viewer">一般觀眾</span><i class="fa-solid fa-user perm-icon-viewer"></i></div>
+                                            <div class="perm-info-viewer">
+                                                <span><i class="fa-regular fa-clock me-1"></i>上限: <span class="perm-val">10分鐘</span></span>
+                                                <span><i class="fa-solid fa-hourglass-half me-1"></i>冷卻: <span class="perm-val">10秒</span></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+
+                            <tr class="searchable-row">
+                                <td>
                                     <div class="d-flex flex-wrap gap-2 mb-3">
                                         <span class="cmd-badge" onclick="copyText('!開盤 60 今天會吃雞嗎 會 不會')">!開盤</span>
                                         <span class="cmd-badge" onclick="copyText('!賭盤')">!賭盤</span>
@@ -1757,61 +1810,11 @@
                                 </td>
                                 <td>
                                     <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
+                                        <span class="role-badge role-admin"><i class="fa-solid fa-user-secret"></i> 最高管理員</span>
                                         <span class="role-badge role-owner"><i class="fa-solid fa-crown"></i> 頻道台主</span>
                                         <span class="role-badge role-mod"><i class="fa-solid fa-shield-halved"></i> 頻道 MOD</span>
-                                        <span class="role-badge role-admin"><i class="fa-solid fa-user-secret"></i> 最高管理員</span>
                                     </div>
-                                    <p class="mb-1 small text-white-50">開盤、封盤、結算與取消需要上述權限；最高管理員沿用 BOT 原本名單。</p>
                                     <p class="mb-0 small text-white-50"><strong>!賭盤</strong> 開放所有觀眾查詢。台主需先授權官方賭盤權限，且頻道須為實況盟友或合作夥伴。</p>
-                                </td>
-                            </tr>
-                            
-                            <tr class="searchable-row">
-                                <td>
-                                    <div class="d-flex flex-wrap gap-2 mb-3"><span class="cmd-badge" onclick="copyText('!B人')">!B人</span></div>
-                                    <div><span class="cmd-type-tag type-ban">禁言 (TIMEOUT)</span></div>
-                                </td>
-                                <td>
-                                    <div class="logic-card logic-blue">
-                                        <div class="logic-head logic-head-blue"><i class="fa-regular fa-snowflake"></i> ❄️ 自願冷靜</div>
-                                        <div class="logic-content">
-                                            <div class="d-flex mb-1"><span class="logic-bold text-nowrap me-2">!B人</span> <span>→ 預設 10 分鐘</span></div>
-                                            <div class="d-flex mb-1"><span class="logic-bold text-nowrap me-2">!B人 30</span> <span>→ 禁言 30 秒</span></div>
-                                            <div class="d-flex"><span class="logic-bold text-nowrap me-2">!B人 隨機</span> <span>→ 60~600 秒大冒險</span></div>
-                                        </div>
-                                    </div>
-                                    <div class="logic-card logic-red">
-                                        <div class="logic-head logic-head-red"><i class="fa-solid fa-gavel"></i> 🔨 強制執法</div>
-                                        <div class="logic-content">
-                                            <div class="d-flex"><span class="logic-bold text-nowrap me-2">!B人 @ID 秒數</span> <span>→ 強制禁言對象</span></div>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td>
-                                    <div class="d-flex flex-column gap-2">
-                                        <div class="perm-box perm-mod">
-                                            <div class="perm-head-mod"><span class="perm-tag-mod">頻道 MOD</span><i class="fa-solid fa-infinity perm-icon-mod"></i></div>
-                                            <div class="perm-info-mod">
-                                                <span><i class="fa-regular fa-clock me-1"></i>上限: <span class="perm-val">24小時</span></span>
-                                                <span><i class="fa-solid fa-bolt me-1"></i>冷卻: <span class="perm-val">無</span></span>
-                                            </div>
-                                            <div class="perm-special-highlight"><i class="fa-solid fa-crosshairs"></i> 特權：可指定任何人</div>
-                                        </div>
-                                        <div class="perm-box perm-vip">
-                                            <div class="perm-head-vip"><span class="perm-tag-vip">頻道 VIP</span><i class="fa-solid fa-star perm-icon-vip"></i></div>
-                                            <div class="perm-info-vip">
-                                                <span><i class="fa-regular fa-clock me-1"></i>上限: <span class="perm-val">1小時</span></span>
-                                                <span><i class="fa-solid fa-hourglass-half me-1"></i>冷卻: <span class="perm-val">3秒</span></span>
-                                            </div>
-                                        </div>
-                                        <div class="perm-box perm-viewer">
-                                            <div class="perm-head-viewer"><span class="perm-tag-viewer">一般觀眾</span><i class="fa-solid fa-user perm-icon-viewer"></i></div>
-                                            <div class="perm-info-viewer">
-                                                <span><i class="fa-regular fa-clock me-1"></i>上限: <span class="perm-val">10分鐘</span></span>
-                                                <span><i class="fa-solid fa-hourglass-half me-1"></i>冷卻: <span class="perm-val">10秒</span></span>
-                                            </div>
-                                        </div>
-                                    </div>
                                 </td>
                             </tr>
                             
@@ -1832,7 +1835,7 @@
                                 </td>
                                 <td>
                                     <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
-                                        <span class="role-badge role-admin"><i class="fa-solid fa-user-secret"></i> 系統管理員</span>
+                                        <span class="role-badge role-admin"><i class="fa-solid fa-user-secret"></i> 最高管理員</span>
                                         <span class="role-badge role-mod"><i class="fa-solid fa-shield-halved"></i> 頻道 MOD</span>
                                     </div>
                                     <p class="mb-0 small text-white-50">適用於誤 Ban 解除或 VIP 批量救援。</p>
@@ -1864,7 +1867,7 @@
                                 </td>
                                 <td>
                                     <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
-                                        <span class="role-badge role-admin"><i class="fa-solid fa-user-secret"></i> 系統管理員</span>
+                                        <span class="role-badge role-admin"><i class="fa-solid fa-user-secret"></i> 最高管理員</span>
                                         <span class="role-badge role-owner"><i class="fa-solid fa-crown"></i> 頻道台主</span>
                                         <span class="role-badge role-mod"><i class="fa-solid fa-shield-halved"></i> 頻道 MOD</span>
                                     </div>
@@ -1888,7 +1891,7 @@
                                 </td>
                                 <td>
                                     <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
-                                        <span class="role-badge role-admin"><i class="fa-solid fa-user-secret"></i> 系統管理員</span>
+                                        <span class="role-badge role-admin"><i class="fa-solid fa-user-secret"></i> 最高管理員</span>
                                         <span class="role-badge role-owner"><i class="fa-solid fa-crown"></i> 頻道台主</span>
                                         <span class="role-badge role-mod"><i class="fa-solid fa-shield-halved"></i> 頻道 MOD</span>
                                     </div>
@@ -1916,7 +1919,7 @@
                                 </td>
                                 <td>
                                     <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
-                                        <span class="role-badge role-admin"><i class="fa-solid fa-user-secret"></i> 系統管理員</span>
+                                        <span class="role-badge role-admin"><i class="fa-solid fa-user-secret"></i> 最高管理員</span>
                                         <span class="role-badge role-owner"><i class="fa-solid fa-crown"></i> 頻道台主</span>
                                     </div>
                                     <p class="mb-0 mt-2 small text-white-50">全域啟用或關閉頻道的功能服務。</p>
@@ -1938,7 +1941,7 @@
                                 </td>
                                 <td>
                                     <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
-                                        <span class="role-badge role-admin"><i class="fa-solid fa-user-secret"></i> 系統管理員</span>
+                                        <span class="role-badge role-admin"><i class="fa-solid fa-user-secret"></i> 最高管理員</span>
                                         <span class="role-badge role-owner"><i class="fa-solid fa-crown"></i> 頻道台主</span>
                                     </div>
                                     <p class="mb-0 mt-2 small text-white-50">新增聊天室定時輪播公告內容。</p>
@@ -1960,7 +1963,7 @@
                                 </td>
                                 <td>
                                     <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
-                                        <span class="role-badge role-admin"><i class="fa-solid fa-user-secret"></i> 系統管理員</span>
+                                        <span class="role-badge role-admin"><i class="fa-solid fa-user-secret"></i> 最高管理員</span>
                                         <span class="role-badge role-owner"><i class="fa-solid fa-crown"></i> 頻道台主</span>
                                     </div>
                                     <p class="mb-0 mt-2 small text-white-50">綁定後，頻道觀眾打 !rank 即可看到台主目前的牌位。</p>
