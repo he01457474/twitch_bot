@@ -314,6 +314,7 @@
         .type-announce { background: rgba(45, 212, 191, 0.15); border-color: rgba(45, 212, 191, 0.4); color: #5eead4; }   
         .type-promo    { background: rgba(249, 115, 22, 0.15); border-color: rgba(249, 115, 22, 0.4); color: #fdba74; }   
         .type-active   { background: rgba(245, 158, 11, 0.15); border-color: rgba(245, 158, 11, 0.4); color: #fcd34d; }   
+        .type-prediction { background: rgba(168, 85, 247, 0.15); border-color: rgba(168, 85, 247, 0.4); color: #d8b4fe; }
 
         .perm-special-highlight {
             margin-top: 8px; padding: 6px 10px; border-radius: 4px;
@@ -1356,7 +1357,7 @@
                     <p id="searchStatus" class="search-status" aria-live="polite"></p>
                 </div>
                 <div class="version-container">
-                    <div class="version-badge"><span class="version-dot"></span><span>v5.2.4 穩定版</span></div>
+                    <div class="version-badge"><span class="version-dot"></span><span>v5.2.5 穩定版</span></div>
                 </div>
             </div>
         </div>
@@ -1730,6 +1731,40 @@
                             </tr>
                         </thead>
                         <tbody id="adminTableBody">
+                            <tr class="searchable-row">
+                                <td>
+                                    <div class="d-flex flex-wrap gap-2 mb-3">
+                                        <span class="cmd-badge" onclick="copyText('!開盤 60 今天會吃雞嗎 會 不會')">!開盤</span>
+                                        <span class="cmd-badge" onclick="copyText('!賭盤')">!賭盤</span>
+                                        <span class="cmd-badge" onclick="copyText('!封盤')">!封盤</span>
+                                        <span class="cmd-badge" onclick="copyText('!結算 會')">!結算</span>
+                                    </div>
+                                    <div><span class="cmd-type-tag type-prediction">官方賭盤 (PREDICTION)</span></div>
+                                </td>
+                                <td>
+                                    <div class="param-item">
+                                        <div class="param-key key-purple">!開盤 [秒數] 題目 答案一 答案二</div>
+                                        <div class="param-text">使用 Twitch 官方頻道點數開盤。預設 60 秒，可填 30～1800 秒；最後兩段固定視為答案。</div>
+                                    </div>
+                                    <div class="param-item">
+                                        <div class="param-key key-blue">!結算 答案文字</div>
+                                        <div class="param-text">答案必須與賭盤選項完全相同，再由同一人於 30 秒內輸入 <strong>!確認結算</strong>。</div>
+                                    </div>
+                                    <div class="param-item">
+                                        <div class="param-key key-yellow">!取消賭盤</div>
+                                        <div class="param-text">輸入 <strong>!確認取消賭盤</strong> 後取消，Twitch 會退還觀眾投入的頻道點數。</div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
+                                        <span class="role-badge role-owner"><i class="fa-solid fa-crown"></i> 頻道台主</span>
+                                        <span class="role-badge role-mod"><i class="fa-solid fa-shield-halved"></i> 頻道 MOD</span>
+                                        <span class="role-badge role-admin"><i class="fa-solid fa-user-secret"></i> 最高管理員</span>
+                                    </div>
+                                    <p class="mb-1 small text-white-50">開盤、封盤、結算與取消需要上述權限；最高管理員沿用 BOT 原本名單。</p>
+                                    <p class="mb-0 small text-white-50"><strong>!賭盤</strong> 開放所有觀眾查詢。台主需先授權官方賭盤權限，且頻道須為實況盟友或合作夥伴。</p>
+                                </td>
+                            </tr>
                             
                             <tr class="searchable-row">
                                 <td>
@@ -1939,7 +1974,7 @@
         </div>
 
         <footer>
-            <p class="mb-1">Bot Version: 5.2.4 穩定版</p>
+            <p class="mb-1">Bot Version: 5.2.5 穩定版</p>
             <small>專為 Twitch 打造的系統</small>
         </footer>
 
