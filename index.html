@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
     <meta property="og:title" content="Twitch Bot 指令全書">
-    <meta property="og:description" content="查詢 FlyCat Bot 聊天室指令、簽到、戰績、互動與管理功能。V5.3.4">
+    <meta property="og:description" content="查詢 FlyCat Bot 聊天室指令、簽到、戰績、互動與管理功能。V5.3.5">
     <meta property="og:image" content="https://cdn-icons-png.flaticon.com/512/4712/4712109.png">
     <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/4712/4712109.png">
     <meta name="theme-color" content="#a855f7">
@@ -1440,7 +1440,7 @@
                     <p id="searchStatus" class="search-status" aria-live="polite"></p>
                 </div>
                 <div class="version-container">
-                    <div class="version-badge"><span class="version-dot"></span><span>v5.3.4 穩定版</span></div>
+                    <div class="version-badge"><span class="version-dot"></span><span>v5.3.5 穩定版</span></div>
                 </div>
             </div>
         </div>
@@ -1600,26 +1600,17 @@
                     </div>
                 </div>
                 
-                <div class="col-md-6 col-lg-4 searchable-item">
+                <div class="col-md-12 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title"><i class="fa-solid fa-comment-slash me-2"></i>自 Ban 冷靜</h5>
-                        <p class="card-desc">覺得自己話太多？把「自己」禁言一段時間，冷靜一下。</p>
-                        <div class="feature-note note-info"><i class="fa-solid fa-circle-info"></i>上限: 觀眾 10分 / VIP 1小時</div>
+                        <h5 class="card-title"><i class="fa-solid fa-comment-slash me-2"></i>自 Ban 冷靜與禁言券</h5>
+                        <p class="card-desc">想讓自己冷靜時可直接自 Ban；直播中持有禁言券，也能指定一名觀眾禁言 600 秒。</p>
+                        <div class="feature-note note-info"><i class="fa-solid fa-user-clock"></i>禁言自己：觀眾上限 10 分鐘／VIP 上限 1 小時，不消耗禁言券</div>
+                        <div class="feature-note note-danger"><i class="fa-solid fa-ticket"></i>指定他人：自動消耗 1 張禁言券；對方若有可用保險券，雙方各扣 1 張並擋下禁言</div>
+                        <div class="feature-note note-vip"><i class="fa-solid fa-gauge"></i>預設每場最多使用禁言券 2 張、保險券 1 張；跨午夜或 30 分鐘內斷線不重置</div>
                         <div>
                             <span class="cmd-badge" onclick="copyText('!600')">!600</span>
                             <span class="cmd-badge" onclick="copyText('!B人 600')">!B人 秒數</span>
                             <span class="cmd-badge" onclick="copyText('!B人 隨機')">!B人 隨機</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col-md-6 col-lg-4 searchable-item">
-                    <div class="glass-card">
-                        <h5 class="card-title"><i class="fa-solid fa-ticket me-2"></i>虛擬禁言券</h5>
-                        <p class="card-desc">直播中使用禁言券可指定一名觀眾禁言 600 秒；目標若持有可用的保險券，BOT 會自動消耗雙方各一張券並擋下禁言。</p>
-                        <div class="feature-note note-info"><i class="fa-solid fa-gauge"></i>預設每場最多使用禁言券 2 張、保險券 1 張；跨午夜或 30 分鐘內斷線不會重置</div>
-                        <div class="feature-note note-vip"><i class="fa-solid fa-box-archive"></i>持有數量不限，目前由管理員發放，尚無自動取得方式</div>
-                        <div>
                             <span class="cmd-badge" onclick="copyText('!券')">!券</span>
                             <span class="cmd-badge" onclick="copyText('!B人 @對象')">!B人 @對象</span>
                         </div>
@@ -1889,17 +1880,12 @@
                             <tr class="searchable-row">
                                 <td>
                                     <div class="d-flex flex-wrap gap-2 mb-3">
-                                        <span class="cmd-badge" onclick="copyText('!券')">!券</span>
                                         <span class="cmd-badge" onclick="copyText('!給券 @觀眾 禁言 1')">!給券</span>
                                         <span class="cmd-badge" onclick="copyText('!收券 @觀眾 保險 1')">!收券</span>
                                     </div>
-                                    <div><span class="cmd-type-tag type-active">虛擬券 (TICKETS)</span></div>
+                                    <div><span class="cmd-type-tag type-active">虛擬券管理 (TICKETS)</span></div>
                                 </td>
                                 <td>
-                                    <div class="param-item">
-                                        <div class="param-key key-blue">!券</div>
-                                        <div class="param-text">查看自己的禁言券、保險券，以及本場已使用次數；別名為 !我的券、!票券。</div>
-                                    </div>
                                     <div class="param-item">
                                         <div class="param-key key-purple">!給券 @觀眾 禁言/保險 [張數]</div>
                                         <div class="param-text">發放指定種類的虛擬券，張數預設為 1。</div>
@@ -1915,7 +1901,7 @@
                                         <span class="role-badge role-owner"><i class="fa-solid fa-crown"></i> 頻道台主</span>
                                         <span class="role-badge role-mod"><i class="fa-solid fa-shield-halved"></i> 頻道 MOD</span>
                                     </div>
-                                    <p class="mb-0 small text-white-50">所有觀眾都能用 !券查自己；查詢他人、發券與收券限上述權限。</p>
+                                    <p class="mb-0 small text-white-50">發券與收券限上述權限；觀眾查券與使用方式請見上方互動功能。</p>
                                 </td>
                             </tr>
 
@@ -2112,7 +2098,7 @@
         </div>
 
         <footer>
-            <p class="mb-1">Bot Version: 5.3.4 穩定版</p>
+            <p class="mb-1">Bot Version: 5.3.5 穩定版</p>
             <small>專為 Twitch 打造的系統</small>
         </footer>
 
