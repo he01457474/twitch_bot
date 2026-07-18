@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
     <meta property="og:title" content="Twitch Bot 指令全書">
-    <meta property="og:description" content="查詢所有聊天室指令、簽到系統、斗內監聽與娛樂功能。V5.1.0">
+    <meta property="og:description" content="查詢 FlyCat Bot 聊天室指令、簽到、戰績、互動與管理功能。V5.3.0">
     <meta property="og:image" content="https://cdn-icons-png.flaticon.com/512/4712/4712109.png">
     <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/4712/4712109.png">
     <meta name="theme-color" content="#a855f7">
@@ -1314,6 +1314,86 @@
             62% { opacity: 0.62; }
             88%, 100% { opacity: 0; transform: scale(1.2); }
         }
+
+        /* Hero product identity: static and inexpensive to render. */
+        .hero-workspace {
+            grid-template-columns: minmax(340px, 0.9fr) minmax(320px, 1.4fr) auto;
+        }
+        .hero-brand-block {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            min-width: 0;
+        }
+        .hero-mark {
+            position: relative;
+            width: 44px;
+            height: 44px;
+            flex: 0 0 44px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #62556f;
+            border-radius: 6px;
+            background: #211b28;
+            color: #d8c3ff;
+            font-size: 1.05rem;
+            box-shadow: inset 3px 0 0 #b990ff;
+        }
+        .hero-mark::after {
+            content: '';
+            position: absolute;
+            right: 5px;
+            bottom: 5px;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #4ade80;
+            box-shadow: 0 0 0 2px #211b28;
+        }
+        .hero-heading { min-width: 0; }
+        .hero-title {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 5px 10px;
+            font-size: 1.9rem;
+            line-height: 1.1;
+        }
+        .hero-product { color: #fff; font-weight: 900; }
+        .hero-title-separator {
+            width: 1px;
+            height: 22px;
+            background: #62596b;
+        }
+        .hero-function { color: #d8c3ff; font-weight: 700; }
+        .hero-kicker {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 7px;
+            color: #9ca5b3;
+            font-size: 0.72rem;
+            letter-spacing: 0;
+        }
+        .hero-kicker::before {
+            content: '';
+            width: 20px;
+            height: 2px;
+            flex: 0 0 20px;
+            background: #b990ff;
+        }
+
+        @media (max-width: 1199px) {
+            .hero-workspace { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 575px) {
+            .hero-brand-block { gap: 11px; }
+            .hero-mark { width: 40px; height: 40px; flex-basis: 40px; }
+            .hero-title { font-size: 1.55rem; gap: 4px 8px; }
+            .hero-title-separator { height: 18px; }
+            .hero-kicker { font-size: 0.68rem; }
+        }
     </style>
 </head>
 <body>
@@ -1347,9 +1427,12 @@
     <div class="hero-section">
         <div class="container">
             <div class="hero-workspace">
-                <div>
-                    <h1 class="hero-title">FlyCat Bot 指令中心</h1>
-                    <span class="hero-kicker">COMMAND CENTER</span>
+                <div class="hero-brand-block">
+                    <span class="hero-mark" aria-hidden="true"><i class="fa-solid fa-terminal"></i></span>
+                    <div class="hero-heading">
+                        <h1 class="hero-title"><span class="hero-product">FlyCat Bot</span><span class="hero-title-separator" aria-hidden="true"></span><span class="hero-function">指令中心</span></h1>
+                        <span class="hero-kicker">TWITCH COMMAND DIRECTORY</span>
+                    </div>
                 </div>
                 <div class="search-container">
                     <i class="fa-solid fa-magnifying-glass search-icon"></i>
@@ -1357,7 +1440,7 @@
                     <p id="searchStatus" class="search-status" aria-live="polite"></p>
                 </div>
                 <div class="version-container">
-                    <div class="version-badge"><span class="version-dot"></span><span>v5.2.5 穩定版</span></div>
+                    <div class="version-badge"><span class="version-dot"></span><span>v5.3.0 穩定版</span></div>
                 </div>
             </div>
         </div>
@@ -1425,6 +1508,7 @@
                     <div class="glass-card">
                         <h5 class="card-title"><i class="fa-solid fa-stopwatch me-2"></i>掛台肝度</h5>
                         <p class="card-desc">查詢等級、觀看時數、發言量、連簽天數，以及本場直播首次進入與最後離開狀態。EXP 由觀看、發言、簽到三項合計。</p>
+                        <div class="feature-note note-info"><i class="fa-solid fa-scale-balanced"></i>有紀錄時顯示 🔇 暫時禁言與 🚫 永久封鎖次數；兩者皆為 0 時省略</div>
                         <div class="feature-note note-allow"><i class="fa-solid fa-check"></i>支援查詢他人</div>
                         <div><span class="cmd-badge" onclick="copyText('!cu')">!cu</span> <span class="cmd-badge" onclick="copyText('!cu @ID')">!cu @ID</span></div>
                     </div>
@@ -1529,6 +1613,19 @@
                     </div>
                 </div>
 
+                <div class="col-md-6 col-lg-4 searchable-item">
+                    <div class="glass-card">
+                        <h5 class="card-title"><i class="fa-solid fa-ticket me-2"></i>虛擬禁言券</h5>
+                        <p class="card-desc">直播中使用禁言券可指定一名觀眾禁言 600 秒；目標若持有可用的保險券，BOT 會自動消耗雙方各一張券並擋下禁言。</p>
+                        <div class="feature-note note-info"><i class="fa-solid fa-gauge"></i>預設每場最多使用禁言券 2 張、保險券 1 張；跨午夜或 30 分鐘內斷線不會重置</div>
+                        <div class="feature-note note-vip"><i class="fa-solid fa-box-archive"></i>持有數量不限，目前由管理員發放，尚無自動取得方式</div>
+                        <div>
+                            <span class="cmd-badge" onclick="copyText('!券')">!券</span>
+                            <span class="cmd-badge" onclick="copyText('!B人 @對象')">!B人 @對象</span>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="col-md-12 col-lg-8 searchable-item">
                     <div class="glass-card">
                         <h5 class="card-title"><i class="fa-solid fa-arrows-rotate me-2"></i>頻道點數禁言反彈</h5>
@@ -1555,7 +1652,7 @@
                                 <span class="reward-step-copy">輪到的一方沒有反彈，BOT 才對目前目標執行累積禁言。</span>
                             </div>
                         </div>
-                        <div class="feature-note note-allow"><i class="fa-solid fa-unlock-keyhole"></i>「解除禁言」是獨立獎勵，不會加入反彈回合</div>
+                        <div class="feature-note note-allow"><i class="fa-solid fa-unlock-keyhole"></i>「解除禁言」是保釋獎勵，只能解除暫時禁言；未被禁言或遭永久封鎖時會取消並退還點數</div>
                         <div class="feature-note note-danger"><i class="fa-solid fa-shield-halved"></i>指定台主、MOD 或 BOT 時，600 秒直接反彈給發起者</div>
                     </div>
                 </div>
@@ -1645,10 +1742,13 @@
 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
-                        <h5 class="card-title"><i class="fa-solid fa-chart-simple me-2"></i>本季場次</h5>
-                        <p class="card-desc">顯示本季總場次、前四場數與比例、平均名次，以及第 1 名與第 8 名場數。</p>
+                        <h5 class="card-title"><i class="fa-solid fa-chart-simple me-2"></i>本季與直播戰報</h5>
+                        <p class="card-desc">一般查詢顯示本季總場次、前四比例、平均名次及第 1／8 名場數；加上「本場」或「上場」可查看該次直播的場數、LP 變化、前四、吃雞與平均名次。</p>
+                        <div class="feature-note note-info"><i class="fa-solid fa-tower-broadcast"></i>直播跨午夜仍算同一場；短暫斷線 30 分鐘內恢復時會接續原本戰報</div>
                         <div class="mt-3">
                             <span class="cmd-badge" onclick="copyText('!TFT場次')">!TFT場次</span>
+                            <span class="cmd-badge" onclick="copyText('!TFT場次 本場')">!TFT場次 本場</span>
+                            <span class="cmd-badge" onclick="copyText('!TFT場次 上場')">!TFT場次 上場</span>
                             <span class="cmd-badge" onclick="copyText('!TFT場次 @ID')">!TFT場次 @ID</span>
                         </div>
                     </div>
@@ -1746,11 +1846,13 @@
                                         </div>
                                     </div>
                                     <div class="logic-card logic-red">
-                                        <div class="logic-head logic-head-red"><i class="fa-solid fa-gavel"></i> 🔨 強制執法</div>
+                                        <div class="logic-head logic-head-red"><i class="fa-solid fa-ticket"></i> 指定觀眾</div>
                                         <div class="logic-content">
-                                            <div class="d-flex"><span class="logic-bold text-nowrap me-2">!B人 @ID 秒數</span> <span>→ 強制禁言對象</span></div>
+                                            <div class="d-flex mb-1"><span class="logic-bold text-nowrap me-2">!B人 @ID</span> <span>→ 觀眾自動使用禁言券，固定 600 秒</span></div>
+                                            <div class="d-flex"><span class="logic-bold text-nowrap me-2">!B人 @ID 秒數</span> <span>→ 台主、MOD、最高管理員可直接指定秒數</span></div>
                                         </div>
                                     </div>
+                                    <div class="feature-note note-danger"><i class="fa-solid fa-shield-halved"></i>指定台主、MOD、BOT 或最高管理員時，會反彈禁言發起者 10 秒且不扣券</div>
                                 </td>
                                 <td>
                                     <div class="d-flex flex-column gap-2">
@@ -1764,23 +1866,56 @@
                                                 <span><i class="fa-regular fa-clock me-1"></i>上限: <span class="perm-val">24小時</span></span>
                                                 <span><i class="fa-solid fa-bolt me-1"></i>冷卻: <span class="perm-val">無</span></span>
                                             </div>
-                                            <div class="perm-special-highlight"><i class="fa-solid fa-crosshairs"></i> 特權：可指定任何人</div>
+                                            <div class="perm-special-highlight"><i class="fa-solid fa-crosshairs"></i> 指定他人不消耗禁言券</div>
                                         </div>
                                         <div class="perm-box perm-vip">
                                             <div class="perm-head-vip"><span class="perm-tag-vip">頻道 VIP</span><i class="fa-solid fa-star perm-icon-vip"></i></div>
                                             <div class="perm-info-vip">
-                                                <span><i class="fa-regular fa-clock me-1"></i>上限: <span class="perm-val">1小時</span></span>
-                                                <span><i class="fa-solid fa-hourglass-half me-1"></i>冷卻: <span class="perm-val">3秒</span></span>
+                                                <span><i class="fa-regular fa-clock me-1"></i>自己: <span class="perm-val">上限 1小時</span></span>
+                                                <span><i class="fa-solid fa-ticket me-1"></i>他人: <span class="perm-val">需券／600秒</span></span>
                                             </div>
                                         </div>
                                         <div class="perm-box perm-viewer">
                                             <div class="perm-head-viewer"><span class="perm-tag-viewer">一般觀眾</span><i class="fa-solid fa-user perm-icon-viewer"></i></div>
                                             <div class="perm-info-viewer">
-                                                <span><i class="fa-regular fa-clock me-1"></i>上限: <span class="perm-val">10分鐘</span></span>
-                                                <span><i class="fa-solid fa-hourglass-half me-1"></i>冷卻: <span class="perm-val">10秒</span></span>
+                                                <span><i class="fa-regular fa-clock me-1"></i>自己: <span class="perm-val">上限 10分鐘</span></span>
+                                                <span><i class="fa-solid fa-ticket me-1"></i>他人: <span class="perm-val">需券／600秒</span></span>
                                             </div>
                                         </div>
                                     </div>
+                                </td>
+                            </tr>
+
+                            <tr class="searchable-row">
+                                <td>
+                                    <div class="d-flex flex-wrap gap-2 mb-3">
+                                        <span class="cmd-badge" onclick="copyText('!券')">!券</span>
+                                        <span class="cmd-badge" onclick="copyText('!給券 @觀眾 禁言 1')">!給券</span>
+                                        <span class="cmd-badge" onclick="copyText('!收券 @觀眾 保險 1')">!收券</span>
+                                    </div>
+                                    <div><span class="cmd-type-tag type-active">虛擬券 (TICKETS)</span></div>
+                                </td>
+                                <td>
+                                    <div class="param-item">
+                                        <div class="param-key key-blue">!券</div>
+                                        <div class="param-text">查看自己的禁言券、保險券，以及本場已使用次數；別名為 !我的券、!票券。</div>
+                                    </div>
+                                    <div class="param-item">
+                                        <div class="param-key key-purple">!給券 @觀眾 禁言/保險 [張數]</div>
+                                        <div class="param-text">發放指定種類的虛擬券，張數預設為 1。</div>
+                                    </div>
+                                    <div class="param-item">
+                                        <div class="param-key key-purple">!收券 @觀眾 禁言/保險 [張數]</div>
+                                        <div class="param-text">收回指定種類的虛擬券；不會扣成負數。</div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
+                                        <span class="role-badge role-admin"><i class="fa-solid fa-user-secret"></i> 最高管理員</span>
+                                        <span class="role-badge role-owner"><i class="fa-solid fa-crown"></i> 頻道台主</span>
+                                        <span class="role-badge role-mod"><i class="fa-solid fa-shield-halved"></i> 頻道 MOD</span>
+                                    </div>
+                                    <p class="mb-0 small text-white-50">所有觀眾都能用 !券查自己；查詢他人、發券與收券限上述權限。</p>
                                 </td>
                             </tr>
 
@@ -1977,7 +2112,7 @@
         </div>
 
         <footer>
-            <p class="mb-1">Bot Version: 5.2.5 穩定版</p>
+            <p class="mb-1">Bot Version: 5.3.0 穩定版</p>
             <small>專為 Twitch 打造的系統</small>
         </footer>
 
