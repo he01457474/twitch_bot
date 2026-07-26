@@ -674,6 +674,16 @@
         .navbar .nav-link[href="#valorant"] { --nav-color: #ff6474; --nav-soft: rgba(255, 100, 116, 0.08); }
         .navbar .nav-link[href="#tft"] { --nav-color: #63d2c7; --nav-soft: rgba(99, 210, 199, 0.08); }
         .navbar .nav-link[href="#management"] { --nav-color: #b990ff; --nav-soft: rgba(185, 144, 255, 0.08); }
+        .navbar .broadcaster-settings-button {
+            --nav-color: #d6dee8;
+            width: 100%;
+            cursor: not-allowed;
+            opacity: 0.68;
+        }
+        .navbar .broadcaster-settings-button:disabled {
+            color: var(--nav-color) !important;
+            background: transparent;
+        }
         .navbar .nav-link {
             color: var(--nav-color, #cbd5e1) !important;
             background: transparent;
@@ -735,8 +745,8 @@
             .navbar-collapse { min-width: 0; }
             .navbar-nav {
                 display: grid;
-                grid-template-columns: repeat(6, minmax(0, 1fr));
-                width: min(100%, 900px);
+                grid-template-columns: repeat(7, minmax(0, 1fr));
+                width: min(100%, 1020px);
             }
             .navbar-nav .nav-item { min-width: 0; }
             .navbar-nav .nav-link {
@@ -1436,6 +1446,7 @@
                     <li class="nav-item"><a class="nav-link" href="#valorant"><i class="fa-solid fa-crosshairs"></i><span class="nav-copy"><span>VALORANT 戰績</span><small>VALORANT STATS</small></span></a></li>
                     <li class="nav-item"><a class="nav-link" href="#tft"><i class="fa-solid fa-chess-board"></i><span class="nav-copy"><span>聯盟戰棋戰績</span><small>TEAMFIGHT TACTICS</small></span></a></li>
                     <li class="nav-item"><a class="nav-link" href="#management"><i class="fa-solid fa-shield-halved"></i><span class="nav-copy"><span>管理與後台</span><small>MANAGEMENT DASHBOARD</small></span></a></li>
+                    <li class="nav-item"><button type="button" class="nav-link broadcaster-settings-button" disabled aria-disabled="true" title="設定入口暫不開放"><i class="fa-solid fa-right-to-bracket"></i><span class="nav-copy"><span>台主登入與設定</span><small>BROADCASTER SETTINGS</small></span></button></li>
                 </ul>
             </div>
         </div>
@@ -1677,12 +1688,6 @@
                     </div>
                 </div>
             </div>
-        </div>
-
-        <div class="d-flex justify-content-end mb-3">
-            <a class="btn btn-outline-info btn-sm" href="http://127.0.0.1:8766/" target="_blank" rel="noreferrer" title="開啟 FlyCat Bot 台主設定中心">
-                <i class="fa-solid fa-right-to-bracket me-2"></i>台主登入與設定
-            </a>
         </div>
 
         <div id="valorant" class="cmd-section">
