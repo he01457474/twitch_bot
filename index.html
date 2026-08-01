@@ -930,46 +930,70 @@
             font-weight: 700;
         }
         .feature-note {
-            padding: 7px 10px;
-            font-size: 0.86rem;
-            line-height: 1.45;
+            display: inline-flex;
+            align-items: flex-start;
+            gap: 7px;
+            max-width: 100%;
+            margin: 0 0 10px;
+            padding: 0 0 0 8px;
+            border: 0;
+            border-left: 2px solid #4a5564;
+            border-radius: 0;
+            background: transparent !important;
+            color: #8f9aaa;
+            font-size: 0.78rem;
+            font-weight: 400;
+            line-height: 1.5;
         }
-        .note-vip { background: #282013; }
-        .note-allow { background: #12261d; }
-        .note-info { background: #12232b; }
-        .note-danger { background: #2a1719; }
+        .feature-note i { width: 14px; flex: 0 0 14px; margin-top: 3px; color: #748194; text-align: center; }
+        .note-vip { border-left-color: #796947; }
+        .note-allow { border-left-color: #4d7869; }
+        .note-info { border-left-color: #4f7186; }
+        .note-danger { border-left-color: #8b5a62; }
+        .note-vip i { color: #a58e5e; }
+        .note-allow i { color: #6eaa94; }
+        .note-info i { color: #6f9dba; }
+        .note-danger i { color: #bd7782; }
 
         .card-desc > .text-white-50.small,
         .glass-card > .text-white-50.small,
         .param-text .text-white-50.small,
         .custom-table .text-white-50.small {
             display: block;
-            width: fit-content;
+            width: auto;
             max-width: 100%;
-            margin-top: 15px !important;
-            padding: 6px 8px;
-            border: 1px solid #3b4452;
-            border-radius: 4px;
+            margin-top: 10px !important;
+            padding: 0 0 0 8px;
+            border: 0;
+            border-left: 2px solid #4a5564;
+            border-radius: 0;
             background: transparent;
-            color: #7f8c9f !important;
-            font-size: 0.82rem !important;
+            color: #8f9aaa !important;
+            font-size: 0.78rem !important;
             font-weight: 400;
             line-height: 1.5;
         }
         .card-desc > .text-white-50.small::before {
-            content: '補充';
-            display: inline-flex;
-            margin-right: 7px;
-            padding: 1px 5px;
-            border: 1px solid #4a5564;
-            border-radius: 3px;
-            background: #20242b;
-            color: #8e9bad;
-            font-size: 0.68rem;
-            font-weight: 700;
-            line-height: 1.35;
-            vertical-align: 1px;
+            content: none;
         }
+        .ticket-ban-meta {
+            color: #8f9aaa;
+            font-size: 0.78rem;
+        }
+        .ticket-ban-meta i { color: #748194; }
+        .perm-special-highlight {
+            margin-top: 8px;
+            padding: 0 0 0 8px;
+            border: 0;
+            border-left: 2px solid #796947;
+            border-radius: 0;
+            background: transparent;
+            color: #8f9aaa;
+            font-size: 0.78rem;
+            font-weight: 400;
+            filter: none;
+        }
+        .perm-special-highlight i { color: #a58e5e; }
         .custom-table th { color: #ffffff; font-size: 0.9rem; }
         .custom-table td { color: #c4cedc; font-size: 1rem; line-height: 1.65; }
         .param-text { color: #cbd5e2; font-size: 1rem; line-height: 1.65; }
