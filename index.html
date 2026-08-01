@@ -389,6 +389,42 @@
             letter-spacing: 0;
         }
         .navbar-nav { gap: 2px; }
+        .dashboard-entry {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            min-height: 38px;
+            margin-left: 8px;
+            padding: 6px 10px;
+            border: 1px solid #3a4754;
+            border-radius: 5px;
+            color: #dce9f4;
+            background: #151b22;
+            font: inherit;
+            font-size: 0.78rem;
+            font-weight: 700;
+            line-height: 1.1;
+            white-space: nowrap;
+            transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+        }
+        .dashboard-entry:hover,
+        .dashboard-entry:focus-visible {
+            border-color: #57c7ee;
+            color: #ffffff;
+            background: #1c2731;
+            outline: 0;
+        }
+        .dashboard-entry i { color: #57c7ee; }
+        .dashboard-entry small {
+            display: block;
+            margin-top: 2px;
+            color: #8ea1b4;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.5rem;
+            font-weight: 700;
+            letter-spacing: 0;
+        }
         .nav-link {
             min-height: 58px;
             padding: 0 13px;
@@ -568,6 +604,8 @@
         @media (max-width: 1199px) {
             .navbar { padding: 8px 0; }
             .navbar .container { min-height: 42px; }
+            .dashboard-entry { order: 2; margin-left: auto; }
+            .navbar-toggler { order: 3; margin-left: 8px; }
             .navbar-collapse { margin-top: 8px; border-top: 1px solid #2b2f37; }
             .navbar-nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 8px 0; }
             .nav-link { min-height: 42px; padding: 0 10px; border: 0; border-left: 2px solid transparent; }
@@ -736,7 +774,7 @@
             .navbar-nav {
                 display: grid;
                 grid-template-columns: repeat(6, minmax(0, 1fr));
-                width: min(100%, 900px);
+                width: min(100%, 820px);
             }
             .navbar-nav .nav-item { min-width: 0; }
             .navbar-nav .nav-link {
@@ -1438,6 +1476,10 @@
                     <li class="nav-item"><a class="nav-link" href="#management"><i class="fa-solid fa-shield-halved"></i><span class="nav-copy"><span>管理與後台</span><small>MANAGEMENT DASHBOARD</small></span></a></li>
                 </ul>
             </div>
+            <button class="dashboard-entry" id="dashboard-entry" type="button" data-entry-url="https://flycat-config-sync.he01457474.workers.dev/auth/twitch/entry" title="使用已授權的 Twitch 帳號開啟台主設定">
+                <i class="fa-solid fa-right-to-bracket" aria-hidden="true"></i>
+                <span>台主登入與設定<small>BROADCASTER SETTINGS</small></span>
+            </button>
         </div>
     </nav>
 
@@ -2146,7 +2188,15 @@
         const rows = document.querySelectorAll('.searchable-row');
         const sections = document.querySelectorAll('.cmd-section');
         const searchStatus = document.getElementById('searchStatus');
+        const dashboardEntry = document.getElementById('dashboard-entry');
         let searchTimer;
+
+        dashboardEntry?.addEventListener('click', () => {
+            const entryUrl = dashboardEntry.dataset.entryUrl;
+            if (!entryUrl) return;
+            const popup = window.open(entryUrl, 'flycat-dashboard-entry', 'popup=yes,width=560,height=720,resizable=yes,scrollbars=yes');
+            popup?.focus();
+        });
 
         document.querySelectorAll('.cmd-badge').forEach(badge => {
             badge.setAttribute('role', 'button');
