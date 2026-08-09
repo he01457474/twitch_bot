@@ -259,6 +259,18 @@
         .table-container { background: #09090b; border-radius: 16px; border: 1px solid #3f3f46; overflow: hidden; }
         .custom-table th { background: #1c1c1f; color: #fff; padding: 20px; }
         .custom-table td { padding: 20px; border-bottom: 1px solid #27272a; color: #fff; vertical-align: top; }
+        .table-group-row td { padding: 11px 15px !important; background: #101820; border-bottom: 1px solid #3a4654; color: #b8d9eb; }
+        .table-group-title { display: flex; align-items: center; gap: 9px; font-size: 0.86rem; font-weight: 800; letter-spacing: 0; }
+        .table-group-title i { color: var(--accent-cyan); }
+        .table-group-title small { color: #7f93a5; font-size: 0.72rem; font-weight: 700; }
+        .management-guide { margin: 0 0 14px; }
+        .management-guide .glass-card { padding: 20px; }
+        .guide-details { margin-top: 12px; border: 1px solid #343a44; border-radius: 6px; background: #10141a; }
+        .guide-details summary { display: flex; align-items: center; gap: 8px; padding: 10px 12px; color: #d6e0eb; font-size: 0.9rem; font-weight: 800; cursor: pointer; list-style: none; }
+        .guide-details summary::-webkit-details-marker { display: none; }
+        .guide-details summary::after { content: '▾'; margin-left: auto; color: #88cce6; transition: transform 0.15s ease; }
+        .guide-details:not([open]) summary::after { transform: rotate(-90deg); }
+        .guide-details .reward-flow { margin: 0; border-top: 1px solid #343a44; }
         
         /* 🌟 重構：功能詳解的 Flexbox 網格對齊系統 */
         .param-item { 
@@ -1069,6 +1081,9 @@
                 overflow-wrap: anywhere;
             }
             #management .custom-table td:last-child { border-bottom: 0; }
+            #management .custom-table tr.table-group-row { display: block; width: 100%; margin: 14px 0 0; }
+            #management .custom-table tr.table-group-row td { display: block; width: 100% !important; border: 1px solid #3a4654; border-radius: 6px; }
+            #management .custom-table tr.table-group-row td::before { display: none; }
             #management .custom-table td::before {
                 display: block;
                 margin-bottom: 9px;
@@ -1652,6 +1667,15 @@
 
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
+                        <h5 class="card-title"><i class="fa-solid fa-ticket me-2"></i>我的虛擬券</h5>
+                        <p class="card-desc">查詢禁言券與保護券的持有量。禁言券可在直播中指定一名觀眾禁言；被指定者持有保護券時，可抵銷一次禁言。</p>
+                        <div class="feature-note note-info"><i class="fa-solid fa-calendar-check"></i>禁言券由正常簽到 1% 機率取得；每累積 50 次正常簽到取得 1 張保護券</div>
+                        <div><span class="cmd-badge" onclick="copyText('!券')">!券</span> <span class="cmd-badge" onclick="copyText('!劵')">!劵</span> <span class="cmd-badge" onclick="copyText('!卷')">!卷</span></div>
+                    </div>
+                </div>
+
+                <div class="col-md-6 col-lg-4 searchable-item">
+                    <div class="glass-card">
                         <h5 class="card-title"><i class="fa-solid fa-circle-question me-2"></i>指令幫助</h5>
                         <p class="card-desc">獲取完整的機器人指令列表連結，隨時查閱所有可用功能。</p>
                         <div class="mt-3"><span class="cmd-badge" onclick="copyText('!幫助')">!幫助</span></div>
@@ -1701,65 +1725,6 @@
                     </div>
                 </div>
                 
-                <div class="col-12 searchable-item">
-                    <div class="glass-card">
-                        <h5 class="card-title"><i class="fa-solid fa-comment-slash me-2"></i>自 Ban 冷靜與禁言券</h5>
-                        <div class="ticket-ban-grid">
-                            <div class="ticket-ban-part">
-                                <h6 class="ticket-ban-label"><i class="fa-solid fa-user-clock"></i>自 Ban 冷靜</h6>
-                                <p class="ticket-ban-copy">禁言自己一段時間，不會消耗禁言券。</p>
-                                <div class="ticket-ban-commands">
-                                    <span class="cmd-badge" onclick="copyText('!600')">!600</span>
-                                    <span class="cmd-badge" onclick="copyText('!B人 600')">!B人 秒數</span>
-                                    <span class="cmd-badge" onclick="copyText('!B人 隨機')">!B人 隨機</span>
-                                </div>
-                                <div class="ticket-ban-meta"><i class="fa-solid fa-circle-info"></i><span>觀眾最多 10 分鐘，VIP 最多 1 小時。</span></div>
-                            </div>
-                            <div class="ticket-ban-part">
-                                <h6 class="ticket-ban-label"><i class="fa-solid fa-ticket"></i>禁言券</h6>
-                                <p class="ticket-ban-copy">直播中消耗 1 張禁言券，指定一名觀眾禁言 600 秒；正常簽到有 1% 機率取得禁言券，每 50 次取得 1 張保護券。</p>
-                                <div class="ticket-ban-commands">
-                                    <span class="cmd-badge" onclick="copyText('!券')">!券</span>
-                                    <span class="cmd-badge" onclick="copyText('!B人 @對象')">!B人 @對象</span>
-                                </div>
-                                <div class="ticket-ban-meta"><i class="fa-solid fa-shield-halved"></i><span>對方若有可用保護券，雙方各扣 1 張並取消這次禁言；查詢持有量也支援 <strong>!劵</strong>、<strong>!卷</strong>。</span></div>
-                                <div class="ticket-ban-meta"><i class="fa-solid fa-users"></i><span>台主、MOD 或最高管理員可向當下在線聊天室觀眾發券。</span></div>
-                            </div>
-                        </div>
-                        <div class="feature-note note-vip ticket-ban-limit"><i class="fa-solid fa-gauge"></i>每場最多使用禁言券 2 張、保護券 1 張；跨午夜或 30 分鐘內斷線不重置</div>
-                    </div>
-                </div>
-
-                <div class="col-12 searchable-item">
-                    <div class="glass-card">
-                        <h5 class="card-title"><i class="fa-solid fa-arrows-rotate me-2"></i>頻道點數禁言反彈</h5>
-                        <p class="card-desc">這是 Twitch 頻道點數獎勵，不是聊天指令。雙方會先輪流反彈，只有倒數結束後才真正執行禁言。</p>
-                        <div class="reward-flow" aria-label="頻道點數禁言反彈流程">
-                            <div class="reward-step">
-                                <i class="fa-solid fa-crosshairs reward-step-icon"></i>
-                                <span class="reward-step-title">1. 發起</span>
-                                <span class="reward-step-copy">A 兌換「禁言觀眾」並填入 B，先累積 600 秒。</span>
-                            </div>
-                            <div class="reward-step">
-                                <i class="fa-solid fa-rotate reward-step-icon"></i>
-                                <span class="reward-step-title">2. 反彈</span>
-                                <span class="reward-step-copy">B 在 20 秒內兌換「反彈禁言」，目標改回 A，累積為 1200 秒。</span>
-                            </div>
-                            <div class="reward-step">
-                                <i class="fa-solid fa-repeat reward-step-icon"></i>
-                                <span class="reward-step-title">3. 繼續交手</span>
-                                <span class="reward-step-copy">每反彈一次增加 600 秒，並重新倒數 20 秒。</span>
-                            </div>
-                            <div class="reward-step">
-                                <i class="fa-solid fa-gavel reward-step-icon"></i>
-                                <span class="reward-step-title">4. 結算</span>
-                                <span class="reward-step-copy">輪到的一方沒有反彈，BOT 才對目前目標執行累積禁言。</span>
-                            </div>
-                        </div>
-                        <div class="feature-note note-allow"><i class="fa-solid fa-unlock-keyhole"></i>「解除禁言」是保釋獎勵，只會解除 BOT 能可靠確認仍有效的暫時禁言；紀錄不足、已到期、未被禁言或遭永久封鎖時會取消並退還點數</div>
-                        <div class="feature-note note-danger"><i class="fa-solid fa-shield-halved"></i>指定台主、MOD 或 BOT 時，600 秒直接反彈給發起者</div>
-                    </div>
-                </div>
             </div>
         </div>
 
@@ -1793,6 +1758,15 @@
                             <span class="cmd-badge" onclick="copyText('!最近對戰 名字#TAG')">!最近對戰 名字#TAG</span>
                         </div>
                         <div class="mt-2 text-white-50 small">別名：!近況、!matches</div>
+                    </div>
+                </div>
+
+                <div class="col-md-6 col-lg-4 searchable-item">
+                    <div class="glass-card">
+                        <h5 class="card-title"><i class="fa-solid fa-link me-2"></i>綁定台主帳號</h5>
+                        <p class="card-desc">綁定本頻道台主的 VALORANT 帳號，讓觀眾未帶參數時可直接查詢台主的牌位與最近對戰。</p>
+                        <div class="feature-note note-vip"><i class="fa-solid fa-lock"></i>限台主或最高管理員</div>
+                        <div class="mt-3"><span class="cmd-badge" onclick="copyText('!綁定VAL 名字#TAG')">!綁定VAL 名字#TAG</span></div>
                     </div>
                 </div>
 
@@ -1924,6 +1898,24 @@
                 </div>
             </div>
 
+            <div class="management-guide searchable-item">
+                <div class="glass-card">
+                    <h5 class="card-title"><i class="fa-solid fa-coins me-2"></i>頻道點數：禁言、反彈與解除禁言</h5>
+                    <p class="card-desc">這是台主在設定中心綁定的 Twitch 頻道點數獎勵，不是聊天室指令。頻道未啟用或未綁定獎勵時，不會處理兌換。</p>
+                    <details class="guide-details">
+                        <summary><i class="fa-solid fa-arrows-rotate"></i>查看反彈禁言流程</summary>
+                        <div class="reward-flow" aria-label="頻道點數禁言反彈流程">
+                            <div class="reward-step"><i class="fa-solid fa-crosshairs reward-step-icon"></i><span class="reward-step-title">1. 發起</span><span class="reward-step-copy">A 兌換「禁言觀眾」並填入 B，先累積 600 秒。</span></div>
+                            <div class="reward-step"><i class="fa-solid fa-rotate reward-step-icon"></i><span class="reward-step-title">2. 反彈</span><span class="reward-step-copy">B 在 20 秒內兌換「反彈禁言」，目標改回 A，累積為 1200 秒。</span></div>
+                            <div class="reward-step"><i class="fa-solid fa-repeat reward-step-icon"></i><span class="reward-step-title">3. 繼續交手</span><span class="reward-step-copy">每反彈一次增加 600 秒，並重新倒數 20 秒。</span></div>
+                            <div class="reward-step"><i class="fa-solid fa-gavel reward-step-icon"></i><span class="reward-step-title">4. 結算</span><span class="reward-step-copy">輪到的一方沒有反彈，系統才對目前目標執行累積禁言。</span></div>
+                        </div>
+                    </details>
+                    <div class="feature-note note-allow"><i class="fa-solid fa-unlock-keyhole"></i>「解除禁言」僅處理仍可可靠確認的暫時禁言；已到期、未被禁言或永久封鎖時，系統會取消並退還點數</div>
+                    <div class="feature-note note-danger"><i class="fa-solid fa-shield-halved"></i>指定台主、MOD、BOT 或最高管理員時，600 秒會直接反彈給發起者</div>
+                </div>
+            </div>
+
             <div class="table-container">
                 <div class="table-responsive">
                     <table class="custom-table">
@@ -1935,6 +1927,7 @@
                             </tr>
                         </thead>
                         <tbody id="adminTableBody">
+                            <tr class="table-group-row"><td colspan="3"><div class="table-group-title"><i class="fa-solid fa-comments"></i>聊天室管理 <small>MODERATION &amp; TICKETS</small></div></td></tr>
                             <tr class="searchable-row">
                                 <td>
                                     <div class="d-flex flex-wrap gap-2 mb-3"><span class="cmd-badge" onclick="copyText('!B人')">!B人</span></div>
@@ -2026,6 +2019,31 @@
 
                             <tr class="searchable-row">
                                 <td>
+                                    <div class="d-flex flex-wrap gap-2 mb-3"><span class="cmd-badge" onclick="copyText('!解B')">!解B</span></div>
+                                    <div><span class="cmd-type-tag type-unban">解除 (UNBAN)</span></div>
+                                </td>
+                                <td>
+                                    <div class="param-item">
+                                        <div class="param-key key-blue">無參數</div>
+                                        <div class="param-text">自動批量救援被誤 Ban 的 VIP。</div>
+                                    </div>
+                                    <div class="param-item">
+                                        <div class="param-key key-yellow">@ID</div>
+                                        <div class="param-text">直接解除指定目標的禁言。</div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
+                                        <span class="role-badge role-admin"><i class="fa-solid fa-user-secret"></i> 最高管理員</span>
+                                        <span class="role-badge role-mod"><i class="fa-solid fa-shield-halved"></i> 頻道 MOD</span>
+                                    </div>
+                                    <p class="mb-0 small text-white-50">適用於誤 Ban 解除或 VIP 批量救援。</p>
+                                </td>
+                            </tr>
+
+                            <tr class="table-group-row"><td colspan="3"><div class="table-group-title"><i class="fa-solid fa-coins"></i>Twitch 官方點數 <small>PREDICTIONS</small></div></td></tr>
+                            <tr class="searchable-row">
+                                <td>
                                     <div class="d-flex flex-wrap gap-2 mb-3">
                                         <span class="cmd-badge" onclick="copyText('!開盤 60 今天會吃雞嗎 會 不會')">!開盤</span>
                                         <span class="cmd-badge" onclick="copyText('!賭盤')">!賭盤</span>
@@ -2057,30 +2075,8 @@
                                     <p class="mb-0 small text-white-50"><strong>!賭盤</strong> 開放所有觀眾查詢。台主需先授權官方賭盤權限，且頻道須為實況盟友或合作夥伴。</p>
                                 </td>
                             </tr>
-                            
-                            <tr class="searchable-row">
-                                <td>
-                                    <div class="d-flex flex-wrap gap-2 mb-3"><span class="cmd-badge" onclick="copyText('!解B')">!解B</span></div>
-                                    <div><span class="cmd-type-tag type-unban">解除 (UNBAN)</span></div>
-                                </td>
-                                <td>
-                                    <div class="param-item">
-                                        <div class="param-key key-blue">無參數</div>
-                                        <div class="param-text">自動批量救援被誤 Ban 的 VIP。</div>
-                                    </div>
-                                    <div class="param-item">
-                                        <div class="param-key key-yellow">@ID</div>
-                                        <div class="param-text">直接解除指定目標的禁言。</div>
-                                    </div>
-                                </td>
-                                <td>
-                                    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
-                                        <span class="role-badge role-admin"><i class="fa-solid fa-user-secret"></i> 最高管理員</span>
-                                        <span class="role-badge role-mod"><i class="fa-solid fa-shield-halved"></i> 頻道 MOD</span>
-                                    </div>
-                                    <p class="mb-0 small text-white-50">適用於誤 Ban 解除或 VIP 批量救援。</p>
-                                </td>
-                            </tr>
+
+                            <tr class="table-group-row"><td colspan="3"><div class="table-group-title"><i class="fa-solid fa-sliders"></i>頻道設定 <small>CHANNEL TOOLS</small></div></td></tr>
 
                             <tr class="searchable-row">
                                 <td>
@@ -2188,27 +2184,6 @@
                                 </td>
                             </tr>
 
-                            <tr class="searchable-row">
-                                <td>
-                                    <div class="d-flex flex-wrap gap-2 mb-3">
-                                        <span class="cmd-badge" onclick="copyText('!綁定VAL')">!綁定VAL</span>
-                                    </div>
-                                    <div><span class="cmd-type-tag type-active">VALORANT (BIND)</span></div>
-                                </td>
-                                <td>
-                                    <div class="param-item">
-                                        <div class="param-key key-purple">!綁定VAL 名字#TAG</div>
-                                        <div class="param-text">綁定本頻道台主的 VALORANT 帳號，供 !rank / !最近對戰 預設查詢使用。</div>
-                                    </div>
-                                </td>
-                                <td>
-                                    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
-                                        <span class="role-badge role-admin"><i class="fa-solid fa-user-secret"></i> 最高管理員</span>
-                                        <span class="role-badge role-owner"><i class="fa-solid fa-crown"></i> 頻道台主</span>
-                                    </div>
-                                    <p class="mb-0 mt-2 small text-white-50">綁定後，頻道觀眾打 !rank 即可看到台主目前的牌位。</p>
-                                </td>
-                            </tr>
                         </tbody>
                     </table>
                 </div>
@@ -2228,6 +2203,7 @@
         const searchInput = document.getElementById('searchInput');
         const cards = document.querySelectorAll('.searchable-item');
         const rows = document.querySelectorAll('.searchable-row');
+        const tableGroups = document.querySelectorAll('.table-group-row');
         const sections = document.querySelectorAll('.cmd-section');
         const searchStatus = document.getElementById('searchStatus');
         let searchTimer;
@@ -2293,6 +2269,19 @@
                 const matched = text.toLowerCase().includes(filter);
                 row.style.display = matched ? "" : "none";
                 if (matched) visibleCount += 1;
+            });
+
+            tableGroups.forEach(group => {
+                let hasMatch = false;
+                let row = group.nextElementSibling;
+                while (row && !row.classList.contains('table-group-row')) {
+                    if (row.classList.contains('searchable-row') && row.style.display !== 'none') {
+                        hasMatch = true;
+                        break;
+                    }
+                    row = row.nextElementSibling;
+                }
+                group.style.display = filter && !hasMatch ? 'none' : '';
             });
 
             sections.forEach(section => {
