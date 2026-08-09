@@ -255,6 +255,10 @@
         .glass-card { background: #0e0e10; border: 1px solid #2d2d30; border-radius: 18px; padding: 30px; height: 100%; will-change: transform; display: flex; flex-direction: column; }
         .card-title { font-weight: 900; margin-bottom: 15px; font-size: 1.5rem; color: #fff; }
         .card-desc { color: var(--text-silver); font-size: 1.05rem; font-weight: 500; padding-bottom: 25px; line-height: 1.7; flex-grow: 1; }
+        .title-mode-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin: 0 0 12px; }
+        .title-mode { min-width: 0; padding: 9px 10px; border: 1px solid #36404c; border-radius: 6px; background: #11161d; }
+        .title-mode strong { display: block; color: #e7eef7; font-size: 0.84rem; }
+        .title-mode small { display: block; margin-top: 3px; color: #92a0b0; font-size: 0.75rem; line-height: 1.45; }
         
         .table-container { background: #09090b; border-radius: 16px; border: 1px solid #3f3f46; overflow: hidden; }
         .custom-table th { background: #1c1c1f; color: #fff; padding: 20px; }
@@ -1031,6 +1035,7 @@
             .gradient-text { font-size: 1.42rem; }
             .cmd-section .glass-card .card-title { font-size: 1.14rem; }
             .card-desc { font-size: 1rem; }
+            .title-mode { padding: 8px; }
             .cmd-badge { font-size: 0.88rem; }
             .custom-table td, .param-text { font-size: 0.96rem; }
             .nav-link { min-height: 50px; }
@@ -1619,13 +1624,18 @@
                 <div class="col-md-6 col-lg-4 searchable-item">
                     <div class="glass-card">
                         <h5 class="card-title"><i class="fa-solid fa-id-badge me-2"></i>自訂稱號</h5>
-                        <p class="card-desc">為本頻道觀眾設定顯示稱號；每個頻道獨立保存，並可選擇替換、並列或只顯示原本的等級稱號。</p>
-                        <div class="feature-note note-info"><i class="fa-solid fa-shield-halved"></i>設定、移除與模式切換僅限作者、最高管理員或本頻道台主；查詢開放觀眾使用</div>
+                        <p class="card-desc">可替本頻道觀眾設定 1～12 字的專屬稱號。稱號只在這個頻道生效，會顯示在 <strong>!cu</strong> 的「[稱號]」位置。</p>
+                        <div class="title-mode-grid" aria-label="稱號顯示模式">
+                            <div class="title-mode"><strong>替換</strong><small>有自訂稱號時，只顯示自訂稱號。</small></div>
+                            <div class="title-mode"><strong>並列</strong><small>顯示「等級稱號｜自訂稱號」。</small></div>
+                            <div class="title-mode"><strong>等級</strong><small>保留稱號資料，但 !cu 只顯示原本等級稱號。</small></div>
+                        </div>
+                        <div class="feature-note note-info"><i class="fa-solid fa-shield-halved"></i>設定、移除與模式切換僅限作者、最高管理員或本頻道台主；查詢開放所有觀眾</div>
                         <div>
-                            <span class="cmd-badge" onclick="copyText('!稱號設定 @使用者 稱號')">!稱號設定</span>
-                            <span class="cmd-badge" onclick="copyText('!稱號移除 @使用者')">!稱號移除</span>
-                            <span class="cmd-badge" onclick="copyText('!稱號查詢')">!稱號查詢</span>
-                            <span class="cmd-badge" onclick="copyText('!稱號模式 替換')">!稱號模式</span>
+                            <span class="cmd-badge" onclick="copyText('!稱號設定 @使用者 稱號')">!稱號設定 @使用者 稱號</span>
+                            <span class="cmd-badge" onclick="copyText('!稱號移除 @使用者')">!稱號移除 @使用者</span>
+                            <span class="cmd-badge" onclick="copyText('!稱號查詢 @使用者')">!稱號查詢 @使用者</span>
+                            <span class="cmd-badge" onclick="copyText('!稱號模式 並列')">!稱號模式 並列</span>
                         </div>
                     </div>
                 </div>
