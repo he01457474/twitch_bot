@@ -873,6 +873,30 @@
             border-color: var(--section-color, var(--accent-cyan));
             background: var(--section-soft, #26313a);
         }
+        .command-details {
+            display: inline-block;
+            margin-top: 6px;
+        }
+        .command-details summary {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            color: #aebfd2;
+            font-size: 0.82rem;
+            font-weight: 700;
+            cursor: pointer;
+            list-style: none;
+        }
+        .command-details summary::-webkit-details-marker { display: none; }
+        .command-details summary::before {
+            content: '›';
+            color: var(--section-color, var(--accent-cyan));
+            font-size: 1rem;
+            line-height: 1;
+            transition: transform 0.15s ease;
+        }
+        .command-details[open] summary::before { transform: rotate(90deg); }
+        .command-details-badges { padding-top: 4px; }
         .table-container {
             border-top: 3px solid var(--section-color, var(--twitch-purple));
             background: #121419;
@@ -1582,7 +1606,8 @@
                         <h5 class="card-title"><i class="fa-solid fa-trophy me-2"></i>排行榜</h5>
                         <p class="card-desc">查看本月前 10 名簽到排行榜，或查詢自己在頻道中的即時排名。月榜會依台北時間的簽到日期明細統計，不使用過期快取。</p>
                         <div class="feature-note note-vip"><i class="fa-solid fa-lock"></i>查詢他人需 MOD+ 權限</div>
-                        <div class="mt-3"><span class="cmd-badge" onclick="copyText('!本月排名')">!本月排名</span> <span class="cmd-badge" onclick="copyText('!我的排名')">!我的排名</span> <span class="cmd-badge" onclick="copyText('!我的排名 @ID')">!我的排名 @ID</span></div>
+                        <div class="mt-3"><span class="cmd-badge" onclick="copyText('!本月排名')">!本月排名</span> <span class="cmd-badge" onclick="copyText('!我的排名')">!我的排名</span></div>
+                        <details class="command-details"><summary>更多用法</summary><div class="command-details-badges"><span class="cmd-badge" onclick="copyText('!我的排名 @ID')">!我的排名 @ID</span></div></details>
                     </div>
                 </div>
 
@@ -1617,7 +1642,8 @@
                         <p class="card-desc">查詢等級、活躍總排名、在線／離線狀態、觀看時數、發言量與升級需求。EXP 由觀看、發言、簽到三項合計。</p>
                         <div class="feature-note note-info"><i class="fa-solid fa-scale-balanced"></i>依頻道顯示 🔇 暫時禁言與 🚫 永久封鎖次數；兩者皆為 0 時省略，且需 BOT 是該台 MOD</div>
                         <div class="feature-note note-allow"><i class="fa-solid fa-check"></i>支援查詢他人</div>
-                        <div><span class="cmd-badge" onclick="copyText('!cu')">!cu</span> <span class="cmd-badge" onclick="copyText('!cu @ID')">!cu @ID</span> <span class="cmd-badge" onclick="copyText('!數據')">!數據</span> <span class="cmd-badge" onclick="copyText('!肝度')">!肝度</span></div>
+                        <div><span class="cmd-badge" onclick="copyText('!cu')">!cu</span> <span class="cmd-badge" onclick="copyText('!cu @ID')">!cu @ID</span></div>
+                        <details class="command-details"><summary>其他名稱</summary><div class="command-details-badges"><span class="cmd-badge" onclick="copyText('!數據')">!數據</span> <span class="cmd-badge" onclick="copyText('!肝度')">!肝度</span></div></details>
                     </div>
                 </div>
 
@@ -1653,7 +1679,8 @@
                     <div class="glass-card">
                         <h5 class="card-title"><i class="fa-solid fa-clock-rotate-left me-2"></i>前世查水表</h5>
                         <p class="card-desc">稽查使用者的 Twitch 歷史改名紀錄。<br><span class="text-white-50 small">※ 僅能查詢機器人導入後的改名紀錄，不溯及既往。</span></p>
-                        <div class="mt-3"><span class="cmd-badge" onclick="copyText('!前世')">!前世</span> <span class="cmd-badge" onclick="copyText('!前世 @ID')">!前世 @ID</span> <span class="cmd-badge" onclick="copyText('!查水表')">!查水表</span> <span class="cmd-badge" onclick="copyText('!audit')">!audit</span></div>
+                        <div class="mt-3"><span class="cmd-badge" onclick="copyText('!前世')">!前世</span> <span class="cmd-badge" onclick="copyText('!前世 @ID')">!前世 @ID</span></div>
+                        <details class="command-details"><summary>其他名稱</summary><div class="command-details-badges"><span class="cmd-badge" onclick="copyText('!查水表')">!查水表</span> <span class="cmd-badge" onclick="copyText('!audit')">!audit</span></div></details>
                     </div>
                 </div>
 
@@ -1662,7 +1689,8 @@
                         <h5 class="card-title"><i class="fa-solid fa-heart me-2"></i>追隨時間</h5>
                         <p class="card-desc">精確計算你的追隨時長，並自動對應中文名稱。</p>
                         <div class="feature-note note-allow"><i class="fa-solid fa-check"></i>支援查詢他人</div>
-                        <div><span class="cmd-badge" onclick="copyText('!芯寶')">!芯寶</span> <span class="cmd-badge" onclick="copyText('!追隨時間')">!追隨時間</span> <span class="cmd-badge" onclick="copyText('!followage')">!followage</span> <span class="cmd-badge" onclick="copyText('!芯寶 @ID')">!芯寶 @ID</span></div>
+                        <div><span class="cmd-badge" onclick="copyText('!芯寶')">!芯寶</span> <span class="cmd-badge" onclick="copyText('!芯寶 @ID')">!芯寶 @ID</span></div>
+                        <details class="command-details"><summary>其他名稱</summary><div class="command-details-badges"><span class="cmd-badge" onclick="copyText('!追隨時間')">!追隨時間</span> <span class="cmd-badge" onclick="copyText('!followage')">!followage</span></div></details>
                     </div>
                 </div>
 
@@ -1680,7 +1708,8 @@
                         <h5 class="card-title"><i class="fa-solid fa-ticket me-2"></i>我的虛擬券</h5>
                         <p class="card-desc">查詢禁言券與保護券的持有量，也會顯示本場各券的使用量與上限；未開台時會標示目前未開台。禁言券可在直播中指定一名觀眾禁言，被指定者持有保護券時可抵銷一次禁言。</p>
                         <div class="feature-note note-info"><i class="fa-solid fa-calendar-check"></i>禁言券由正常簽到 1% 機率取得；總簽到次數每達固定 50 倍數取得 1 張保護券，補簽也會計入</div>
-                        <div><span class="cmd-badge" onclick="copyText('!券')">!券</span> <span class="cmd-badge" onclick="copyText('!劵')">!劵</span> <span class="cmd-badge" onclick="copyText('!卷')">!卷</span></div>
+                        <div><span class="cmd-badge" onclick="copyText('!券')">!券</span></div>
+                        <details class="command-details"><summary>其他名稱</summary><div class="command-details-badges"><span class="cmd-badge" onclick="copyText('!劵')">!劵</span> <span class="cmd-badge" onclick="copyText('!卷')">!卷</span></div></details>
                     </div>
                 </div>
 
@@ -1754,7 +1783,7 @@
                             <span class="cmd-badge" onclick="copyText('!rank @ID')">!rank @ID</span>
                             <span class="cmd-badge" onclick="copyText('!rank 名字#TAG')">!rank 名字#TAG</span>
                         </div>
-                        <div class="mt-2 text-white-50 small">別名：!rk、!r、!牌位</div>
+                        <details class="command-details"><summary>其他名稱</summary><div class="command-details-badges"><span class="cmd-badge" onclick="copyText('!rk')">!rk</span> <span class="cmd-badge" onclick="copyText('!r')">!r</span> <span class="cmd-badge" onclick="copyText('!牌位')">!牌位</span></div></details>
                     </div>
                 </div>
 
@@ -1767,7 +1796,7 @@
                             <span class="cmd-badge" onclick="copyText('!最近對戰 @ID')">!最近對戰 @ID</span>
                             <span class="cmd-badge" onclick="copyText('!最近對戰 名字#TAG')">!最近對戰 名字#TAG</span>
                         </div>
-                        <div class="mt-2 text-white-50 small">別名：!近況、!matches</div>
+                        <details class="command-details"><summary>其他名稱</summary><div class="command-details-badges"><span class="cmd-badge" onclick="copyText('!近況')">!近況</span> <span class="cmd-badge" onclick="copyText('!matches')">!matches</span></div></details>
                     </div>
                 </div>
 
@@ -2060,10 +2089,8 @@
                                         <span class="cmd-badge" onclick="copyText('!賭盤')">!賭盤</span>
                                         <span class="cmd-badge" onclick="copyText('!封盤')">!封盤</span>
                                         <span class="cmd-badge" onclick="copyText('!結算 會')">!結算</span>
-                                        <span class="cmd-badge" onclick="copyText('!確認結算')">!確認結算</span>
-                                        <span class="cmd-badge" onclick="copyText('!取消賭盤')">!取消賭盤</span>
-                                        <span class="cmd-badge" onclick="copyText('!確認取消賭盤')">!確認取消賭盤</span>
                                     </div>
+                                    <details class="command-details"><summary>完整操作</summary><div class="command-details-badges"><span class="cmd-badge" onclick="copyText('!確認結算')">!確認結算</span> <span class="cmd-badge" onclick="copyText('!取消賭盤')">!取消賭盤</span> <span class="cmd-badge" onclick="copyText('!確認取消賭盤')">!確認取消賭盤</span></div></details>
                                     <div><span class="cmd-type-tag type-prediction">官方賭盤 (PREDICTION)</span></div>
                                 </td>
                                 <td>
@@ -2128,13 +2155,14 @@
                             <tr class="searchable-row">
                                 <td>
                                     <div class="d-flex flex-wrap gap-2 mb-3"><span class="cmd-badge" onclick="copyText('!換分類')">!換分類</span></div>
+                                    <details class="command-details"><summary>其他名稱</summary><div class="command-details-badges"><span class="cmd-badge" onclick="copyText('!更改分類')">!更改分類</span></div></details>
                                     <div><span class="cmd-type-tag type-category">分類控制 (CATEGORY)</span></div>
                                 </td>
                                 <td>
                                     <div class="param-item">
                                         <div class="param-key key-purple">!換分類 [名稱]</div>
                                         <div class="param-text">
-                                            快速更改目前的實況分類 (別名：!更改分類)。
+                                            快速更改目前的實況分類。
                                             <div class="text-white-50 mt-1 small"><i class="fa-solid fa-robot me-1"></i>底層邏輯：連動觸發 Nightbot 的 !game 指令。</div>
                                         </div>
                                     </div>
@@ -2154,8 +2182,8 @@
                                     <div class="d-flex flex-wrap gap-2 mb-3">
                                         <span class="cmd-badge" onclick="copyText('!簽到開關')">!簽到開關</span>
                                         <span class="cmd-badge" onclick="copyText('!定時開關')">!定時開關</span>
-                                        <span class="cmd-badge" onclick="copyText('!公告開關')">!公告開關</span>
                                     </div>
+                                    <details class="command-details"><summary>其他名稱</summary><div class="command-details-badges"><span class="cmd-badge" onclick="copyText('!公告開關')">!公告開關</span></div></details>
                                     <div><span class="cmd-type-tag type-switch">功能開關 (SWITCH)</span></div>
                                 </td>
                                 <td>
