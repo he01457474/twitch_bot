@@ -873,30 +873,55 @@
             border-color: var(--section-color, var(--accent-cyan));
             background: var(--section-soft, #26313a);
         }
-        .command-details {
-            display: inline-block;
-            margin-top: 6px;
-        }
-        .command-details summary {
+        .command-details { display: inline-block; margin-top: 6px; }
+        .command-details-trigger {
             display: inline-flex;
             align-items: center;
             gap: 5px;
+            padding: 0;
+            border: 0;
+            background: transparent;
             color: #aebfd2;
             font-size: 0.82rem;
             font-weight: 700;
             cursor: pointer;
-            list-style: none;
         }
-        .command-details summary::-webkit-details-marker { display: none; }
-        .command-details summary::before {
+        .command-details-trigger::before {
             content: '›';
             color: var(--section-color, var(--accent-cyan));
             font-size: 1rem;
             line-height: 1;
             transition: transform 0.15s ease;
         }
-        .command-details[open] summary::before { transform: rotate(90deg); }
-        .command-details-badges { padding-top: 4px; }
+        .command-details-trigger[aria-expanded="true"]::before { transform: rotate(90deg); }
+        .command-details-trigger:focus-visible {
+            outline: 2px solid var(--section-color, var(--accent-cyan));
+            outline-offset: 3px;
+            border-radius: 3px;
+        }
+        .command-popover {
+            position: fixed;
+            z-index: 1080;
+            max-width: calc(100vw - 24px);
+            padding: 8px 10px;
+            border: 1px solid #485463;
+            border-radius: 7px;
+            background: #171b22;
+            box-shadow: 0 10px 24px rgba(0, 0, 0, 0.34);
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(-3px);
+            visibility: hidden;
+            transition: opacity 0.12s ease, transform 0.12s ease, visibility 0.12s step-end;
+        }
+        .command-popover.is-open {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translateY(0);
+            visibility: visible;
+            transition: opacity 0.12s ease, transform 0.12s ease;
+        }
+        .command-popover-badges { display: flex; flex-wrap: wrap; gap: 6px; }
         .table-container {
             border-top: 3px solid var(--section-color, var(--twitch-purple));
             background: #121419;
@@ -1601,13 +1626,13 @@
                     </div>
                 </div>
 
-                <div class="col-md-6 col-lg-4 searchable-item">
+                <div class="col-md-6 col-lg-4 searchable-item" data-search-aliases="我的排名 @ID">
                     <div class="glass-card">
                         <h5 class="card-title"><i class="fa-solid fa-trophy me-2"></i>排行榜</h5>
                         <p class="card-desc">查看本月前 10 名簽到排行榜，或查詢自己在頻道中的即時排名。月榜會依台北時間的簽到日期明細統計，不使用過期快取。</p>
                         <div class="feature-note note-vip"><i class="fa-solid fa-lock"></i>查詢他人需 MOD+ 權限</div>
                         <div class="mt-3"><span class="cmd-badge" onclick="copyText('!本月排名')">!本月排名</span> <span class="cmd-badge" onclick="copyText('!我的排名')">!我的排名</span></div>
-                        <details class="command-details"><summary>更多用法</summary><div class="command-details-badges"><span class="cmd-badge" onclick="copyText('!我的排名 @ID')">!我的排名 @ID</span></div></details>
+                        <div class="command-details"><button type="button" class="command-details-trigger" aria-expanded="false" aria-haspopup="true">更多用法</button><template><span class="cmd-badge" onclick="copyText('!我的排名 @ID')">!我的排名 @ID</span></template></div>
                     </div>
                 </div>
 
@@ -1636,14 +1661,14 @@
                     </div>
                 </div>
 
-                <div class="col-md-6 col-lg-4 searchable-item">
+                <div class="col-md-6 col-lg-4 searchable-item" data-search-aliases="數據 肝度">
                     <div class="glass-card">
                         <h5 class="card-title"><i class="fa-solid fa-stopwatch me-2"></i>掛台肝度</h5>
                         <p class="card-desc">查詢等級、活躍總排名、在線／離線狀態、觀看時數、發言量與升級需求。EXP 由觀看、發言、簽到三項合計。</p>
                         <div class="feature-note note-info"><i class="fa-solid fa-scale-balanced"></i>依頻道顯示 🔇 暫時禁言與 🚫 永久封鎖次數；兩者皆為 0 時省略，且需 BOT 是該台 MOD</div>
                         <div class="feature-note note-allow"><i class="fa-solid fa-check"></i>支援查詢他人</div>
                         <div><span class="cmd-badge" onclick="copyText('!cu')">!cu</span> <span class="cmd-badge" onclick="copyText('!cu @ID')">!cu @ID</span></div>
-                        <details class="command-details"><summary>其他名稱</summary><div class="command-details-badges"><span class="cmd-badge" onclick="copyText('!數據')">!數據</span> <span class="cmd-badge" onclick="copyText('!肝度')">!肝度</span></div></details>
+                        <div class="command-details"><button type="button" class="command-details-trigger" aria-expanded="false" aria-haspopup="true">其他名稱</button><template><span class="cmd-badge" onclick="copyText('!數據')">!數據</span> <span class="cmd-badge" onclick="copyText('!肝度')">!肝度</span></template></div>
                     </div>
                 </div>
 
@@ -1654,7 +1679,7 @@
                         <div class="title-mode-grid" aria-label="稱號顯示模式">
                             <div class="title-mode"><strong>替換</strong><small>有自訂稱號時，只顯示自訂稱號。</small></div>
                             <div class="title-mode"><strong>並列</strong><small>顯示「等級稱號｜自訂稱號」。</small></div>
-                            <div class="title-mode"><strong>等級</strong><small>保留稱號資料，但 !cu 只顯示原本等級稱號。</small></div>
+                            <div class="title-mode"><strong>等級</strong><small>保留稱號資料，但查詢時只顯示原本等級稱號。</small></div>
                         </div>
                         <div class="feature-note note-info"><i class="fa-solid fa-shield-halved"></i>設定、移除與模式切換僅限作者、最高管理員或本頻道台主；查詢開放所有觀眾</div>
                         <div>
@@ -1675,22 +1700,22 @@
                     </div>
                 </div>
 
-                <div class="col-md-6 col-lg-4 searchable-item">
+                <div class="col-md-6 col-lg-4 searchable-item" data-search-aliases="查水表 audit">
                     <div class="glass-card">
                         <h5 class="card-title"><i class="fa-solid fa-clock-rotate-left me-2"></i>前世查水表</h5>
                         <p class="card-desc">稽查使用者的 Twitch 歷史改名紀錄。<br><span class="text-white-50 small">※ 僅能查詢機器人導入後的改名紀錄，不溯及既往。</span></p>
                         <div class="mt-3"><span class="cmd-badge" onclick="copyText('!前世')">!前世</span> <span class="cmd-badge" onclick="copyText('!前世 @ID')">!前世 @ID</span></div>
-                        <details class="command-details"><summary>其他名稱</summary><div class="command-details-badges"><span class="cmd-badge" onclick="copyText('!查水表')">!查水表</span> <span class="cmd-badge" onclick="copyText('!audit')">!audit</span></div></details>
+                        <div class="command-details"><button type="button" class="command-details-trigger" aria-expanded="false" aria-haspopup="true">其他名稱</button><template><span class="cmd-badge" onclick="copyText('!查水表')">!查水表</span> <span class="cmd-badge" onclick="copyText('!audit')">!audit</span></template></div>
                     </div>
                 </div>
 
-                <div class="col-md-6 col-lg-4 searchable-item">
+                <div class="col-md-6 col-lg-4 searchable-item" data-search-aliases="追隨時間 followage">
                     <div class="glass-card">
                         <h5 class="card-title"><i class="fa-solid fa-heart me-2"></i>追隨時間</h5>
                         <p class="card-desc">精確計算你的追隨時長，並自動對應中文名稱。</p>
                         <div class="feature-note note-allow"><i class="fa-solid fa-check"></i>支援查詢他人</div>
                         <div><span class="cmd-badge" onclick="copyText('!芯寶')">!芯寶</span> <span class="cmd-badge" onclick="copyText('!芯寶 @ID')">!芯寶 @ID</span></div>
-                        <details class="command-details"><summary>其他名稱</summary><div class="command-details-badges"><span class="cmd-badge" onclick="copyText('!追隨時間')">!追隨時間</span> <span class="cmd-badge" onclick="copyText('!followage')">!followage</span></div></details>
+                        <div class="command-details"><button type="button" class="command-details-trigger" aria-expanded="false" aria-haspopup="true">其他名稱</button><template><span class="cmd-badge" onclick="copyText('!追隨時間')">!追隨時間</span> <span class="cmd-badge" onclick="copyText('!followage')">!followage</span></template></div>
                     </div>
                 </div>
 
@@ -1703,13 +1728,13 @@
                     </div>
                 </div>
 
-                <div class="col-md-6 col-lg-4 searchable-item">
+                <div class="col-md-6 col-lg-4 searchable-item" data-search-aliases="劵 卷">
                     <div class="glass-card">
                         <h5 class="card-title"><i class="fa-solid fa-ticket me-2"></i>我的虛擬券</h5>
                         <p class="card-desc">查詢禁言券與保護券的持有量，也會顯示本場各券的使用量與上限；未開台時會標示目前未開台。禁言券可在直播中指定一名觀眾禁言，被指定者持有保護券時可抵銷一次禁言。</p>
                         <div class="feature-note note-info"><i class="fa-solid fa-calendar-check"></i>禁言券由正常簽到 1% 機率取得；總簽到次數每達固定 50 倍數取得 1 張保護券，補簽也會計入</div>
                         <div><span class="cmd-badge" onclick="copyText('!券')">!券</span></div>
-                        <details class="command-details"><summary>其他名稱</summary><div class="command-details-badges"><span class="cmd-badge" onclick="copyText('!劵')">!劵</span> <span class="cmd-badge" onclick="copyText('!卷')">!卷</span></div></details>
+                        <div class="command-details"><button type="button" class="command-details-trigger" aria-expanded="false" aria-haspopup="true">其他名稱</button><template><span class="cmd-badge" onclick="copyText('!劵')">!劵</span> <span class="cmd-badge" onclick="copyText('!卷')">!卷</span></template></div>
                     </div>
                 </div>
 
@@ -1774,7 +1799,7 @@
             </div>
             <div class="row g-4">
 
-                <div class="col-md-6 col-lg-4 searchable-item">
+                <div class="col-md-6 col-lg-4 searchable-item" data-search-aliases="rk r 牌位">
                     <div class="glass-card">
                         <h5 class="card-title"><i class="fa-solid fa-ranking-star me-2"></i>牌位查詢</h5>
                         <p class="card-desc">查詢 VALORANT 目前牌位、RR、上一場 RR 變化與最高牌位。<br><span class="text-white-50 small">沒帶參數時預設查詢台主綁定的帳號；加上 @ID 或 名字#TAG 可查詢其他人。</span></p>
@@ -1783,11 +1808,11 @@
                             <span class="cmd-badge" onclick="copyText('!rank @ID')">!rank @ID</span>
                             <span class="cmd-badge" onclick="copyText('!rank 名字#TAG')">!rank 名字#TAG</span>
                         </div>
-                        <details class="command-details"><summary>其他名稱</summary><div class="command-details-badges"><span class="cmd-badge" onclick="copyText('!rk')">!rk</span> <span class="cmd-badge" onclick="copyText('!r')">!r</span> <span class="cmd-badge" onclick="copyText('!牌位')">!牌位</span></div></details>
+                        <div class="command-details"><button type="button" class="command-details-trigger" aria-expanded="false" aria-haspopup="true">其他名稱</button><template><span class="cmd-badge" onclick="copyText('!rk')">!rk</span> <span class="cmd-badge" onclick="copyText('!r')">!r</span> <span class="cmd-badge" onclick="copyText('!牌位')">!牌位</span></template></div>
                     </div>
                 </div>
 
-                <div class="col-md-6 col-lg-4 searchable-item">
+                <div class="col-md-6 col-lg-4 searchable-item" data-search-aliases="近況 matches">
                     <div class="glass-card">
                         <h5 class="card-title"><i class="fa-solid fa-list-check me-2"></i>最近對戰</h5>
                         <p class="card-desc">顯示最近 3 場對戰紀錄，包含模式、角色、地圖、KDA 與爆頭率。<br><span class="text-white-50 small">沒帶參數時預設查詢台主綁定的帳號；加上 @ID 或 名字#TAG 可查詢其他人。</span></p>
@@ -1796,7 +1821,7 @@
                             <span class="cmd-badge" onclick="copyText('!最近對戰 @ID')">!最近對戰 @ID</span>
                             <span class="cmd-badge" onclick="copyText('!最近對戰 名字#TAG')">!最近對戰 名字#TAG</span>
                         </div>
-                        <details class="command-details"><summary>其他名稱</summary><div class="command-details-badges"><span class="cmd-badge" onclick="copyText('!近況')">!近況</span> <span class="cmd-badge" onclick="copyText('!matches')">!matches</span></div></details>
+                        <div class="command-details"><button type="button" class="command-details-trigger" aria-expanded="false" aria-haspopup="true">其他名稱</button><template><span class="cmd-badge" onclick="copyText('!近況')">!近況</span> <span class="cmd-badge" onclick="copyText('!matches')">!matches</span></template></div>
                     </div>
                 </div>
 
@@ -2082,7 +2107,7 @@
                             </tr>
 
                             <tr class="table-group-row"><td colspan="3"><div class="table-group-title"><i class="fa-solid fa-coins"></i>Twitch 官方點數 <small>PREDICTIONS</small></div></td></tr>
-                            <tr class="searchable-row">
+                            <tr class="searchable-row" data-search-aliases="確認結算 取消賭盤 確認取消賭盤">
                                 <td>
                                     <div class="d-flex flex-wrap gap-2 mb-3">
                                         <span class="cmd-badge" onclick="copyText('!開盤 60 今天會吃雞嗎 會 不會')">!開盤</span>
@@ -2090,7 +2115,7 @@
                                         <span class="cmd-badge" onclick="copyText('!封盤')">!封盤</span>
                                         <span class="cmd-badge" onclick="copyText('!結算 會')">!結算</span>
                                     </div>
-                                    <details class="command-details"><summary>完整操作</summary><div class="command-details-badges"><span class="cmd-badge" onclick="copyText('!確認結算')">!確認結算</span> <span class="cmd-badge" onclick="copyText('!取消賭盤')">!取消賭盤</span> <span class="cmd-badge" onclick="copyText('!確認取消賭盤')">!確認取消賭盤</span></div></details>
+                                    <div class="command-details"><button type="button" class="command-details-trigger" aria-expanded="false" aria-haspopup="true">完整操作</button><template><span class="cmd-badge" onclick="copyText('!確認結算')">!確認結算</span> <span class="cmd-badge" onclick="copyText('!取消賭盤')">!取消賭盤</span> <span class="cmd-badge" onclick="copyText('!確認取消賭盤')">!確認取消賭盤</span></template></div>
                                     <div><span class="cmd-type-tag type-prediction">官方賭盤 (PREDICTION)</span></div>
                                 </td>
                                 <td>
@@ -2100,11 +2125,11 @@
                                     </div>
                                     <div class="param-item">
                                         <div class="param-key key-blue">!結算 答案文字</div>
-                                        <div class="param-text">答案必須與賭盤選項完全相同，再由同一人於 30 秒內輸入 <strong>!確認結算</strong>。</div>
+                                        <div class="param-text">答案必須與賭盤選項完全相同，再由同一人於 30 秒內完成確認。</div>
                                     </div>
                                     <div class="param-item">
                                         <div class="param-key key-yellow">!取消賭盤</div>
-                                        <div class="param-text">輸入 <strong>!確認取消賭盤</strong> 後取消，Twitch 會退還觀眾投入的頻道點數。</div>
+                                        <div class="param-text">確認取消後，Twitch 會退還觀眾投入的頻道點數。</div>
                                     </div>
                                 </td>
                                 <td>
@@ -2152,10 +2177,10 @@
                                 </td>
                             </tr>
 
-                            <tr class="searchable-row">
+                            <tr class="searchable-row" data-search-aliases="更改分類">
                                 <td>
                                     <div class="d-flex flex-wrap gap-2 mb-3"><span class="cmd-badge" onclick="copyText('!換分類')">!換分類</span></div>
-                                    <details class="command-details"><summary>其他名稱</summary><div class="command-details-badges"><span class="cmd-badge" onclick="copyText('!更改分類')">!更改分類</span></div></details>
+                                    <div class="command-details"><button type="button" class="command-details-trigger" aria-expanded="false" aria-haspopup="true">其他名稱</button><template><span class="cmd-badge" onclick="copyText('!更改分類')">!更改分類</span></template></div>
                                     <div><span class="cmd-type-tag type-category">分類控制 (CATEGORY)</span></div>
                                 </td>
                                 <td>
@@ -2177,13 +2202,13 @@
                                 </td>
                             </tr>
 
-                            <tr class="searchable-row">
+                            <tr class="searchable-row" data-search-aliases="公告開關">
                                 <td>
                                     <div class="d-flex flex-wrap gap-2 mb-3">
                                         <span class="cmd-badge" onclick="copyText('!簽到開關')">!簽到開關</span>
                                         <span class="cmd-badge" onclick="copyText('!定時開關')">!定時開關</span>
                                     </div>
-                                    <details class="command-details"><summary>其他名稱</summary><div class="command-details-badges"><span class="cmd-badge" onclick="copyText('!公告開關')">!公告開關</span></div></details>
+                                    <div class="command-details"><button type="button" class="command-details-trigger" aria-expanded="false" aria-haspopup="true">其他名稱</button><template><span class="cmd-badge" onclick="copyText('!公告開關')">!公告開關</span></template></div>
                                     <div><span class="cmd-type-tag type-switch">功能開關 (SWITCH)</span></div>
                                 </td>
                                 <td>
@@ -2201,7 +2226,7 @@
                                         <span class="role-badge role-admin"><i class="fa-solid fa-user-secret"></i> 最高管理員</span>
                                         <span class="role-badge role-owner"><i class="fa-solid fa-crown"></i> 頻道台主</span>
                                     </div>
-                                    <p class="mb-0 mt-2 small text-white-50">全域啟用或關閉頻道的功能服務。</p>
+                                    <p class="mb-0 mt-2 small text-white-50">管理頻道的簽到與定時公告功能設定。</p>
                                 </td>
                             </tr>
 
@@ -2251,17 +2276,106 @@
         const searchStatus = document.getElementById('searchStatus');
         let searchTimer;
 
-        document.querySelectorAll('.cmd-badge').forEach(badge => {
-            badge.setAttribute('role', 'button');
-            badge.setAttribute('tabindex', '0');
-            badge.setAttribute('aria-label', `複製指令 ${badge.textContent.trim()}`);
-            badge.addEventListener('keydown', event => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    badge.click();
-                }
+        function initializeCommandBadges(root = document) {
+            root.querySelectorAll('.cmd-badge').forEach(badge => {
+                if (badge.dataset.commandBadgeReady) return;
+                badge.dataset.commandBadgeReady = 'true';
+                badge.setAttribute('role', 'button');
+                badge.setAttribute('tabindex', '0');
+                badge.setAttribute('aria-label', `複製指令 ${badge.textContent.trim()}`);
+                badge.addEventListener('keydown', event => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        badge.click();
+                    }
+                });
+            });
+        }
+
+        initializeCommandBadges();
+
+        const commandPopover = document.createElement('div');
+        commandPopover.className = 'command-popover';
+        commandPopover.setAttribute('role', 'dialog');
+        commandPopover.setAttribute('aria-label', '其他指令');
+        document.body.appendChild(commandPopover);
+        let activeCommandTrigger = null;
+
+        function closeCommandPopover({ focus = false } = {}) {
+            if (!activeCommandTrigger) return;
+            const trigger = activeCommandTrigger;
+            activeCommandTrigger = null;
+            trigger.setAttribute('aria-expanded', 'false');
+            commandPopover.classList.remove('is-open');
+            commandPopover.replaceChildren();
+            if (focus) trigger.focus();
+        }
+
+        function positionCommandPopover(trigger) {
+            const triggerRect = trigger.getBoundingClientRect();
+            const popoverRect = commandPopover.getBoundingClientRect();
+            const gutter = 12;
+            const availableBelow = window.innerHeight - triggerRect.bottom - gutter;
+            const availableAbove = triggerRect.top - gutter;
+            const top = availableBelow >= popoverRect.height || availableBelow >= availableAbove
+                ? triggerRect.bottom + 8
+                : triggerRect.top - popoverRect.height - 8;
+            const left = Math.min(
+                Math.max(gutter, triggerRect.left),
+                window.innerWidth - popoverRect.width - gutter
+            );
+            commandPopover.style.top = `${Math.max(gutter, top)}px`;
+            commandPopover.style.left = `${left}px`;
+        }
+
+        function openCommandPopover(trigger) {
+            const detail = trigger.closest('.command-details');
+            const template = detail?.querySelector('template');
+            if (!template) return;
+            if (activeCommandTrigger === trigger) {
+                closeCommandPopover();
+                return;
+            }
+
+            closeCommandPopover();
+            const badgeContainer = document.createElement('div');
+            badgeContainer.className = 'command-popover-badges';
+            badgeContainer.append(template.content.cloneNode(true));
+            commandPopover.replaceChildren(badgeContainer);
+            initializeCommandBadges(commandPopover);
+            activeCommandTrigger = trigger;
+            trigger.setAttribute('aria-expanded', 'true');
+            commandPopover.classList.add('is-open');
+            positionCommandPopover(trigger);
+        }
+
+        document.querySelectorAll('.command-details-trigger').forEach(trigger => {
+            trigger.addEventListener('click', event => {
+                event.stopPropagation();
+                openCommandPopover(trigger);
             });
         });
+
+        document.addEventListener('click', event => {
+            if (activeCommandTrigger && !commandPopover.contains(event.target)) {
+                closeCommandPopover();
+            }
+        });
+
+        commandPopover.addEventListener('click', event => {
+            if (event.target.closest('.cmd-badge')) {
+                window.setTimeout(() => closeCommandPopover(), 0);
+            }
+        });
+
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape' && activeCommandTrigger) {
+                event.preventDefault();
+                closeCommandPopover({ focus: true });
+            }
+        });
+        window.addEventListener('resize', () => closeCommandPopover());
+        window.addEventListener('scroll', () => closeCommandPopover(), true);
 
         document.querySelectorAll('#navbarNav .nav-link').forEach(link => {
             link.addEventListener('click', event => {
@@ -2301,14 +2415,14 @@
             let visibleCount = 0;
 
             cards.forEach(card => {
-                const text = card.textContent || card.innerText;
+                const text = [card.textContent || card.innerText, card.dataset.searchAliases || ''].join(' ');
                 const matched = text.toLowerCase().includes(filter);
                 card.style.display = matched ? "" : "none";
                 if (matched) visibleCount += 1;
             });
 
             rows.forEach(row => {
-                const text = row.textContent || row.innerText;
+                const text = [row.textContent || row.innerText, row.dataset.searchAliases || ''].join(' ');
                 const matched = text.toLowerCase().includes(filter);
                 row.style.display = matched ? "" : "none";
                 if (matched) visibleCount += 1;
@@ -2334,6 +2448,7 @@
             });
 
             searchStatus.textContent = filter ? `找到 ${visibleCount} 項結果` : '';
+            if (filter) closeCommandPopover();
         }
 
         function searchCommands() {
