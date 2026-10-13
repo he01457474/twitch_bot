@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
     <meta property="og:title" content="Twitch Bot 指令全書">
-    <meta property="og:description" content="查詢 FlyCat Bot 聊天室指令、簽到、戰績、互動與管理功能。V5.4.2">
+    <meta property="og:description" content="查詢 FlyCat Bot 聊天室指令、簽到、戰績、互動與管理功能。V5.4.3">
     <meta property="og:image" content="https://cdn-icons-png.flaticon.com/512/4712/4712109.png">
     <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/4712/4712109.png">
     <meta name="theme-color" content="#a855f7">
@@ -1596,7 +1596,7 @@
                     <p id="searchStatus" class="search-status" aria-live="polite"></p>
                 </div>
                 <div class="version-container">
-                    <div class="version-badge"><span class="version-dot"></span><span>v5.4.2 穩定版</span></div>
+                    <div class="version-badge"><span class="version-dot"></span><span>v5.4.3 穩定版</span></div>
                 </div>
             </div>
         </div>
@@ -1641,6 +1641,22 @@
                         <h5 class="card-title"><i class="fa-solid fa-clock-rotate-left me-2"></i>歷史榮譽榜</h5>
                         <p class="card-desc">查詢過去指定月份的前 10 名簽到排行榜 (格式 YYYY-MM)。</p>
                         <div class="mt-3"><span class="cmd-badge" onclick="copyText('!月排名 2025-11')">!月排名 YYYY-MM</span></div>
+                    </div>
+                </div>
+                <div class="col-md-6 col-lg-4 searchable-item">
+                    <div class="glass-card">
+                        <h5 class="card-title"><i class="fa-solid fa-ranking-star me-2"></i>累積簽到排行</h5>
+                        <p class="card-desc">依歷史累積簽到次數排名，圖片同時顯示目前連續簽到資料。預設前 5 名，可指定 1～20 人。</p>
+                        <div class="feature-note note-info"><i class="fa-solid fa-clock"></i>同頻道共用 10 秒冷卻</div>
+                        <div class="mt-3"><span class="cmd-badge" onclick="copyText('!累積簽到')">!累積簽到</span> <span class="cmd-badge" onclick="copyText('!累積簽到 20')">!累積簽到 20</span></div>
+                    </div>
+                </div>
+                <div class="col-md-6 col-lg-4 searchable-item">
+                    <div class="glass-card">
+                        <h5 class="card-title"><i class="fa-solid fa-fire me-2"></i>連續簽到排行</h5>
+                        <p class="card-desc">依目前連續簽到次數排名，圖片同時顯示累積簽到資料。預設前 5 名，可指定 1～20 人。</p>
+                        <div class="feature-note note-info"><i class="fa-solid fa-clock"></i>同頻道共用 10 秒冷卻</div>
+                        <div class="mt-3"><span class="cmd-badge" onclick="copyText('!連續簽到')">!連續簽到</span> <span class="cmd-badge" onclick="copyText('!連續簽到 20')">!連續簽到 20</span></div>
                     </div>
                 </div>
             </div>
@@ -1825,12 +1841,13 @@
                     </div>
                 </div>
 
-                <div class="col-md-6 col-lg-4 searchable-item">
+                <div class="col-md-6 col-lg-4 searchable-item" data-search-aliases="bindval">
                     <div class="glass-card">
                         <h5 class="card-title"><i class="fa-solid fa-link me-2"></i>綁定台主帳號</h5>
                         <p class="card-desc">綁定本頻道台主的 VALORANT 帳號，讓觀眾未帶參數時可直接查詢台主的牌位與最近對戰。</p>
                         <div class="feature-note note-vip"><i class="fa-solid fa-lock"></i>限台主或最高管理員</div>
                         <div class="mt-3"><span class="cmd-badge" onclick="copyText('!綁定VAL 名字#TAG')">!綁定VAL 名字#TAG</span></div>
+                        <div class="command-details"><button type="button" class="command-details-trigger" aria-expanded="false" aria-haspopup="true">其他名稱</button><template><span class="cmd-badge" onclick="copyText('!bindval')">!bindval</span></template></div>
                     </div>
                 </div>
 
@@ -1860,7 +1877,7 @@
                     </div>
                 </div>
 
-                <div class="col-md-6 col-lg-4 searchable-item">
+                <div class="col-md-6 col-lg-4 searchable-item" data-search-aliases="tftmatches">
                     <div class="glass-card">
                         <h5 class="card-title"><i class="fa-solid fa-list-ol me-2"></i>最近對戰</h5>
                         <p class="card-desc">預設顯示最近 5 場，可指定 5～20 場，以圖片呈現名次、賽季、模式、開始時間與時長；台主單場 LP 僅在資料足以確認時顯示。</p>
@@ -1869,10 +1886,11 @@
                             <span class="cmd-badge" onclick="copyText('!TFT最近 20')">!TFT最近 20</span>
                             <span class="cmd-badge" onclick="copyText('!TFT最近 @ID')">!TFT最近 @ID</span>
                         </div>
+                        <div class="command-details"><button type="button" class="command-details-trigger" aria-expanded="false" aria-haspopup="true">其他名稱</button><template><span class="cmd-badge" onclick="copyText('!tftmatches')">!tftmatches</span></template></div>
                     </div>
                 </div>
 
-                <div class="col-md-6 col-lg-4 searchable-item">
+                <div class="col-md-6 col-lg-4 searchable-item" data-search-aliases="tftchange">
                     <div class="glass-card">
                         <h5 class="card-title"><i class="fa-solid fa-arrow-trend-up me-2"></i>牌位變化</h5>
                         <p class="card-desc">比較指定期間內的牌位、換算分數、對戰場數與前四率。若歷史不足，會顯示目前可比較的實際期間。</p>
@@ -1881,10 +1899,11 @@
                             <span class="cmd-badge" onclick="copyText('!TFT變化 30 @ID')">!TFT變化 30 @ID</span>
                         </div>
                         <div class="mt-2 text-white-50 small">可查詢 1～90 天，預設 7 天；換季後會自動以新賽季建立比較基準，舊賽季紀錄仍會保留。</div>
+                        <div class="command-details"><button type="button" class="command-details-trigger" aria-expanded="false" aria-haspopup="true">其他名稱</button><template><span class="cmd-badge" onclick="copyText('!tftchange')">!tftchange</span></template></div>
                     </div>
                 </div>
 
-                <div class="col-md-6 col-lg-4 searchable-item">
+                <div class="col-md-6 col-lg-4 searchable-item" data-search-aliases="tftstats">
                     <div class="glass-card">
                         <h5 class="card-title"><i class="fa-solid fa-chart-simple me-2"></i>本季與直播戰報</h5>
                         <p class="card-desc">一般查詢顯示本季總場次、前四比例、平均名次及第 1／8 名場數；加上「本場」或「上場」可查看該次直播的場數、LP 變化、前四、吃雞與平均名次。</p>
@@ -1895,10 +1914,11 @@
                             <span class="cmd-badge" onclick="copyText('!TFT場次 上場')">!TFT場次 上場</span>
                             <span class="cmd-badge" onclick="copyText('!TFT場次 @ID')">!TFT場次 @ID</span>
                         </div>
+                        <div class="command-details"><button type="button" class="command-details-trigger" aria-expanded="false" aria-haspopup="true">其他名稱</button><template><span class="cmd-badge" onclick="copyText('!tftstats')">!tftstats</span></template></div>
                     </div>
                 </div>
 
-                <div class="col-md-6 col-lg-4 searchable-item">
+                <div class="col-md-6 col-lg-4 searchable-item" data-search-aliases="bindtft">
                     <div class="glass-card">
                         <h5 class="card-title"><i class="fa-solid fa-link me-2"></i>綁定台主帳號</h5>
                         <p class="card-desc">綁定本頻道台主的 Riot ID。未指定伺服器時預設台服，其他伺服器需在 Riot ID 前加上「韓服」或「東南亞服」。</p>
@@ -1908,6 +1928,7 @@
                             <span class="cmd-badge" onclick="copyText('!綁定TFT 韓服 名字#TAG')">!綁定TFT 韓服 名字#TAG</span>
                             <span class="cmd-badge" onclick="copyText('!綁定TFT 東南亞服 名字#TAG')">!綁定TFT 東南亞服 名字#TAG</span>
                         </div>
+                        <div class="command-details"><button type="button" class="command-details-trigger" aria-expanded="false" aria-haspopup="true">其他名稱</button><template><span class="cmd-badge" onclick="copyText('!bindtft')">!bindtft</span></template></div>
                     </div>
                 </div>
 
@@ -1931,15 +1952,13 @@
                 <div class="col-md-6 col-lg-4 searchable-item" data-search-aliases="TFTAUTO TFT自動開盤">
                     <div class="glass-card">
                         <h5 class="card-title"><i class="fa-solid fa-chess-board me-2"></i>TFT 自動開盤</h5>
-                        <p class="card-desc">查看或控制本頻道 TFT 自動賭盤。啟用後監看新的受支援對局，自動建立前四、第 1 名、前三或前五等名次題型。</p>
+                        <p class="card-desc">目前暫緩：等待可靠的新局偵測來源。台服實機的 Riot Spectator 未可靠回報進行中的對局，暫不提供自動開盤；一般 TFT 查詢與手動賭盤不受影響。</p>
                         <div class="feature-note note-vip"><i class="fa-solid fa-lock"></i>限台主、頻道 MOD、賭盤管理員或最高管理員；頻道須啟用官方頻道點數並完成 Twitch Prediction 授權。</div>
                         <div class="mt-3">
                             <span class="cmd-badge" onclick="copyText('!TFT自動開盤')">!TFT自動開盤</span>
                             <span class="cmd-badge" onclick="copyText('!TFT自動開盤 狀態')">!TFT自動開盤 狀態</span>
-                            <span class="cmd-badge" onclick="copyText('!TFT自動開盤 開')">!TFT自動開盤 開</span>
-                            <span class="cmd-badge" onclick="copyText('!TFT自動開盤 關')">!TFT自動開盤 關</span>
                         </div>
-                        <div class="mt-2 text-white-50 small">別名：!TFTAUTO。已進行中的舊對局不補開，每場最多一次，不自動結算；人工接管後會停止 Auto。</div>
+                        <div class="mt-2 text-white-50 small">別名：!TFTAUTO。最新鎖定版需由使用者更新筆電 BOT 後才會在本機生效；網站開關不能解除鎖定。既有賭盤與設定保留，恢復需另行核准新版。</div>
                     </div>
                 </div>
             </div>
@@ -2146,12 +2165,12 @@
                                         <div class="param-text">使用 Twitch 官方頻道點數開盤。預設 60 秒，可填 30～1800 秒；最後兩段固定視為答案。</div>
                                     </div>
                                     <div class="param-item">
-                                        <div class="param-key key-blue">!結算 答案文字</div>
-                                        <div class="param-text">答案必須與賭盤選項完全相同，再由同一人於 30 秒內完成確認。</div>
+                                        <div class="param-key key-blue">!結算 編號／選項文字</div>
+                                        <div class="param-text">可用選項編號或完整選項文字。同一位操作者須在 30 秒內再次輸入相同的 !結算 結果，才完成結算；!確認結算 只提供相容性操作提示。</div>
                                     </div>
                                     <div class="param-item">
                                         <div class="param-key key-yellow">!取消賭盤</div>
-                                        <div class="param-text">確認取消後，Twitch 會退還觀眾投入的頻道點數。</div>
+                                        <div class="param-text">直接取消，不需第二次確認；Twitch 會退還觀眾投入的頻道點數。!確認取消賭盤 只提示流程已簡化。</div>
                                     </div>
                                 </td>
                                 <td>
@@ -2166,7 +2185,7 @@
 
                             <tr class="table-group-row"><td colspan="3"><div class="table-group-title"><i class="fa-solid fa-sliders"></i>頻道設定 <small>CHANNEL TOOLS</small></div></td></tr>
 
-                            <tr class="searchable-row">
+                            <tr class="searchable-row" data-search-aliases="acmd newcmd dcmd rmcmd clist lscmd">
                                 <td>
                                     <div class="d-flex flex-wrap gap-2 mb-3">
                                         <span class="cmd-badge" onclick="copyText('!加指令')">!加指令</span>
@@ -2174,6 +2193,7 @@
                                         <span class="cmd-badge" onclick="copyText('!查指令')">!查指令</span>
                                     </div>
                                     <div><span class="cmd-type-tag type-custom">自訂指令 (CUSTOM)</span></div>
+                                    <div class="command-details"><button type="button" class="command-details-trigger" aria-expanded="false" aria-haspopup="true">其他名稱</button><template><span class="cmd-badge" onclick="copyText('!acmd')">!acmd</span> <span class="cmd-badge" onclick="copyText('!newcmd')">!newcmd</span> <span class="cmd-badge" onclick="copyText('!dcmd')">!dcmd</span> <span class="cmd-badge" onclick="copyText('!rmcmd')">!rmcmd</span> <span class="cmd-badge" onclick="copyText('!clist')">!clist</span> <span class="cmd-badge" onclick="copyText('!lscmd')">!lscmd</span></template></div>
                                 </td>
                                 <td>
                                     <div class="param-item">
@@ -2282,7 +2302,7 @@
         </div>
 
         <footer>
-            <p class="mb-1">Bot Version: 5.4.2 穩定版</p>
+            <p class="mb-1">Bot Version: 5.4.3 穩定版</p>
             <small>專為 Twitch 打造的系統</small>
         </footer>
 
