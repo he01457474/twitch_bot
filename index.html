@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
     <meta property="og:title" content="Twitch Bot 指令全書">
-    <meta property="og:description" content="查詢 FlyCat Bot 聊天室指令、簽到、戰績、互動與管理功能。V5.4.3">
+    <meta property="og:description" content="查詢 FlyCat Bot 聊天室指令、簽到、戰績、互動與管理功能。V5.5.0">
     <meta property="og:image" content="https://cdn-icons-png.flaticon.com/512/4712/4712109.png">
     <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/4712/4712109.png">
     <meta name="theme-color" content="#a855f7">
@@ -1596,7 +1596,7 @@
                     <p id="searchStatus" class="search-status" aria-live="polite"></p>
                 </div>
                 <div class="version-container">
-                    <div class="version-badge"><span class="version-dot"></span><span>v5.4.3 穩定版</span></div>
+                    <div class="version-badge"><span class="version-dot"></span><span>v5.5.0 穩定版</span></div>
                 </div>
             </div>
         </div>
@@ -1698,6 +1698,7 @@
                             <div class="title-mode"><strong>等級</strong><small>保留稱號資料，但查詢時只顯示原本等級稱號。</small></div>
                         </div>
                         <div class="feature-note note-info"><i class="fa-solid fa-shield-halved"></i>設定、移除與模式切換僅限作者、最高管理員或本頻道台主；查詢開放所有觀眾</div>
+                        <div class="feature-note note-info"><i class="fa-solid fa-table-list"></i>模式只影響聊天室；設定中心的活躍榜固定同時顯示「等級稱號｜自訂稱號」。</div>
                         <div>
                             <span class="cmd-badge" onclick="copyText('!稱號設定 @使用者 稱號')">!稱號設定 @使用者 稱號</span>
                             <span class="cmd-badge" onclick="copyText('!稱號移除 @使用者')">!稱號移除 @使用者</span>
@@ -1844,7 +1845,7 @@
                 <div class="col-md-6 col-lg-4 searchable-item" data-search-aliases="bindval">
                     <div class="glass-card">
                         <h5 class="card-title"><i class="fa-solid fa-link me-2"></i>綁定台主帳號</h5>
-                        <p class="card-desc">綁定本頻道台主的 VALORANT 帳號，讓觀眾未帶參數時可直接查詢台主的牌位與最近對戰。</p>
+                        <p class="card-desc">綁定本頻道台主的 VALORANT 帳號，讓觀眾未帶參數時可直接查詢台主的牌位與最近對戰。台主也可以在設定中心的「資料與遊戲 → 遊戲帳號與戰績」設定。</p>
                         <div class="feature-note note-vip"><i class="fa-solid fa-lock"></i>限台主或最高管理員</div>
                         <div class="mt-3"><span class="cmd-badge" onclick="copyText('!綁定VAL 名字#TAG')">!綁定VAL 名字#TAG</span></div>
                         <div class="command-details"><button type="button" class="command-details-trigger" aria-expanded="false" aria-haspopup="true">其他名稱</button><template><span class="cmd-badge" onclick="copyText('!bindval')">!bindval</span></template></div>
@@ -1921,7 +1922,7 @@
                 <div class="col-md-6 col-lg-4 searchable-item" data-search-aliases="bindtft">
                     <div class="glass-card">
                         <h5 class="card-title"><i class="fa-solid fa-link me-2"></i>綁定台主帳號</h5>
-                        <p class="card-desc">綁定本頻道台主的 Riot ID。未指定伺服器時預設台服，其他伺服器需在 Riot ID 前加上「韓服」或「東南亞服」。</p>
+                        <p class="card-desc">綁定本頻道台主的 Riot ID。未指定伺服器時預設台服，其他伺服器需在 Riot ID 前加上「韓服」或「東南亞服」。台主也可以在設定中心的「資料與遊戲 → 遊戲帳號與戰績」設定。</p>
                         <div class="feature-note note-vip"><i class="fa-solid fa-lock"></i>限台主或最高管理員</div>
                         <div>
                             <span class="cmd-badge" onclick="copyText('!綁定TFT 名字#TAG')">!綁定TFT 名字#TAG</span>
@@ -2017,27 +2018,35 @@
                         </thead>
                         <tbody id="adminTableBody">
                             <tr class="table-group-row"><td colspan="3"><div class="table-group-title"><i class="fa-solid fa-comments"></i>聊天室管理 <small>MODERATION &amp; TICKETS</small></div></td></tr>
-                            <tr class="searchable-row">
+                            <tr class="searchable-row" data-search-aliases="B 600 B隨機 回覆禁言">
                                 <td>
-                                    <div class="d-flex flex-wrap gap-2 mb-3"><span class="cmd-badge" onclick="copyText('!B人')">!B人</span></div>
+                                    <div class="d-flex flex-wrap gap-2 mb-3">
+                                        <span class="cmd-badge" onclick="copyText('!B人 @ID')">!B人</span>
+                                        <span class="cmd-badge" onclick="copyText('!600')">!600</span>
+                                        <span class="cmd-badge" onclick="copyText('!B隨機 @ID')">!B隨機</span>
+                                    </div>
+                                    <div class="command-details"><button type="button" class="command-details-trigger" aria-expanded="false" aria-haspopup="true">其他名稱</button><template><span class="cmd-badge" onclick="copyText('!B @ID')">!B</span></template></div>
                                     <div><span class="cmd-type-tag type-ban">禁言 (TIMEOUT)</span></div>
                                 </td>
                                 <td>
                                     <div class="logic-card logic-blue">
                                         <div class="logic-head logic-head-blue"><i class="fa-regular fa-snowflake"></i> ❄️ 自願冷靜</div>
                                         <div class="logic-content">
-                                            <div class="d-flex mb-1"><span class="logic-bold text-nowrap me-2">!B人</span> <span>→ 預設 10 分鐘</span></div>
-                                            <div class="d-flex mb-1"><span class="logic-bold text-nowrap me-2">!B人 30</span> <span>→ 禁言 30 秒</span></div>
-                                            <div class="d-flex"><span class="logic-bold text-nowrap me-2">!B人 隨機</span> <span>→ 60~600 秒大冒險</span></div>
+                                            <div class="d-flex mb-1"><span class="logic-bold text-nowrap me-2">!600</span> <span>→ 自己禁言 10 分鐘</span></div>
+                                            <div class="d-flex mb-1"><span class="logic-bold text-nowrap me-2">!600 30</span> <span>→ 自己禁言 30 秒</span></div>
+                                            <div class="d-flex"><span class="logic-bold text-nowrap me-2">!600 隨機</span> <span>→ 60~600 秒大冒險</span></div>
                                         </div>
                                     </div>
                                     <div class="logic-card logic-red">
                                         <div class="logic-head logic-head-red"><i class="fa-solid fa-ticket"></i> 指定觀眾</div>
                                         <div class="logic-content">
                                             <div class="d-flex mb-1"><span class="logic-bold text-nowrap me-2">!B人 @ID</span> <span>→ 觀眾自動使用禁言券，固定 600 秒</span></div>
+                                            <div class="d-flex mb-1"><span class="logic-bold text-nowrap me-2">回覆 + !B人</span> <span>→ 回覆某則訊息後輸入，禁言該訊息的發言者，規則同上</span></div>
+                                            <div class="d-flex mb-1"><span class="logic-bold text-nowrap me-2">!B隨機 @ID</span> <span>→ 隨機 1～10 分鐘，也可回覆訊息後輸入；觀眾一樣需要禁言券</span></div>
                                             <div class="d-flex"><span class="logic-bold text-nowrap me-2">!B人 @ID 秒數</span> <span>→ 台主、MOD、最高管理員可直接指定秒數</span></div>
                                         </div>
                                     </div>
+                                    <div class="logic-note"><i class="fa-solid fa-circle-info"></i><span>!B人 一定要指定對象或回覆訊息；只打 !B人 不會禁言自己，想自己冷靜請用 !600。</span></div>
                                     <div class="logic-note"><i class="fa-solid fa-shield-halved"></i><span>指定台主、MOD、BOT 或最高管理員等受保護身分時，禁言會反彈給發起者 600 秒。</span></div>
                                     <div class="logic-note"><i class="fa-solid fa-user-shield"></i><span>最高管理員不必是本台 MOD；可管理一般觀眾，但指定受保護身分時仍會反彈。</span></div>
                                 </td>
@@ -2166,6 +2175,38 @@
                                     <p class="mb-0 small text-white-50">賭盤狀態查詢開放所有觀眾；開盤、封盤、結算與取消由台主、MOD、最高管理員或後台指定的賭盤管理員使用。台主需先授權官方賭盤權限，且頻道須為實況盟友或合作夥伴。</p>
                                 </td>
                             </tr>
+                            <tr class="searchable-row" data-search-aliases="TFT開盤 tft開盤 戰棋開盤 自動結算">
+                                <td>
+                                    <div class="d-flex flex-wrap gap-2 mb-3">
+                                        <span class="cmd-badge" onclick="copyText('!TFT開盤')">!TFT開盤</span>
+                                        <span class="cmd-badge" onclick="copyText('!TFT開盤 前四')">!TFT開盤 前四</span>
+                                        <span class="cmd-badge" onclick="copyText('!TFT開盤 吃雞')">!TFT開盤 吃雞</span>
+                                    </div>
+                                    <div><span class="cmd-type-tag type-prediction">TFT 一鍵開盤 (PREDICTION)</span></div>
+                                </td>
+                                <td>
+                                    <div class="param-item">
+                                        <div class="param-key key-purple">!TFT開盤 [題目]</div>
+                                        <div class="param-text">一鍵開一盤 60 秒的 TFT 名次賭盤。題目可填前四、吃雞、前三或前五，不填時隨機出題。</div>
+                                    </div>
+                                    <div class="param-item">
+                                        <div class="param-key key-blue">自動結算</div>
+                                        <div class="param-text">Riot 公布名次後由 BOT 自動結算並公告。以開盤時台主還在場上的那一場為準：開局時開就是這一場，排隊時開就是下一場。</div>
+                                    </div>
+                                    <div class="param-item">
+                                        <div class="param-key key-yellow">改為手動</div>
+                                        <div class="param-text">雙人等非一般／積分模式、開盤 3 小時沒有對應的一場、下播 30 分鐘仍沒有結果時，BOT 會在聊天室提醒改用 !結算 或 !取消賭盤。</div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
+                                        <span class="role-badge role-admin"><i class="fa-solid fa-user-secret"></i> 最高管理員</span>
+                                        <span class="role-badge role-owner"><i class="fa-solid fa-crown"></i> 頻道台主</span>
+                                        <span class="role-badge role-mod"><i class="fa-solid fa-shield-halved"></i> 頻道 MOD</span>
+                                    </div>
+                                    <p class="mb-0 small text-white-50">權限同 !開盤；台主需先綁定 TFT 帳號。有人先手動結算或取消時，BOT 就不再處理這一盤。</p>
+                                </td>
+                            </tr>
 
                             <tr class="table-group-row"><td colspan="3"><div class="table-group-title"><i class="fa-solid fa-sliders"></i>頻道設定 <small>CHANNEL TOOLS</small></div></td></tr>
 
@@ -2286,7 +2327,7 @@
         </div>
 
         <footer>
-            <p class="mb-1">Bot Version: 5.4.3 穩定版</p>
+            <p class="mb-1">Bot Version: 5.5.0 穩定版</p>
             <small>專為 Twitch 打造的系統</small>
         </footer>
 
